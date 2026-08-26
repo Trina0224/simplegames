@@ -6,10 +6,14 @@ export const METERS = [
   { id: '6/8', name: '6/8', beats: 6, beatUnit: 8 },
 ];
 
+// Playback describes how one chord is voiced over time. Pattern is the primary
+// accompaniment mode: root -> fifth -> third -> fifth. Up/Down deliberately do
+// not add an extra octave; the pad should remain short and predictable.
 export const PLAYBACK_MODES = [
   { id: 'block', name: 'Block' },
-  { id: 'arp-up', name: 'Arpeggio Up' },
-  { id: 'arp-down', name: 'Arpeggio Down' },
+  { id: 'pattern', name: 'Pattern' },
+  { id: 'arp-up', name: 'Up' },
+  { id: 'arp-down', name: 'Down' },
   { id: 'arp-updown', name: 'Up & Down' },
 ];
 
