@@ -56,6 +56,16 @@ The upper chord tones remain C E G in all four cases.
 
 Bass may be Off. In fact, **Off is the default** so a Block C pad is simply C+E+G and a Pattern C pad is simply C-G-E-G without an extra low C unless the user explicitly enables bass.
 
+Slash choices must support at least:
+
+- Off
+- Root
+- 3rd
+- 5th
+- Custom chromatic pitch class
+
+A slash setting is part of the musical event, not merely a temporary UI preference. If a user records `C/E`, playback must remain `C/E` even after the global Bass / Slash setting changes.
+
 ### Playback modes
 
 Playback describes how chord tones are triggered over time.
@@ -177,12 +187,17 @@ Record chord events, not microphone audio.
 
 Capture at least:
 
-- chord identity
+- chord identity / scale-degree id
 - start time
 - duration
 - playback mode
+- bass/slash state
 
-Bass/slash state should eventually be captured per event so a recorded `C/E` remains `C/E` on replay. Until that is implemented, treat Bass / Slash as a global performance setting and do not pretend recordings snapshot it.
+The bass/slash value is snapshot per event. Recording `C/E -> F -> G/B -> C` must replay with those same bass choices even if the global Bass / Slash setting is later changed.
+
+The recording format should remain serializable and locally persisted. Newer recording schemas should preserve backward compatibility where practical; old events without a `bass` field may be interpreted as Bass Off.
+
+The sequence display should show slash notation when present so a recorded event is visibly distinguishable as `C/E`, `G/B`, `C/D`, etc.
 
 ## Responsive requirements
 
@@ -229,4 +244,4 @@ These defaults are intentionally plain and predictable.
 
 ## Definition of done
 
-A user on an iPad mini can press obvious chord buttons, hear musically recognizable harmony, optionally choose a short accompaniment Pattern, explicitly choose slash bass when desired, record/replay a progression, and hide all setup controls when singing.
+A user on an iPad mini can press obvious chord buttons, hear musically recognizable harmony, optionally choose a short accompaniment Pattern, explicitly choose slash bass when desired, record/replay a progression with slash choices preserved per event, and hide all setup controls when singing.
