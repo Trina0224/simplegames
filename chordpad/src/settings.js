@@ -1,6 +1,8 @@
 // settings.js — user preferences with localStorage persistence. No account, no backend.
 
-const KEY = 'chordpad.settings.v1';
+// v2 intentionally resets early-prototype audio defaults. The old v1 defaulted to
+// auto inversion + root bass, which made a simple C pad sound less predictable.
+const KEY = 'chordpad.settings.v2';
 
 export const DEFAULTS = {
   key: 'C',
@@ -11,8 +13,8 @@ export const DEFAULTS = {
   volume: 0.8,
   playback: 'block',
   subdivision: '1/8',
-  voicing: 'auto',
-  bass: 'root',
+  voicing: 'close',
+  bass: 'off',
   trigger: 'hold',
   rhythm: 'free',
   extended: ['V7', 'Isus4', 'Iadd9', 'iv', 'bVII'],
@@ -22,7 +24,7 @@ export const DEFAULTS = {
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return { ...DEFAULTS, extended: [...DEFAULTS.extended] };
     const saved = JSON.parse(raw);
     const merged = { ...DEFAULTS, ...saved };
     if (!Array.isArray(merged.extended)) merged.extended = [...DEFAULTS.extended];
@@ -30,7 +32,7 @@ export function loadSettings() {
     merged.volume = Math.min(1, Math.max(0, Number(merged.volume)));
     return merged;
   } catch (_) {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, extended: [...DEFAULTS.extended] };
   }
 }
 
