@@ -28,6 +28,8 @@ Examples:
 - C/G = upper chord C E G, bass G
 - C/D = upper chord C E G, bass D
 
+A slash chord may represent a traditional inversion (`C/E`, `C/G`) or a non-chord bass (`C/D`).
+
 ---
 
 ## 3. Main performance screen
@@ -214,7 +216,7 @@ Auto is musically useful, but it is not the default because the primary audience
 
 Bass is a separate layer below the upper chord.
 
-Settings should support:
+Settings must support:
 
 - Off
 - Root
@@ -232,7 +234,31 @@ Examples for a C pad:
 
 A slash chord does not require rewriting the upper chord definition.
 
-The current implementation may treat Bass / Slash as a global performance setting. A future revision should store slash state per recorded chord event.
+### Slash-chord persistence
+
+Slash/bass state is part of the performed chord event.
+
+When Record is active, each chord event must snapshot the current bass/slash setting at the moment the pad is pressed.
+
+Example recorded progression:
+
+```text
+C/E -> F -> G/B -> C
+```
+
+If the user later changes the global Bass / Slash setting to Off, replay must still sound:
+
+```text
+C/E -> F -> G/B -> C
+```
+
+and must not silently become:
+
+```text
+C -> F -> G -> C
+```
+
+Old recording events that do not contain a bass field should remain playable and may default to Bass Off.
 
 ---
 
@@ -346,8 +372,24 @@ Store at least:
 - start time
 - duration
 - playback mode
+- bass/slash state
 
-Playback should recreate events through the Web Audio scheduler.
+Recommended logical event shape:
+
+```json
+{
+  "id": "I",
+  "name": "C",
+  "start": 0.0,
+  "duration": 2.15,
+  "playback": "pattern",
+  "bass": "third"
+}
+```
+
+A custom slash bass may be represented as a chromatic pitch class, for example `pc:2` for D.
+
+Playback should recreate each event through the Web Audio scheduler using the event's saved bass/slash state rather than the current global state.
 
 Provide:
 
@@ -357,7 +399,21 @@ Provide:
 - Loop
 - Clear
 
-Future schema improvement: capture bass/slash state per event so a recorded `C/E` remains `C/E` even if the global bass setting later changes.
+### Sequence display
+
+The sequence view should expose slash notation when present so the user can understand the recorded harmony at a glance.
+
+Examples:
+
+```text
+C/E | F | G/B | C
+```
+
+or, if functional labels are also shown:
+
+```text
+I · C/E | IV · F | V · G/B | I · C
+```
 
 ---
 
@@ -374,6 +430,8 @@ Examples:
 - vi – IV – I – V
 - I – V7 – I
 - I – III7 – vi – IV – V – I
+
+A loaded preset may snapshot the current bass/slash state if the user has explicitly selected one.
 
 ---
 
@@ -416,7 +474,11 @@ The current build is successful when:
 6. Close voicing is the default.
 7. Auto voicing remains available as an optional advanced feature.
 8. Bass is Off by default.
-9. Users can explicitly choose Root, 3rd, 5th, or custom bass to test slash chords such as C/E, C/G and C/D.
-10. iPad mini remains the primary UX target.
-11. Record/Play/Stop/Loop continue to work.
-12. No backend is required.
+9. Users can explicitly choose Root, 3rd, 5th, or custom bass to create slash chords such as C/E, C/G and C/D.
+10. Recording snapshots the bass/slash state per chord event.
+11. Recorded slash chords replay unchanged even after the global Bass / Slash setting changes.
+12. Sequence display can distinguish slash chords visually.
+13. Old recordings without a bass field remain playable.
+14. iPad mini remains the primary UX target.
+15. Record/Play/Stop/Loop continue to work.
+16. No backend is required.
