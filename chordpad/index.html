@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#15171f">
+<meta name="description" content="Chord Pad — a touch-first browser instrument for simple hymn and worship accompaniment.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Chord Pad</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" aria-label="Open settings" aria-expanded="false">☰</button>
+    <div class="status" id="status">C Major · Piano · 72 BPM</div>
+    <div class="hint" id="hint">Tap a chord to start</div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="pads" id="pads"></div>
+    <div class="ext-row" id="extRow" aria-label="Extended chords"></div>
+  </main>
+
+  <div class="sequence" id="sequence" aria-label="Recorded sequence"></div>
+
+  <footer class="transport">
+    <button class="t-btn rec" id="recBtn"><span class="glyph">●</span><span class="cap">Record</span></button>
+    <button class="t-btn play" id="playBtn"><span class="glyph">▶</span><span class="cap">Play</span></button>
+    <button class="t-btn stop" id="stopBtn"><span class="glyph">■</span><span class="cap">Stop</span></button>
+    <button class="t-btn loop" id="loopBtn"><span class="glyph">↻</span><span class="cap">Loop</span></button>
+    <button class="t-btn clear" id="clearBtn"><span class="glyph">✕</span><span class="cap">Clear</span></button>
+  </footer>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <aside class="drawer" id="drawer" aria-label="Settings" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="closeBtn" aria-label="Close settings">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-foot">
+      <button class="ghost-btn" id="resetBtn">Reset to defaults</button>
+    </div>
+  </aside>
+</div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

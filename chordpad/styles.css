@@ -1,0 +1,436 @@
+/* Chord Pad — touch-first layout. iPad mini landscape is the primary target. */
+
+:root {
+  --bg: #15171f;
+  --panel: #1e212c;
+  --panel-2: #262a38;
+  --line: #333849;
+  --text: #eef1f8;
+  --muted: #9aa3bd;
+  --accent: #f0a848;
+  --accent-2: #6fb3ff;
+  --rec: #ff5f6d;
+  --pad: linear-gradient(180deg, #2c3244 0%, #232838 100%);
+  --pad-active: linear-gradient(180deg, #f3b45c 0%, #e08b2c 100%);
+  --radius: 18px;
+  --cols: 2;
+  --gap: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+}
+
+/* ---------- header ---------- */
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.icon-btn {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:active { background: var(--panel-2); }
+
+.status {
+  flex: 1 1 auto;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hint {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+.hint[hidden] { display: none; }
+
+/* ---------- performance stage ---------- */
+
+.stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 0 12px;
+  min-height: 0;
+  touch-action: none;
+}
+
+.pads {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-auto-rows: 1fr;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.pad {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--pad);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.06s ease, filter 0.06s ease;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.pad .degree {
+  font-size: clamp(20px, 3.4vh, 34px);
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.pad .chord {
+  font-size: clamp(15px, 2.4vh, 24px);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pad.on,
+.pad.playing {
+  background: var(--pad-active);
+  color: #1b1405;
+  transform: translateY(2px) scale(0.985);
+  box-shadow: 0 0 0 2px rgba(240, 168, 72, 0.5) inset;
+}
+
+.pad.on .chord,
+.pad.playing .chord { color: #4a3308; }
+
+/* 7 primary pads: the odd one out gets centred instead of hugging a corner. */
+.pads .pad:last-child:nth-child(7) { grid-column: 1 / -1; }
+
+/* ---------- extended chord row ---------- */
+
+.ext-row {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.ext-row::-webkit-scrollbar { display: none; }
+
+.ext-row .pad {
+  flex: 1 0 auto;
+  min-width: 92px;
+  min-height: 62px;
+  padding: 6px 12px;
+  border-radius: 14px;
+}
+
+.ext-row .pad .degree { font-size: 17px; }
+.ext-row .pad .chord { font-size: 13px; }
+
+.ext-row:empty { display: none; }
+
+/* ---------- sequence strip ---------- */
+
+.sequence {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+  scrollbar-width: none;
+}
+
+.sequence::-webkit-scrollbar { display: none; }
+
+.sequence .chip {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sequence .chip.now {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1405;
+}
+
+.sequence .empty { opacity: 0.6; font-style: italic; }
+
+/* ---------- transport ---------- */
+
+.transport {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 12px;
+}
+
+.t-btn {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 62px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.t-btn .glyph { font-size: 19px; line-height: 1; }
+.t-btn:active { background: var(--panel-2); }
+.t-btn:disabled { opacity: 0.4; }
+.t-btn.rec .glyph { color: var(--rec); }
+.t-btn.rec.armed { background: var(--rec); color: #2a0508; }
+.t-btn.rec.armed .glyph { color: #2a0508; animation: blink 1s steps(2, start) infinite; }
+.t-btn.play.active { background: var(--accent-2); color: #04213f; }
+.t-btn.loop.active { background: var(--panel-2); color: var(--accent); border-color: var(--accent); }
+
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* ---------- settings drawer ---------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20;
+}
+
+.scrim[hidden] { display: none; }
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  width: min(430px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  transform: translateX(101%);
+  transition: transform 0.22s ease;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
+}
+
+.drawer.open { transform: none; }
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 { margin: 0; font-size: 18px; }
+
+.drawer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 14px 24px;
+}
+
+.drawer-foot {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.field { margin-bottom: 18px; }
+
+.field > label,
+.field > .field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field .value { font-size: 14px; color: var(--accent); text-transform: none; letter-spacing: 0; }
+
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.seg button,
+.chips button {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.seg button.sel,
+.chips button.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1405;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { flex: 0 0 auto; min-height: 40px; font-size: 13px; }
+
+.field select,
+.field input[type="range"] {
+  width: 100%;
+}
+
+.field select {
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+.field input[type="range"] {
+  height: 40px;
+  accent-color: var(--accent);
+}
+
+.note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ghost-btn {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* ---------- responsive ---------- */
+
+@media (min-width: 620px) {
+  :root { --cols: 3; --gap: 12px; }
+  .status { font-size: 17px; }
+  .hint { font-size: 13px; }
+  .t-btn { font-size: 13px; min-height: 68px; }
+  .t-btn .glyph { font-size: 22px; }
+  .ext-row .pad { min-width: 116px; }
+  /* In a 3-column grid the 7th pad sits in the middle column. */
+  .pads .pad:last-child:nth-child(7) { grid-column: 2 / 3; }
+}
+
+@media (min-width: 900px) {
+  :root { --gap: 14px; }
+  .stage { padding: 0 16px; }
+  .transport { padding: 10px 16px 14px; }
+  .ext-row .pad { min-height: 68px; }
+}
+
+/* Short landscape (iPad mini / iPhone landscape): keep pads dominant. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .topbar { padding: 4px 10px; }
+  .icon-btn { width: 42px; height: 42px; font-size: 19px; }
+  .sequence { height: 30px; }
+  .ext-row .pad { min-height: 50px; }
+  .t-btn { min-height: 50px; }
+  .transport { padding: 6px 12px 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pad, .drawer { transition: none; }
+  .t-btn.rec.armed .glyph { animation: none; }
+}
