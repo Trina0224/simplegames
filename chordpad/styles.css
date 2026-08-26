@@ -307,8 +307,19 @@ body {
 
 .drawer-foot {
   flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
   padding: 10px 14px;
   border-top: 1px solid var(--line);
+}
+
+.home-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 120px;
+  text-decoration: none;
 }
 
 .field { margin-bottom: 18px; }
