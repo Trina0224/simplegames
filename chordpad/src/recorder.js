@@ -1,11 +1,13 @@
 // recorder.js — records chord *events* (not audio) and replays them through the scheduler.
-// Events store the degree id, so a recording transposes when the key changes.
+// Events store the degree id so recordings transpose when the key changes.
+// v2 also stores the explicit bass/slash choice used for each event.
 
-const KEY = 'chordpad.recording.v1';
+const KEY = 'chordpad.recording.v2';
+const LEGACY_KEY = 'chordpad.recording.v1';
 
 export class Recorder {
   constructor() {
-    this.events = [];       // { id, label, name, start, duration, playback }
+    this.events = [];       // { id, label, name, start, duration, playback, bass }
     this.state = 'idle';    // idle | recording | playing
     this.recordStart = 0;
     this.open = new Map();  // padId -> event being recorded
@@ -39,7 +41,7 @@ export class Recorder {
     this.onChange();
   }
 
-  noteOn(padId, chord, playback, now) {
+  noteOn(padId, chord, playback, now, bass = 'off') {
     if (this.state !== 'recording') return;
     const event = {
       id: padId,
@@ -48,6 +50,7 @@ export class Recorder {
       start: Math.max(0, now - this.recordStart),
       duration: 0.5,
       playback,
+      bass,
     };
     this.events.push(event);
     this.open.set(padId, event);
@@ -64,7 +67,7 @@ export class Recorder {
   }
 
   /** Replace the recording with a progression, one chord per measure. */
-  loadProgression(ids, chords, measureDur) {
+  loadProgression(ids, chords, measureDur, bass = 'off') {
     this.events = ids.map((id, i) => ({
       id,
       label: chords[i] ? chords[i].label : id,
@@ -72,6 +75,7 @@ export class Recorder {
       start: i * measureDur,
       duration: measureDur * 0.98,
       playback: null,
+      bass,
     }));
     this.state = 'idle';
     this.save();
@@ -102,10 +106,12 @@ export class Recorder {
 
   load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) this.events = parsed;
+        if (Array.isArray(parsed)) {
+          this.events = parsed.map((event) => ({ bass: 'off', ...event }));
+        }
       }
     } catch (_) { this.events = []; }
   }
