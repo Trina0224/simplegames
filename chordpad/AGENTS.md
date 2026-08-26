@@ -1,158 +1,167 @@
 # AGENTS.md — Chord Pad
 
-## Project purpose
+## Purpose
 
-Chord Pad is a very small browser-based accompaniment instrument for church activities. It is not a piano keyboard and it is not intended to become a DAW.
+Chord Pad is a touch-first browser accompaniment instrument for church activities. It is not a piano keyboard and it is not a DAW.
 
-The user presses one large chord pad and hears a complete chord. The goal is to let people who cannot play piano or guitar provide simple accompaniment for hymns and worship songs.
+Primary target: **iPad mini, landscape first**.
+Secondary target: **iPhone**.
 
-Primary device: **iPad mini**.
-Secondary device: **iPhone**.
-Desktop should still work, but desktop UX is not the design target.
+A user should be able to open the page, press one large chord pad, and immediately get a predictable accompaniment sound suitable for singing.
 
 ## Product principles
 
-1. **Open and play immediately.** The default state must already produce useful sound without setup.
-2. **Large controls first.** The performance screen should contain only the controls needed while singing.
-3. **Hide configuration.** Key, instrument, BPM, time signature, playback style, voicing, and other configuration live in a hamburger-menu settings drawer.
-4. **Do not make it look like a piano.** Chords are represented by large pads, not black/white keys.
-5. **Prefer musical usefulness over feature count.** A small feature that improves hymn accompaniment is more valuable than a general synthesizer feature.
-6. **Touch-first interaction.** Everything important must work reliably with fingers on Safari/iPadOS and iOS.
-7. **Keep the implementation simple.** Version 0.1 should be a static web application suitable for GitHub Pages. Do not add a backend or Node.js runtime unless a later feature actually requires one.
+1. Main screen stays simple: large chord pads, compact status, transport, hamburger settings.
+2. Configuration belongs in the settings drawer.
+3. Touch interaction must be reliable on iPadOS/iOS Safari.
+4. Prefer predictable accompaniment over clever arranging.
+5. Chord identity, bass/slash note, playback pattern, rhythm, and duration are separate concepts.
+6. Static GitHub Pages deployment is preferred; no backend unless a later feature truly needs one.
 
-## Technical direction
+## Musical model
 
-- Use standard HTML, CSS, and JavaScript unless there is a compelling reason to add a framework.
-- Use the Web Audio API for scheduling, envelopes, playback, and chord/arpeggio timing.
-- The first implementation may use synthesis, lightweight samples, or a small local soundfont approach, but avoid large assets and avoid network dependencies that make offline/event use fragile.
-- Audio must be initialized from an explicit user interaction to comply with iOS/Safari autoplay restrictions.
-- Avoid hover-only UI.
-- Handle touch/pointer events carefully so holding a chord pad feels immediate and does not cause accidental scrolling or selection.
-- Prevent the performance surface from scrolling while playing unless the viewport genuinely requires it.
-- Respect safe-area insets on iPhone/iPad.
-- Prefer responsive CSS over device-specific hard-coded layouts.
-- Persist reasonable user preferences in `localStorage` (for example key, instrument, BPM, playback mode, and volume). Do not require accounts.
-- Keep musical data separate from rendering code. Chord construction, note spelling, voicing, progression presets, and playback patterns should be represented as data/functions rather than duplicated in UI handlers.
+### Chord identity
 
-## Main performance screen
+A chord definition determines its chord tones only.
 
-The main screen must remain visually simple.
+Examples:
+
+- C = C E G
+- Dm = D F A
+- G = G B D
+- G7 = G B D F
+
+Do not confuse chord identity with playback order or bass note.
+
+### Default voicing
+
+The default must be **Close / root-position style**, not Auto.
+
+A person pressing `Dm` should hear a clear D-minor center rather than an automatically selected inversion.
+
+`Auto` voice leading may remain as an advanced option, but it must never be the first-launch default.
+
+### Bass and slash chords
+
+Bass is independent from the upper chord.
+
+Examples:
+
+- C with root bass = C
+- C with third bass = C/E
+- C with fifth bass = C/G
+- C with custom D bass = C/D
+
+The upper chord tones remain C E G in all four cases.
+
+Bass may be Off. In fact, **Off is the default** so a Block C pad is simply C+E+G and a Pattern C pad is simply C-G-E-G without an extra low C unless the user explicitly enables bass.
+
+### Playback modes
+
+Playback describes how chord tones are triggered over time.
+
+Required modes:
+
+- **Block** — all chord tones together.
+- **Pattern** — accompaniment pattern using root -> fifth -> third -> fifth.
+- **Up** — low to high, using only the core chord tones.
+- **Down** — high to low, using only the core chord tones.
+- **Up & Down** — for a triad: root -> third -> fifth -> third.
+
+Important: do **not** automatically append a higher octave root to Up/Down patterns.
+
+For a C triad:
+
+- Block: C + E + G
+- Pattern: C -> G -> E -> G
+- Up: C -> E -> G
+- Down: G -> E -> C
+- Up & Down: C -> E -> G -> E
+
+For Dm Pattern:
+
+- D -> A -> F -> A
+
+For G Pattern:
+
+- G -> D -> B -> D
+
+For seventh/add chords, Block may use every chord tone, but simple accompaniment patterns should remain short and may use the core root/third/fifth triad rather than becoming longer just because the chord has extra color tones.
+
+### Playback timing
+
+Playback pattern length and chord duration are separate.
+
+A four-step Pattern at 1/8-note subdivision occupies two quarter-note beats. If the chord lasts a full 4/4 bar, the pattern may repeat twice. Do not artificially lengthen the note list merely to fill a bar.
+
+Web Audio scheduling remains the timing source.
+
+## UI
+
+### Main performance screen
 
 Always visible:
 
 - hamburger/settings button
-- compact status text such as `C Major · Piano · 72 BPM`
+- compact status such as `C Major · Piano · 72 BPM`
 - large chord pads
-- a small extended-chord row or expandable extended-chord area
-- Record
-- Play
-- Stop
-- Loop
+- small extended-chord row
+- Record / Play / Stop / Loop / Clear
 
-Do **not** permanently place the full configuration panel on the performance screen.
+Do not add permanent DAW controls to the main stage.
 
-### Chord pad labels
+### Settings drawer
 
-Each primary pad should show both functional degree and actual chord name when possible.
-
-Example in C major:
-
-- `I` / `C`
-- `ii` / `Dm`
-- `iii` / `Em`
-- `IV` / `F`
-- `V` / `G`
-- `vi` / `Am`
-- `vii°` / `Bdim`
-
-The actual chord names must update when the key changes.
-
-## Settings drawer
-
-Open from the hamburger button and close with the hamburger button, close affordance, or tapping outside the drawer.
-
-Settings should include at least:
+Settings may include:
 
 - Key
-- Major / Minor mode
+- Major / Minor
 - Instrument
 - BPM
 - Time signature
-- Master volume
-- Chord playback mode
-- Arpeggio subdivision/speed
+- Volume
+- Playback mode
+- Pattern subdivision
 - Voicing
-- Trigger / Hold behavior
-- Rhythm pattern
-- Extended-chord selection
+- Bass / Slash chord
+- Hold / Trigger behavior
+- Rhythm
+- Extended chord pads
 - Progression presets
 
-On iPad, prefer a side drawer that leaves part of the performance screen visible.
-On iPhone, the drawer may cover most of the screen.
+Bass / Slash choices should support at least:
 
-## Chord playback modes
+- Off
+- Root
+- 3rd (e.g. C/E)
+- 5th (e.g. C/G)
+- Custom chromatic bass (e.g. D to make C/D)
 
-Support these modes:
+## Chord system
 
-1. **Block** — all chord tones sound together.
-2. **Arpeggio Up** — low to high.
-3. **Arpeggio Down** — high to low.
-4. **Up & Down** — ascending then descending.
+Major primary pads:
 
-Arpeggio timing must follow BPM and a selectable subdivision such as quarter, eighth, or sixteenth notes.
+- I, ii, iii, IV, V, vi, vii°
 
-## Chords
+Support common extended colors including:
 
-### Diatonic primary chords
-
-Major-key default:
-
-- I
-- ii
-- iii
-- IV
-- V
-- vi
-- vii°
-
-Minor-key equivalents should be derived correctly rather than hard-coded as major-key labels.
-
-### Useful extended chords
-
-Version 0.1 should make common hymn/worship colors readily available without overwhelming the main screen. At minimum support the chord engine for:
-
-- dominant 7 (`7`), especially V7
-- major 7 (`maj7`)
-- minor 7 (`m7`)
+- V7
+- maj7
+- m7
 - sus2
 - sus4
 - add9
 - diminished
 - augmented
-- borrowed minor iv
-- flat VII
-- secondary dominants such as II7, III7, VI7, V/V, and V/ii
+- borrowed iv
+- ♭VII
+- II7 / III7 / VI7 secondary-dominant use cases
 
-The UI does not have to display every possible chord simultaneously. Extended choices may be configured in Settings and surfaced as a small row of extra pads.
-
-## Voicing
-
-Provide a small set of useful options rather than advanced arranging controls:
-
-- Close
-- Open/Wide
-- Auto
-
-`Auto` should eventually favor smooth voice leading and avoid unnecessary large jumps between consecutive chords. A basic first-pass heuristic is acceptable.
-
-Optional bass behavior may include:
-
-- Root
-- Auto
+Musical definitions should be data-driven rather than duplicated per key.
 
 ## Instruments
 
-Initial instrument choices:
+Initial choices:
 
 - Piano
 - Acoustic Guitar
@@ -160,130 +169,64 @@ Initial instrument choices:
 - Strings
 - Soft Pad
 
-Instrument switching should not change chord logic or recorded sequences.
+Instrument changes must not alter chord theory or sequence data.
 
-The default should sound pleasant and restrained enough to accompany singing.
+## Recording
 
-## Rhythm and meter
+Record chord events, not microphone audio.
 
-Initial meters:
-
-- 4/4
-- 3/4
-- 6/8
-
-Initial rhythm modes/presets may include:
-
-- Free
-- 4 Beat
-- Waltz
-- 6/8 Slow
-- Ballad / Worship
-
-Do not overbuild a drum-machine interface. Rhythm exists only to make chord accompaniment easier.
-
-## Recording and playback
-
-Record user chord actions as events rather than audio.
-
-Capture enough information to reproduce the performance, including:
+Capture at least:
 
 - chord identity
-- press/start time
-- release/end time or duration
-- relevant playback mode
-- BPM/meter context when needed
+- start time
+- duration
+- playback mode
 
-Provide:
+Bass/slash state should eventually be captured per event so a recorded `C/E` remains `C/E` on replay. Until that is implemented, treat Bass / Slash as a global performance setting and do not pretend recordings snapshot it.
 
-- Record
-- Play
-- Stop
-- Loop
-- Clear recording
-
-Recorded data should be represented in a simple serializable structure and may be persisted locally.
-
-Playback timing should be scheduled through Web Audio timing rather than relying only on `setTimeout` for musical accuracy.
-
-## Progression presets
-
-Provide several simple starter progressions, expressed internally by scale degree so they transpose with the selected key.
-
-Examples:
-
-- I – IV – V – I
-- I – V – vi – IV
-- I – vi – IV – V
-- I – IV – I – V
-- vi – IV – I – V
-- I – V7 – I
-- I – III7 – vi – IV – V – I
-
-Selecting a preset may populate the sequence/recording area, but users must remain free to edit or record their own progression.
-
-## Responsive UX requirements
+## Responsive requirements
 
 ### iPad mini
 
-- Optimize first for landscape orientation.
-- Chord pads should be large enough to hit confidently while looking at lyrics or other people rather than the screen.
-- Prefer a 3-column primary-pad layout when space allows.
-- Avoid tiny text and tightly packed controls.
+- landscape-first
+- very large pads
+- 3-column layout when practical
+- settings side drawer
 
 ### iPhone
 
-- Keep pads large; change layout rather than shrinking controls excessively.
-- Two columns are acceptable.
-- The settings drawer can become nearly full-screen.
+- reflow rather than shrinking pads
+- 2 columns acceptable
+- drawer may be nearly full screen
 
-### Accessibility / interaction
+## Current defaults
 
-- Minimum touch targets should be comfortably above standard mobile minimums for the main pads.
-- Provide visible pressed/active state.
-- Avoid interactions that depend on color alone.
-- Labels must remain readable at normal iPad viewing distance.
+First launch should currently be:
 
-## Version 0.1 scope
+- Key: C
+- Major
+- Piano
+- 72 BPM
+- 4/4
+- Playback: Block
+- Voicing: Close
+- Bass: Off
+- Trigger: Hold
+- Rhythm: Free
 
-Build a polished, usable single-page Chord Pad with:
+These defaults are intentionally plain and predictable.
 
-- responsive iPad/iPhone UI
-- hamburger settings drawer
-- key/mode selection
-- diatonic chord generation
-- common extended chords
-- five basic instrument choices
-- block and arpeggio playback modes
-- BPM/meter settings
-- hold/trigger behavior
-- recording and replay of chord events
-- loop and stop
-- a few transposable progression presets
-- local preference persistence
+## Out of scope for now
 
-## Explicitly out of scope for v0.1
-
-Do not add these unless specifically requested later:
-
-- user accounts
-- cloud sync
-- multiplayer
+- accounts/cloud sync
 - backend services
-- Node.js server
-- collaboration
+- multiplayer
 - full MIDI editor
-- piano-roll editor
 - notation/staff editor
+- piano roll
 - sheet-music scanning
-- lyric database
-- song licensing/catalog integration
-- complex mixing console
-- plugin architecture
-- DAW-style tracks
+- DAW tracks/mixer/plugin architecture
 
 ## Definition of done
 
-Version 0.1 is successful when a person can open the page on an iPad mini, choose or leave the default settings, tap large chord buttons to accompany a song, optionally use arpeggiation, record the chord sequence, replay/loop it, and change musical settings without cluttering the main performance screen.
-
-Keep the experience playful, immediate, and forgiving.
+A user on an iPad mini can press obvious chord buttons, hear musically recognizable harmony, optionally choose a short accompaniment Pattern, explicitly choose slash bass when desired, record/replay a progression, and hide all setup controls when singing.
