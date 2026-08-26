@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15171f">
+<meta name="description" content="simplegames — 一些看起來像小玩具、其實很好用的網頁小工具。免安裝、開啟即用。">
+<title>simplegames</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23f0a848'/><rect x='7' y='9' width='7' height='6' rx='2' fill='%231b1405'/><rect x='18' y='9' width='7' height='6' rx='2' fill='%231b1405'/><rect x='7' y='18' width='7' height='6' rx='2' fill='%231b1405'/><rect x='18' y='18' width='7' height='6' rx='2' fill='%231b1405'/></svg>">
+<style>
+  :root {
+    --bg: #15171f;
+    --panel: #1e212c;
+    --panel-2: #262a38;
+    --line: #333849;
+    --text: #eef1f8;
+    --muted: #9aa3bd;
+    --accent: #f0a848;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+                 "PingFang TC", "Microsoft JhengHei", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: max(40px, env(safe-area-inset-top)) 20px 60px;
+  }
+
+  header { padding: 24px 0 30px; }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: clamp(30px, 6vw, 44px);
+    letter-spacing: -0.5px;
+  }
+
+  h1 .dot { color: var(--accent); }
+
+  .lede {
+    margin: 0;
+    max-width: 46ch;
+    color: var(--muted);
+    font-size: clamp(15px, 2.2vw, 17px);
+  }
+
+  .grid {
+    display: grid;
+    /* auto-fit + a max width keeps a single card from stretching across the page. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 420px));
+    justify-content: start;
+    gap: 16px;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--panel);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    background: var(--panel-2);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    outline: none;
+  }
+
+  .card:active { transform: translateY(0); }
+
+  /* Miniature of the instrument's own chord pads. */
+  .thumb {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 12px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #1a1d27 0%, #14161d 100%);
+  }
+
+  .thumb span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #2c3244 0%, #232838 100%);
+    font-size: 15px;
+    font-weight: 700;
+    color: #c7cee3;
+  }
+
+  .thumb span.lit {
+    background: linear-gradient(180deg, #f3b45c 0%, #e08b2c 100%);
+    color: #1b1405;
+  }
+
+  .card h2 {
+    margin: 0;
+    font-size: 21px;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+
+  .card h2 .en {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 4px;
+  }
+
+  .tags span {
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .go {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  footer {
+    margin-top: 44px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  footer a { color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+    .card:hover, .card:focus-visible { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>simplegames<span class="dot">.</span></h1>
+    <p class="lede">一些看起來像小玩具、其實很好用的網頁小工具。開啟就能用，不必安裝、不用註冊。</p>
+  </header>
+
+  <main class="grid">
+    <a class="card" href="chordpad/">
+      <div class="thumb" aria-hidden="true">
+        <span>I</span><span class="lit">IV</span><span>V</span>
+        <span>vi</span><span>ii</span><span>V7</span>
+      </div>
+      <h2>和弦墊 <span class="en">Chord Pad</span></h2>
+      <p>用大按鈕彈和弦的伴奏樂器。不會鋼琴、不會吉他也能替詩歌伴奏：選好調，按下和弦墊就是一個完整和弦，還能錄下整段和弦進行循環播放。</p>
+      <div class="tags">
+        <span>iPad · iPhone</span><span>五種音色</span><span>錄音循環</span><span>離線可用</span>
+      </div>
+      <div class="go">開始彈 <span aria-hidden="true">→</span></div>
+    </a>
+  </main>
+
+  <footer>
+    原始碼在 <a href="https://github.com/Trina0224/simplegames">GitHub</a>。之後的小玩具會陸續加在這一頁。
+  </footer>
+</div>
+</body>
+</html>
