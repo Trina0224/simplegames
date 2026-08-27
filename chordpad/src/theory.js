@@ -268,8 +268,9 @@ export function arpeggioOrder(notes, mode) {
 }
 
 // A broken chord spread across three octaves: up through root, fifth and octave,
-// then down from the top octave through fifth (or seventh) and third.
-// In C that is C2 G2 C3 C4 G3 E3 — the C of three octaves.
+// on up to the fifth above the top octave, then landing on the third.
+// In C that is C2 G2 C3 C4 G4 E4 — the C of three octaves.
+// Landing on the third rather than on the peak lets the figure settle.
 // Built from the chord's own intervals, not from a voicing, because the voicing
 // deliberately stays inside one octave.
 export function brokenChordNotes(chord, bassMidi = null) {
@@ -279,7 +280,7 @@ export function brokenChordNotes(chord, bassMidi = null) {
   const fifth = intervals.length > 2 ? intervals[2] : third;
   // A seventh is worth hearing on the way down; a ninth or a sus tone is not.
   const seventh = intervals.find((semi) => semi >= 9 && semi <= 11);
-  const descending = (seventh ?? fifth) + 12;
+  const upper = (seventh ?? fifth) + 24;
   let low = bassMidi ?? root;
   // A slash bass on the fifth would land on the figure's second note. Drop it an
   // octave rather than starting on a repeated pitch; if there is no room below,
@@ -294,9 +295,62 @@ export function brokenChordNotes(chord, bassMidi = null) {
     second,
     root + 12,
     root + 24,
-    root + descending,
-    root + third + 12,
+    root + upper,
+    root + third + 24,
   ];
+}
+
+// Columnar chords across three octaves, with the middle octave left empty:
+// a low bass note on the downbeat, then the chord struck high for the rest of
+// the bar. In C, 4/4: C2, then C4+E4+G4 three times.
+// One step per beat, so the figure always fills exactly one bar.
+
+const STACK_FLOOR = 60; // C4 — the bass never reaches past B2, so C3..B3 stays empty
+
+// The compact voicing of a chord above `floor`: the inversion with the lowest
+// top note, so every chord sits in the same register instead of the stack
+// climbing an octave between, say, C and A minor.
+function stackAbove(chord, floor) {
+  const pcs = [...new Set(chord.intervals.map((semi) => (chord.rootPc + semi) % 12))];
+  let best = null;
+  for (const bottom of pcs) {
+    const order = [...pcs].sort((a, b) => ((a - bottom + 12) % 12) - ((b - bottom + 12) % 12));
+    const notes = [];
+    let prev = floor - 1;
+    for (const pc of order) {
+      let n = prev + ((((pc - prev) % 12) + 12) % 12);
+      if (n <= prev) n += 12;
+      if (n < floor) n += 12;
+      notes.push(n);
+      prev = n;
+    }
+    const top = notes[notes.length - 1];
+    if (!best || top < best.top || (top === best.top && notes[0] < best.notes[0])) {
+      best = { top, notes };
+    }
+  }
+  return best.notes;
+}
+
+export function columnChordSteps(chord, bassMidi = null, beats = 4) {
+  const root = bassMidiForPc(chord.rootPc);
+  const low = bassMidi ?? root;
+  const fifth = chord.intervals.length > 2 ? chord.intervals[2] : 0;
+  const stack = stackAbove(chord, STACK_FLOOR);
+
+  // In 6/8 the second half of the bar starts again on the fifth, which is what
+  // a hymn accompaniment does; anything shorter has one bass note per bar.
+  const fifthLow = bassMidiForPc((chord.rootPc + fifth) % 12);
+  const secondLow = fifthLow === low ? root : fifthLow;
+  const halfway = Math.floor(beats / 2);
+
+  const steps = [];
+  for (let i = 0; i < beats; i += 1) {
+    if (i === 0) steps.push([low]);
+    else if (beats >= 6 && i === halfway) steps.push([secondLow]);
+    else steps.push(stack);
+  }
+  return steps;
 }
 
 export function midiToFreq(midi) {

@@ -77,11 +77,16 @@ Required modes:
 - **Up** — low to high, using only the core chord tones.
 - **Down** — high to low, using only the core chord tones.
 - **Up & Down** — for a triad: root -> third -> fifth -> third.
-- **Spread** — a broken chord over three octaves: root -> fifth -> octave -> two octaves -> fifth -> third. In C that is C2 G2 C3 C4 G3 E3.
+- **Spread** — a broken chord over three octaves: root -> fifth -> octave -> two octaves -> fifth -> third, the last two an octave higher again. In C that is C2 G2 C3 C4 G4 E4.
+- **Bass + Chords** — a low bass note on the downbeat, then the chord struck high for the rest of the bar, with the middle octave left empty. In C, 4/4: C2, then C4+E4+G4 three times.
 
 Important: do **not** automatically append a higher octave root to Up/Down patterns.
 
-Spread is the one deliberate exception to keeping sequential modes short. It is opt-in, it is built from the chord's intervals rather than the voicing, and it substitutes a seventh for the fifth on the way down so the colour is heard. Its six notes fill a bar of 3/4 or 6/8 exactly.
+Spread and Bass + Chords are the two deliberate exceptions to keeping sequential modes short. Both are opt-in.
+
+Spread is built from the chord's intervals rather than the voicing, and substitutes a seventh for the fifth near the top so the colour is heard. Its six notes fill a bar of 3/4 or 6/8 exactly; it lands on the third rather than on its highest note.
+
+Bass + Chords steps once per beat, not on the arpeggio subdivision, so it fills exactly one bar in any meter. The bass stays in C2..B2 and the chord is voiced in C4..B4 as the inversion with the lowest top note, so C3..B3 is always empty and the chord does not climb an octave between one pad and the next.
 
 For a C triad:
 
@@ -90,7 +95,8 @@ For a C triad:
 - Up: C -> E -> G
 - Down: G -> E -> C
 - Up & Down: C -> E -> G -> E
-- Spread: C2 -> G2 -> C3 -> C4 -> G3 -> E3
+- Spread: C2 -> G2 -> C3 -> C4 -> G4 -> E4
+- Bass + Chords: C2, then C4+E4+G4 three times (4/4)
 
 For Dm Pattern:
 

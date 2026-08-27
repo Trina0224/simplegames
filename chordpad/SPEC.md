@@ -150,33 +150,37 @@ Avoid the older six-note `C-E-G-C-G-E` behavior.
 
 ### Spread
 
-A broken chord across three octaves, for hymns that want a fuller left hand. This is the
-deliberate exception to the "keep sequential modes short" rule below, and it is opt-in.
+A broken chord across three octaves, for hymns that want a fuller left hand. This is one of
+two deliberate exceptions to the "keep sequential modes short" rule below, and both are
+opt-in.
 
 ```text
-C -> C2 G2 C3 C4 G3 E3
+C -> C2 G2 C3 C4 G4 E4
 ```
 
-Up through root, fifth and octave; then down from the top octave through the fifth and the
-third. In C that uses the C of three octaves, which is the point of the mode.
+Up through root, fifth and octave, on up to the fifth above the top octave, then landing on
+the third. In C that uses the C of three octaves, which is the point of the mode. Landing on
+the third rather than on the peak lets the figure settle instead of stopping at its highest
+note; the cost is that the last two notes sit up in the melody's register.
 
 More examples:
 
 ```text
-Dm -> D2 A2 D3 D4 A3 F3
-G  -> G2 D3 G3 G4 D4 B3
-Am -> A2 E3 A3 A4 E4 C4
+Dm -> D2 A2 D3 D4 A4 F4
+G  -> G2 D3 G3 G4 D5 B4
+Am -> A2 E3 A3 A4 E5 C5
 ```
 
 Unlike the other sequential modes, Spread is built from the chord's own intervals rather
-than from the voicing, because the voicing deliberately stays inside one octave.
+than from the voicing, because the voicing deliberately stays inside one octave. Its
+register therefore follows the chord root.
 
-Where the chord has a seventh, it replaces the fifth on the way down, so the colour is
-heard rather than silently dropped:
+Where the chord has a seventh, it replaces the fifth near the top, so the colour is heard
+rather than silently dropped:
 
 ```text
-G7    -> G2 D3 G3 G4 F4 B3
-Cmaj7 -> C2 G2 C3 C4 B3 E3
+G7    -> G2 D3 G3 G4 F5 B4
+Cmaj7 -> C2 G2 C3 C4 B4 E4
 ```
 
 Ninths and sus tones do not substitute; those chords keep the plain figure.
@@ -189,13 +193,52 @@ Its six notes fill a bar of 3/4 or 6/8 exactly at a 1/8 subdivision. In 4/4 it l
 three-beat figure against the bar, which is a hemiola rather than a mistake — but 3/4 and
 6/8 are where it belongs.
 
+### Bass + Chords
+
+Columnar chords across three octaves, with the middle octave deliberately left empty: a low
+bass note on the downbeat, then the whole chord struck up high for the rest of the bar.
+This is the standard hymn accompaniment shape.
+
+```text
+C, 4/4 -> C2 | C4+E4+G4 | C4+E4+G4 | C4+E4+G4
+```
+
+**One step per beat**, so the figure always fills exactly one bar and repeats on the
+downbeat. The arpeggio subdivision does not apply to this mode.
+
+The meter decides the shape:
+
+```text
+4/4 -> bass | chord | chord | chord
+3/4 -> bass | chord | chord                 (a waltz)
+6/8 -> bass | chord | chord | fifth | chord | chord
+```
+
+In 6/8 the second half of the bar starts again on the fifth, which is what a hymn
+accompaniment does.
+
+The bass stays in C2..B2 and the chord is voiced in C4..B4, so C3..B3 is always empty
+whatever the chord — that gap is the character of the mode.
+
+The chord is voiced as the inversion with the lowest top note, so every chord sits in the
+same register instead of the stack climbing an octave between one pad and the next:
+
+```text
+C  -> C4+E4+G4          G  -> D4+G4+B4
+Dm -> D4+F4+A4          Am -> C4+E4+A4
+F  -> C4+F4+A4          G7 -> D4+F4+G4+B4
+```
+
+Colour tones are kept and folded into the same octave rather than stacked on top, so
+`Cadd9` is `C4+D4+E4+G4`. A slash bass replaces the low note; the chord above is unchanged.
+
 ### Extended chords
 
 Block mode may sound every chord tone, for example G7 = G+B+D+F.
 
 Simple sequential accompaniment modes should remain short. Seventh/additional color tones must not automatically make the pattern much longer. The core triad may be used for Pattern/Up/Down/Up & Down while Block preserves the full chord color.
 
-Spread is exempt: it is chosen deliberately when a longer, wider figure is wanted, and it does carry the seventh.
+Spread and Bass + Chords are exempt: both are chosen deliberately when a wider figure is wanted, and both carry the seventh.
 
 ---
 
