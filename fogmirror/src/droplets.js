@@ -2,25 +2,53 @@ export class DropletSystem {
   constructor(field) {
     this.field = field;
     this.drops = [];
-    this.maxDrops = 420;
-    this.spawnClock = 0;
+    this.maxDrops = 180;
   }
 
-  seed(u, v, amount = 1, spread = 0.025, impulse = { x: 0, y: 0 }) {
-    const attempts = Math.max(1, Math.min(14, Math.round(amount * 6)));
-    for (let i = 0; i < attempts; i++) {
+  // Create one or a few candidate beads only where the finger actually moved water.
+  // This never sprays random droplets across the mirror.
+  nucleateAt(u, v, strength = 1, impulse = { x: 0, y: 0 }) {
+    if (this.drops.length >= this.maxDrops) return;
+
+    const requested = 0.010 + strength * 0.018;
+    const mass = this.field.consumeWater(u, v, 0.016 + strength * 0.006, requested);
+    if (mass < 0.0022) return;
+
+    const nearby = this._nearest(u, v, 0.030);
+    if (nearby) {
+      // Prefer feeding an existing bead over creating another one. This is the
+      // capillary/coalescing behaviour that makes a wiped edge collect into one
+      // or a few drops rather than hundreds of dots.
+      const area = nearby.radius * nearby.radius + mass * 0.000035;
+      nearby.radius = Math.min(0.0075, Math.sqrt(area));
+      nearby.vx += impulse.x * 0.018;
+      nearby.vy += impulse.y * 0.018;
+      if (nearby.radius > 0.00165) nearby.pinned = false;
+      return;
+    }
+
+    const radius = Math.min(0.0021, 0.00048 + Math.sqrt(mass) * 0.0045);
+    this.add({
+      x: u,
+      y: v,
+      radius,
+      vx: impulse.x * 0.025,
+      vy: impulse.y * 0.025,
+    });
+  }
+
+  // Kept for the broad-swipe API: it now produces only a couple of edge pools.
+  seed(u, v, amount = 1, spread = 0.02, impulse = { x: 0, y: 0 }) {
+    const count = amount > 0.9 ? 2 : 1;
+    for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
-      const rr = Math.sqrt(Math.random()) * spread;
-      const x = Math.max(0, Math.min(1, u + Math.cos(a) * rr));
-      const y = Math.max(0, Math.min(1, v + Math.sin(a) * rr));
-      const mass = this.field.consumeWater(x, y, 0.010, 0.004 + amount * 0.003);
-      if (mass < 0.0015) continue;
-      const radius = Math.min(0.0018, 0.00030 + Math.sqrt(mass) * 0.0031);
-      this.add({
-        x, y, radius,
-        vx: impulse.x * (0.035 + Math.random() * 0.055),
-        vy: impulse.y * (0.035 + Math.random() * 0.055),
-      });
+      const rr = i === 0 ? 0 : Math.random() * spread * 0.45;
+      this.nucleateAt(
+        Math.max(0, Math.min(1, u + Math.cos(a) * rr)),
+        Math.max(0, Math.min(1, v + Math.sin(a) * rr)),
+        Math.min(1.5, 0.75 + amount * 0.6),
+        impulse,
+      );
     }
   }
 
@@ -28,7 +56,7 @@ export class DropletSystem {
     if (this.drops.length >= this.maxDrops) this.drops.shift();
     this.drops.push({
       x: d.x, y: d.y,
-      radius: Math.max(0.00026, d.radius),
+      radius: Math.max(0.00030, d.radius),
       vx: d.vx || 0, vy: d.vy || 0,
       pinned: d.pinned !== false,
       age: 0,
@@ -38,100 +66,100 @@ export class DropletSystem {
 
   update(dt, gravity) {
     dt = Math.min(0.033, Math.max(0, dt));
-    this.spawnClock += dt;
-    if (this.spawnClock > 0.30) {
-      this.spawnClock = 0;
-      this._nucleate();
-    }
+
+    this._attractDrops(dt);
 
     for (const d of this.drops) {
       d.age += dt;
       const wet = this.field.sampleWet(d.x, d.y);
 
-      // Capillary catchment: once a visible bead has formed, surface tension pulls
-      // nearby thin film into it. Young/pinned drops grow noticeably for the first
-      // second or two instead of remaining a static pin-prick.
-      const catchRadius = Math.max(0.0065, d.radius * (d.pinned ? 5.5 : 4.0));
-      const capillaryRate = d.pinned
-        ? (0.0040 + wet * 0.0045)
-        : (0.0025 + wet * 0.0030);
-      const wanted = capillaryRate * dt;
+      // Once a bead exists, surface tension makes it a collector for the nearby
+      // thin film. Moving beads collect from a wider catchment and therefore grow
+      // faster as they travel.
+      const moving = !d.pinned || Math.hypot(d.vx, d.vy) > 0.002;
+      const catchRadius = Math.max(0.008, d.radius * (moving ? 5.0 : 3.5));
+      const wanted = (moving ? 0.0048 : 0.0028) * dt + d.radius * (moving ? 0.020 : 0.010) * dt;
       const absorbed = this.field.consumeWater(d.x, d.y, catchRadius, wanted);
       if (absorbed > 0) {
-        // Perceived droplet area grows from conserved liquid. The constant maps the
-        // low-resolution field's arbitrary mass units into screen-space bead size.
-        const area = d.radius * d.radius + absorbed * 0.00022;
-        d.radius = Math.min(0.0048, Math.sqrt(area));
+        const area = d.radius * d.radius + absorbed * 0.000038;
+        d.radius = Math.min(0.0080, Math.sqrt(area));
       }
 
-      // A small but genuinely formed bead should eventually creep. Wet glass lowers
-      // the contact-angle pinning threshold, so a drop on a freshly wiped path can
-      // release at roughly pixel-scale size instead of waiting to become huge.
-      const releaseRadius = Math.max(0.00078, 0.00125 - wet * 0.00038);
+      // Very small beads can sit. Once they have collected enough water they depin.
+      // Wet trails lower the threshold further.
+      const releaseRadius = Math.max(0.00125, 0.00185 - wet * 0.00045);
       if (d.radius >= releaseRadius && gravity.plane > 0.10) d.pinned = false;
-      if (Math.hypot(d.vx, d.vy) > 0.012) d.pinned = false;
 
       if (!d.pinned) {
-        const jitter = Math.sin(d.age * 1.7 + d.wobble) * 0.0013 * (1 - Math.min(1, wet));
-        const sizeFactor = Math.min(1, Math.max(0.22, (d.radius - 0.00065) / 0.0024));
-        d.vx += (gravity.x * 0.031 * gravity.plane * sizeFactor + jitter) * dt;
-        d.vy += gravity.y * 0.031 * gravity.plane * sizeFactor * dt;
-        const drag = Math.exp(-dt * (7.4 - Math.min(2.4, wet * 1.8)));
+        const jitter = Math.sin(d.age * 1.5 + d.wobble) * 0.0011 * (1 - Math.min(1, wet));
+        const sizeFactor = Math.min(1.75, Math.max(0.35, d.radius / 0.0022));
+        d.vx += (gravity.x * 0.036 * gravity.plane * sizeFactor + jitter) * dt;
+        d.vy += gravity.y * 0.036 * gravity.plane * sizeFactor * dt;
+
+        // Bigger drops move faster because gravity grows faster than the contact
+        // perimeter resisting them. Wet trails reduce drag modestly.
+        const drag = Math.exp(-dt * (7.0 - Math.min(2.4, wet * 1.8)));
         d.vx *= drag;
         d.vy *= drag;
-
         const speed = Math.hypot(d.vx, d.vy);
-        const cap = 0.009 + d.radius * 2.3;
+        const cap = 0.010 + d.radius * 7.5;
         if (speed > cap) { d.vx *= cap / speed; d.vy *= cap / speed; }
 
         const ox = d.x, oy = d.y;
         d.x += d.vx * dt;
         d.y += d.vy * dt;
-
-        // A moving drop sweeps up the thin film it crosses. This both conserves mass
-        // and creates the familiar behaviour where a descending bead gets larger.
-        const swept = this.field.consumeWater(
-          d.x, d.y,
-          Math.max(0.006, d.radius * 3.2),
-          (0.0032 + d.radius * 0.35) * dt,
-        );
-        if (swept > 0) {
-          d.radius = Math.min(0.0052, Math.sqrt(d.radius * d.radius + swept * 0.00024));
-        }
-
         const moved = Math.hypot(d.x - ox, d.y - oy);
-        if (moved > 0.000035) {
+        if (moved > 0.00004) {
           this.field.depositTrail(
-            d.x, d.y,
-            Math.min(0.13, 0.012 + d.radius * 12),
-            Math.max(0.0016, d.radius * 0.72),
+            d.x,
+            d.y,
+            Math.min(0.20, 0.016 + d.radius * 16),
+            Math.max(0.0020, d.radius * 0.65),
           );
         }
       }
     }
 
     this._merge();
-    this.drops = this.drops.filter(d => d.x > -0.03 && d.x < 1.03 && d.y > -0.03 && d.y < 1.03 && d.radius > 0.00022);
+    this.drops = this.drops.filter(d => d.x > -0.03 && d.x < 1.03 && d.y > -0.03 && d.y < 1.03 && d.radius > 0.00024);
   }
 
-  _nucleate() {
-    if (this.drops.length >= this.maxDrops) return;
-    for (let k = 0; k < 18; k++) {
-      const x = Math.random(), y = Math.random();
-      const wet = this.field.sampleWet(x, y);
-      const water = this.field.sampleWater(x, y);
-      if (water < 0.0065) continue;
-      if (water + wet * 0.045 < 0.010 + Math.random() * 0.020) continue;
-      const mass = this.field.consumeWater(x, y, 0.007, 0.0055);
-      if (mass < 0.0017) continue;
-      this.add({ x, y, radius: 0.00028 + Math.sqrt(mass) * 0.0028 });
+  _nearest(x, y, radius) {
+    let best = null;
+    let bestD2 = radius * radius;
+    for (const d of this.drops) {
+      const dd = (d.x - x) ** 2 + (d.y - y) ** 2;
+      if (dd < bestD2) { bestD2 = dd; best = d; }
+    }
+    return best;
+  }
+
+  _attractDrops(dt) {
+    // A coarse capillary attraction: nearby beads drift toward the larger one.
+    // This is deliberately short range; it should look like coalescence, not magnets.
+    for (let i = 0; i < this.drops.length; i++) {
+      const a = this.drops[i];
+      for (let j = i + 1; j < this.drops.length; j++) {
+        const b = this.drops[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        const range = Math.min(0.028, (a.radius + b.radius) * 5.5 + 0.004);
+        if (dist >= range) continue;
+        const pull = (1 - dist / range) * 0.018 * dt;
+        const ux = dx / dist, uy = dy / dist;
+        const aa = a.radius * a.radius, bb = b.radius * b.radius;
+        if (aa >= bb) {
+          b.x -= ux * pull;
+          b.y -= uy * pull;
+        } else {
+          a.x += ux * pull;
+          a.y += uy * pull;
+        }
+      }
     }
   }
 
   _merge() {
-    // Surface tension pulls nearly touching beads together. The threshold is slightly
-    // wider than pure geometric contact so a dense patch behaves cohesively instead
-    // of as independent dots.
     let changed = true;
     let guard = 0;
     while (changed && guard++ < 6) {
@@ -140,18 +168,18 @@ export class DropletSystem {
         const a = this.drops[i];
         for (let j = i + 1; j < this.drops.length; j++) {
           const b = this.drops[j];
-          const rr = (a.radius + b.radius) * 1.38;
+          const rr = (a.radius + b.radius) * 1.55;
           if ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 > rr * rr) continue;
 
           const aa = a.radius * a.radius;
-          const ab = b.radius * b.radius;
-          const total = aa + ab;
-          a.x = (a.x * aa + b.x * ab) / total;
-          a.y = (a.y * aa + b.y * ab) / total;
-          a.vx = (a.vx * aa + b.vx * ab) / total;
-          a.vy = (a.vy * aa + b.vy * ab) / total;
-          a.radius = Math.min(0.0054, Math.sqrt(total));
-          a.pinned = a.radius < 0.00105 && a.pinned && b.pinned;
+          const bb = b.radius * b.radius;
+          const total = aa + bb;
+          a.x = (a.x * aa + b.x * bb) / total;
+          a.y = (a.y * aa + b.y * bb) / total;
+          a.vx = (a.vx * aa + b.vx * bb) / total;
+          a.vy = (a.vy * aa + b.vy * bb) / total;
+          a.radius = Math.min(0.0085, Math.sqrt(total));
+          a.pinned = a.radius < 0.00155 && a.pinned && b.pinned;
           this.drops.splice(j, 1);
           j--;
           changed = true;
