@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b1114">
+<title>Fog Mirror</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app" class="app">
+  <video id="camera" class="camera" autoplay playsinline muted aria-hidden="true"></video>
+  <canvas id="mirror" class="mirror" aria-label="Fogged mirror surface"></canvas>
+
+  <div class="fallback" id="fallback" aria-hidden="true">
+    <div class="fallback-glow"></div>
+  </div>
+
+  <header class="topbar">
+    <button id="steamBtn" class="pill primary" type="button">Steam</button>
+    <div class="spacer"></div>
+    <button id="cameraBtn" class="pill" type="button">Camera</button>
+    <button id="motionBtn" class="pill" type="button">Gravity</button>
+    <button id="homeBtn" class="pill icon" type="button" aria-label="Back to simplegames">×</button>
+  </header>
+
+  <div id="startCard" class="start-card">
+    <div class="start-copy">
+      <strong>Fog Mirror</strong>
+      <span>Tap once to use the front camera and device gravity.</span>
+    </div>
+    <button id="startBtn" type="button">Touch the mirror</button>
+  </div>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+</div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
