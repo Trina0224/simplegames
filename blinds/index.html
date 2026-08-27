@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#111014">
+<meta name="description" content="Blinds — a venetian blind over your camera view. Prise the slats apart to peek. Nothing is captured.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Blinds</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app" id="app">
+  <div class="window" id="window">
+    <div class="outside" aria-hidden="true"></div>
+    <video id="video" playsinline muted autoplay disablepictureinpicture></video>
+    <div class="slats" id="slats" aria-hidden="true"></div>
+    <div class="frame" aria-hidden="true"></div>
+    <div class="touch" id="touch" tabindex="0" role="application"
+         aria-label="Venetian blind. Drag across the slats to prise them apart."></div>
+  </div>
+
+  <p class="message" id="message" role="status"></p>
+
+  <div class="controls">
+    <button class="pill" id="openBtn" type="button" aria-pressed="false">Open</button>
+    <button class="pill" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    <button class="pill" id="flipBtn" type="button" hidden>Flip</button>
+    <button class="pill" id="cameraBtn" type="button" aria-pressed="false">Camera off</button>
+  </div>
+
+  <p class="sr-only" id="live" aria-live="polite"></p>
+
+  <button class="start" id="start" type="button">
+    <span class="start-card">
+      <strong>Tap the glass</strong>
+      <span>Your camera plays behind the blind.<br>Drag a finger across the slats to peek.</span>
+      <small>Nothing is photographed, recorded or sent anywhere.</small>
+    </span>
+  </button>
+</div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
