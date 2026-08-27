@@ -49,7 +49,10 @@ export class CondensationField {
     const cells = [];
     this._stamp(u, v, radius, (i, falloff) => {
       const a = this.water[i] * falloff;
-      if (a > 0) { available += a; cells.push([i, falloff]); }
+      if (a > 0) {
+        available += a;
+        cells.push([i, falloff]);
+      }
     });
     if (available <= 1e-8) return 0;
     const take = Math.min(requested, available);
@@ -58,6 +61,49 @@ export class CondensationField {
       const d = this.water[i] * falloff * scale;
       this.water[i] = Math.max(0, this.water[i] - d);
     }
+    return take;
+  }
+
+  addWater(u, v, amount, radius = 0.010) {
+    if (amount <= 0) return;
+    let weight = 0;
+    const cells = [];
+    this._stamp(u, v, radius, (i, falloff) => {
+      weight += falloff;
+      cells.push([i, falloff]);
+    });
+    if (weight <= 0) return;
+    for (const [i, falloff] of cells) {
+      const share = amount * (falloff / weight);
+      this.water[i] = Math.min(1, this.water[i] + share);
+      this.wet[i] = Math.min(1, this.wet[i] + share * 2.4);
+    }
+  }
+
+  // Physically move already-created liquid film from the wiped contact patch to
+  // its downhill edge. This is deliberately mass-conserving: it does not invent
+  // a droplet, it redistributes water that is already in the height map.
+  squeezeWaterDownhill(u, v, gx, gy, strength = 1, contactRadius = 0.034) {
+    const gm = Math.hypot(gx, gy);
+    if (gm < 0.05) return 0;
+    gx /= gm;
+    gy /= gm;
+
+    const take = this.consumeWater(
+      u,
+      v,
+      contactRadius * 0.86,
+      0.010 + Math.min(1.8, strength) * 0.018,
+    );
+    if (take <= 0) return 0;
+
+    const edgeOffset = contactRadius * (0.82 + Math.min(1.4, strength) * 0.10);
+    const ex = Math.max(0, Math.min(1, u + gx * edgeOffset));
+    const ey = Math.max(0, Math.min(1, v + gy * edgeOffset));
+    this.addWater(ex, ey, take * 0.88, contactRadius * 0.24);
+
+    // A small remainder stays as smeared film within the touched region.
+    this.addWater(u, v, take * 0.12, contactRadius * 0.34);
     return take;
   }
 
@@ -78,14 +124,14 @@ export class CondensationField {
       this.fog[i] = Math.max(0.012, this.fog[i] - removedFog * 0.985);
       this.wet[i] = Math.min(1, this.wet[i] + removedFog * 0.28 + falloff * 0.024);
 
-      // A finger wiping a condensed mirror does not destroy the microscopic water:
-      // it smears and squeezes a meaningful fraction into liquid film. Keep the
-      // center relatively thin while concentrating much more at the stroke edges.
+      // Microscopic condensation becomes a thin liquid film under the fingertip.
       this.water[i] = Math.min(1, this.water[i] + removedFog * 0.070);
 
+      // Stroke-direction shear still creates a mild leading ridge, but gravity-down
+      // transport is handled separately by squeezeWaterDownhill().
       if (falloff < 0.50 && falloff > 0.08) {
         const directional = Math.max(0, px * dx + py * dy);
-        const edgeGain = 0.055 + directional * Math.min(2.0, speed) * 0.055;
+        const edgeGain = 0.020 + directional * Math.min(2.0, speed) * 0.025;
         this.water[i] = Math.min(1, this.water[i] + removedFog * edgeGain);
       }
     });
@@ -102,10 +148,10 @@ export class CondensationField {
       const memory = this.wet[i];
       const target = Math.min(0.995, targetBase + (this.noise[i] - 0.5) * 0.075 + memory * 0.018);
       const rate = natural + steamRate;
-      if (this.fog[i] < target) this.fog[i] += (target - this.fog[i]) * (1 - Math.exp(-rate * dt * 8));
+      if (this.fog[i] < target) {
+        this.fog[i] += (target - this.fog[i]) * (1 - Math.exp(-rate * dt * 8));
+      }
 
-      // Fine condensation slowly feeds the film, especially on recently wet glass.
-      // This remains much weaker than direct wiping so untouched fog does not rain.
       if (this.refogging > 0 || memory > 0.12) {
         const condense = (0.000010 + memory * 0.000030) * dt * (this.refogging > 0 ? 3 : 1);
         this.water[i] = Math.min(1, this.water[i] + condense);
