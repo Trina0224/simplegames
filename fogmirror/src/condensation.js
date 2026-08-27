@@ -19,8 +19,10 @@ export class CondensationField {
     };
     for (let i = 0; i < n; i++) {
       this.noise[i] = rnd();
-      this.fog[i] = 0.82 + rnd() * 0.16;
-      this.water[i] = 0.03 + rnd() * 0.02;
+      this.fog[i] = 0.87 + rnd() * 0.11;
+      // Visible fog is millions of microscopic beads. Only a minute fraction has
+      // coalesced into mobile liquid at startup, so the liquid reservoir begins tiny.
+      this.water[i] = 0.001 + rnd() * 0.0025;
       this.wet[i] = 0;
     }
   }
@@ -43,28 +45,53 @@ export class CondensationField {
     return this.water[this.idx(x, y)];
   }
 
-  depositTrail(u, v, amount, radius = 0.012) {
+  // Remove liquid from a small neighbourhood and return the amount actually taken.
+  // Visible droplets must grow from this reservoir; they are never allowed to gain
+  // mass for free.
+  consumeWater(u, v, radius = 0.012, requested = 0.02) {
+    if (requested <= 0) return 0;
+    let available = 0;
+    const cells = [];
+    this._stamp(u, v, radius, (i, falloff) => {
+      const a = this.water[i] * falloff;
+      if (a > 0) { available += a; cells.push([i, falloff]); }
+    });
+    if (available <= 1e-8) return 0;
+    const take = Math.min(requested, available);
+    const scale = take / available;
+    for (const [i, falloff] of cells) {
+      const d = this.water[i] * falloff * scale;
+      this.water[i] = Math.max(0, this.water[i] - d);
+    }
+    return take;
+  }
+
+  depositTrail(u, v, amount, radius = 0.006) {
     this._stamp(u, v, radius, (i, falloff) => {
       const a = amount * falloff;
-      this.wet[i] = Math.min(1, this.wet[i] + a * 0.9);
-      this.water[i] = Math.min(1, this.water[i] + a * 0.28);
-      this.fog[i] = Math.max(0, this.fog[i] - a * 0.75);
+      this.wet[i] = Math.min(1, this.wet[i] + a * 0.72);
+      // A moving drop leaves only a thin film, not another full droplet worth of water.
+      this.water[i] = Math.min(1, this.water[i] + a * 0.025);
+      this.fog[i] = Math.max(0, this.fog[i] - a * 0.52);
     });
   }
 
   wipe(u, v, radius, speed = 0, dx = 0, dy = 0) {
-    const broad = Math.min(2.0, 1 + speed * 0.9);
+    const broad = Math.min(1.55, 1 + speed * 0.35);
     this._stamp(u, v, radius * broad, (i, falloff, px, py) => {
-      const clear = falloff * Math.min(1, 0.72 + speed * 0.32);
-      const removed = this.fog[i] * clear;
-      this.fog[i] = Math.max(0.015, this.fog[i] - removed * 0.98);
-      this.wet[i] = Math.min(1, this.wet[i] + removed * 0.62 + falloff * 0.05);
-      this.water[i] = Math.min(1, this.water[i] + removed * 0.18);
+      const clear = falloff * Math.min(1, 0.72 + speed * 0.20);
+      const removedFog = this.fog[i] * clear;
+      this.fog[i] = Math.max(0.012, this.fog[i] - removedFog * 0.985);
+      this.wet[i] = Math.min(1, this.wet[i] + removedFog * 0.20 + falloff * 0.018);
 
-      // Push part of displaced moisture to the leading/side edge rather than deleting it.
-      if (falloff < 0.45 && falloff > 0.12) {
-        const directional = Math.max(0, (px * dx + py * dy));
-        this.water[i] = Math.min(1, this.water[i] + removed * (0.22 + directional * speed * 0.2));
+      // Only a small portion of microscopic condensation becomes pooled liquid.
+      // Most is smeared into a molecular/thin-film wet layer.
+      this.water[i] = Math.min(1, this.water[i] + removedFog * 0.018);
+
+      // Moisture accumulates preferentially at the pushed edge of the stroke.
+      if (falloff < 0.46 && falloff > 0.10) {
+        const directional = Math.max(0, px * dx + py * dy);
+        this.water[i] = Math.min(1, this.water[i] + removedFog * (0.018 + directional * speed * 0.016));
       }
     });
   }
@@ -72,17 +99,26 @@ export class CondensationField {
   update(dt) {
     dt = Math.min(0.05, Math.max(0, dt));
     const n = this.fog.length;
-    const natural = 0.006;
+    const natural = 0.004;
     const steamRate = this.refogging > 0 ? 0.55 * this.refogging : 0;
-    const targetBase = this.refogging > 0 ? 0.94 : 0.83;
+    const targetBase = this.refogging > 0 ? 0.95 : 0.86;
 
     for (let i = 0; i < n; i++) {
       const memory = this.wet[i];
-      const target = Math.min(0.99, targetBase + (this.noise[i] - 0.5) * 0.09 + memory * 0.025);
+      const target = Math.min(0.995, targetBase + (this.noise[i] - 0.5) * 0.075 + memory * 0.018);
       const rate = natural + steamRate;
       if (this.fog[i] < target) this.fog[i] += (target - this.fog[i]) * (1 - Math.exp(-rate * dt * 8));
-      this.wet[i] *= Math.exp(-dt / 45);
-      this.water[i] *= Math.exp(-dt / 28);
+
+      // Re-condensation very slowly contributes liquid, and does so preferentially
+      // on an already wet surface. This is intentionally tiny: thousands of fog
+      // beads must coalesce before a macroscopic drop exists.
+      if (this.refogging > 0 || memory > 0.12) {
+        const condense = (0.000004 + memory * 0.000010) * dt * (this.refogging > 0 ? 3 : 1);
+        this.water[i] = Math.min(1, this.water[i] + condense);
+      }
+
+      this.wet[i] *= Math.exp(-dt / 55);
+      this.water[i] *= Math.exp(-dt / 85);
     }
     if (this.refogging > 0) this.refogging *= Math.exp(-dt / 1.35);
   }
