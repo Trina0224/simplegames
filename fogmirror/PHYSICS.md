@@ -1,297 +1,516 @@
-# Fog Mirror — Physics Redesign Notes
+# Fog Mirror — Physics Design Notes
 
-## Why this redesign exists
+## 1. Why this redesign exists
 
-The first playable prototypes treated visible water mostly as independent particles. That produced several artifacts that do not match a real steamed mirror:
+The early playable prototypes treated visible water mostly as independent particles. Real-device testing exposed several artifacts that do not match a steamed mirror:
 
 - too many isolated beads
 - beads appearing away from wiped edges
-- nearby streams remaining parallel instead of coalescing
-- droplets not growing enough as they travel
-- trail geometry behaving like independent lines rather than one connected flow
-- tuning depending too heavily on magic thresholds
+- several nearby streaks remaining parallel instead of coalescing
+- droplets not growing enough while descending through wet regions
+- constant-width dark trails that look drawn rather than physical
+- large dependence on ad-hoc thresholds and random nucleation
 
-The next model is based on the graphics literature for real-time water on glass, plus basic contact-angle hysteresis behavior.
+The redesign uses a realtime heuristic architecture informed by published water-on-glass work and contact-angle hysteresis literature.
 
-## Primary reference model
+The goal is not full CFD. The goal is a compact mobile simulation that reproduces the specific macroscopic cues humans expect from water on a fogged vertical glass surface.
 
-Kai-Chun Chen, Pei-Shan Chen, Sai-Keung Wong, **“A heuristic approach to the simulation of water drops and flows on glass panes,” Computers & Graphics 37(8), 2013, 963–973.** DOI: 10.1016/j.cag.2013.08.004.
+---
 
-Useful ideas adopted from that work:
+## 2. Primary literature
 
-- combine moving particles / flow fronts with a **height map** that stores water on the glass
-- use a persistent map to support efficient **drop/flow merging**
-- represent a moving water flow by its **front**, with the body/trail following behind
-- preserve **residual water** after a flow passes instead of deleting all liquid
-- allow water flows to meander rather than moving as perfectly straight lines
-- convert a water-height representation into optical normals for rendering rather than outlining droplets with strokes
+### Chen, Chen & Wong (2013)
 
-We are not copying the paper implementation exactly. Fog Mirror has a different source of water: condensed steam plus finger wiping, and it must run inside mobile Safari. The architecture is adapted to that use case.
+Kai-Chun Chen, Pei-Shan Chen, Sai-Keung Wong. **A heuristic approach to the simulation of water drops and flows on glass panes.** *Computers & Graphics*, 37(8), 963–973, 2013.
 
-## Contact-angle hysteresis / pinning
+DOI: https://doi.org/10.1016/j.cag.2013.08.004
 
-Reference: **“Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces,” European Journal of Mechanics B/Fluids 48 (2014), 218–230.** DOI: 10.1016/j.euromechflu.2014.06.003.
+The paper explicitly combines a **particle system and height map** for water drops/flows on glass and uses an **ID map** for efficient merging. It also models residual water after a flow passes.
 
-Important behavior:
+Fog Mirror adopts these ideas in modified form:
 
-- gravity pulls a drop downslope
-- contact-angle hysteresis resists motion while the contact line is pinned
-- the advancing and receding sides of a moving droplet behave differently
-- a droplet therefore does not begin sliding merely because gravity exists
-- once a drop grows, merges, or enters an already-wet trail, the effective resistance can fall enough for it to move
+- a surface-water height map
+- only a few active moving fronts/heads
+- connected trail/body state
+- a flow-ID/connectivity map
+- body-contact merging
+- residual water left behind after runoff
 
-Fog Mirror will use a coarse heuristic form of this rather than solving lubrication equations.
+Fog Mirror differs because its water source is condensation plus finger wiping rather than rain.
 
-## Rendering reference
+### Ahmed, Sellier, Jermy & Taylor (2014)
 
-Modern real-time rain-window implementations such as `frmlinn/raindrops-v2` separate the 2D condensation / merging simulation from optical rendering and use downsampled buffers, normals, and refraction rather than strong drawn outlines. Fog Mirror should follow the same separation: simulation state first, optics second.
+Gulraiz Ahmed, Mathieu Sellier, Mark Jermy, Michael Taylor. **Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.** *European Journal of Mechanics - B/Fluids*, 48, 218–230, 2014.
 
-## New state model
+DOI: https://doi.org/10.1016/j.euromechflu.2014.06.003
 
-### 1. Fog field
+Important implications:
+
+- gravity drives a droplet downslope
+- contact-angle hysteresis resists motion
+- advancing and receding contact regions behave differently
+- a droplet does not slide merely because gravity exists
+- including hysteresis improves agreement with measured sliding behavior
+
+Fog Mirror uses a simplified force/hysteresis heuristic rather than solving the lubrication equations.
+
+### Rendering implementation reference
+
+`frmlinn/raindrops-v2`
+
+https://github.com/frmlinn/raindrops-v2
+
+Useful architecture:
+
+- 2D glass-surface condensation / droplet simulation separated from optical rendering
+- downsampled buffers
+- normals / refraction for the water appearance
+- GPU-oriented compositing and object reuse
+
+---
+
+## 3. Golden gravity implementation — DO NOT REDESIGN
+
+Real-device testing established a known-good gravity mapping on the user's iPad.
+
+Golden repository commit:
+
+`89b765f0420f40e0f7c1831d56a242b50dc1dce5`
+
+The verified implementation uses:
+
+```js
+const a = e.accelerationIncludingGravity;
+const z = Number.isFinite(a.z) ? a.z : 0;
+const mag = Math.max(0.001, Math.hypot(a.x, a.y, z));
+const tx = -a.x / mag;
+const ty = -a.y / mag;
+const tz = -z / mag;
+```
+
+with low-pass filtering and **no extra screen-orientation rotation**.
+
+Observed correct behavior:
+
+- upright -> screen down
+- right physical edge down -> screen right
+- left physical edge down -> screen left
+- near-flat -> weak in-plane gravity
+
+This is an empirical target-hardware fact for this project. Do not replace it with calibration, a DeviceOrientation reconstruction, or a second rotation unless a new real-device test first proves a regression.
+
+The water-physics redesign must treat gravity as an input and leave `orientation.js` alone.
+
+---
+
+## 4. State model
+
+### 4.1 Fog field
 
 `fog[x,y]`
 
-Microscopic condensation responsible for blur and milkiness. This is not a set of visible macroscopic particles.
+Microscopic condensation responsible for blur, milkiness, and fine surface texture.
 
-### 2. Surface-water height map
+Fog is not rendered as hundreds of macroscopic droplets.
+
+### 4.2 Surface-water height map
 
 `water[x,y]`
 
-Liquid water currently spread across the glass as film, ridges, residual trails, and small unresolved beads.
+Liquid water spread over the glass:
 
-Water must be conserved approximately:
+- thin film
+- wiped ridges
+- local pools
+- residual trail water
+- unresolved micro-beads that are already liquid but too small to render individually
 
-- wiping converts part of fog into liquid water
-- a visible flow head removes water from the height map when it collects it
-- a moving flow leaves a smaller amount behind as residual water
-- merging sums the masses of the merged flows
+This is the authoritative source of water mass for active visible flows.
 
-### 3. Wetness / hysteresis map
+### 4.3 Wetness / hysteresis map
 
 `wet[x,y]`
 
-Longer-lived memory of recently wetted glass. It modifies pinning and future condensation without itself representing a large quantity of liquid.
+Longer-lived memory of wet glass.
 
-### 4. Flow-ID map
+It influences:
+
+- contact-line resistance
+- future condensation
+- preferred channels
+- trail reuse
+
+It is not itself a mass reservoir.
+
+### 4.4 Flow-ID / connectivity map
 
 `flowId[x,y]`
 
-A low-resolution integer map identifying which active flow or recent trail owns a region. It is used for broad-phase merging: two flow bodies that touch should merge even when their circular head particles are not yet overlapping.
+Low-resolution integer ownership of active/recent connected flow bodies.
 
-### 5. Active flow heads
+Primary purposes:
 
-There should normally be only a small number of active macroscopic objects.
+- head-body intersection
+- body-body intersection
+- efficient merge broad phase
+- connected representation of a rivulet rather than a collection of independent circles
 
-Each flow contains approximately:
+### 4.5 Active flow heads/fronts
+
+There should normally be only a small number of macroscopic moving fronts.
+
+Conceptual record:
 
 ```text
 id
-x, y               current front/head position
-mass                total mobile water
+x, y
+mass
 vx, vy
 pinned
-age
 footprintRadius
 trailWidth
+age
+recentlyMerged
 ```
 
-The visible “drop” is the head/front of a connected body, not an isolated marble.
+The rendered visible drop is the thick front/head of a connected water body.
 
-## Finger wiping
+---
 
-A finger is a displacement event, not an eraser.
+## 5. Finger wiping as water transport
 
-For each stroke sample:
+A finger is not an opacity eraser.
 
-1. reduce fine fog under the contact footprint
-2. convert a meaningful fraction of removed fog into surface water
-3. move most of that water toward the **gravity-down edge** of the footprint
-4. keep a thinner ridge on the side edges
-5. update wetness along the cleared stroke
-6. mark the disturbed region as a candidate source for a small number of flow heads
+For each stroke footprint:
 
-Do not randomly nucleate drops over the whole wet area.
+1. clear/reduce microscopic `fog`
+2. convert some removed condensation into liquid `water`
+3. gather some pre-existing local liquid water
+4. transport most mobile water toward the physical gravity-down side of the contact footprint
+5. leave a smaller side ridge / central wet film
+6. raise `wet`
+7. update local pooling candidates
 
-A single local wiped region should generally end up with **one dominant collector or a few at most**.
+Important consequence:
 
-## Head formation
+**nucleation must follow transported water**, not random sampling across an arbitrary wet rectangle.
 
-A new active flow head may form only when:
+A long stroke may produce several pooling zones, but repeated wiping over one local region should tend toward one dominant collector or a few, not dozens of identical beads.
 
-- the candidate location is associated with a recent wipe / disturbed edge, and
-- enough water exists in the nearby height map, and
-- no existing dominant head is close enough to collect that water instead
+---
 
-When possible, feed an existing nearby head rather than creating another one.
+## 6. Water mass accounting
 
-## Capillary collection and coalescence
-
-Once a head exists, it is a collector.
-
-At every update it should:
-
-- collect surface water from a catchment larger than its visible footprint
-- collect more aggressively while moving
-- attract nearby smaller mobile/pinned heads over a short range
-- merge immediately when head footprints overlap
-- merge when their **flow-ID regions / wet bodies touch**, even if head centers are still separated
-
-This is the main mechanism that should turn several close streaks into one dominant flow.
-
-## Mass, size, and speed
-
-The flow must grow as it descends.
+Use approximate mass conservation.
 
 Conceptually:
 
 ```text
-mass(t+dt) = mass(t)
-           + collected height-map water
-           + intercepted droplet mass
-           - residual water left in the trail
+surfaceMass = sum(water cells)
+mobileMass  = sum(active flow mass)
 ```
 
-Visible head radius should derive from mass with a sub-linear relation. The exact scale is perceptual, but it must not grow without a corresponding mass increase.
-
-Larger drops should generally:
-
-- depin more easily
-- have a wider collection footprint
-- leave a wider trail
-- reach a higher terminal speed
-
-This produces the desired sequence:
+Transfers:
 
 ```text
-small pinned bead
-→ collects neighbours
-→ becomes a small drop
-→ begins creeping
-→ sweeps up more water
-→ becomes larger
-→ slides faster
+fog -> water              wiped condensation / slow condensation
+water -> mobile flow      collection / pooling
+flow + flow -> flow       merge
+mobile flow -> water      residual trail deposit
 ```
 
-## Pinning heuristic
-
-Use a force-style comparison rather than only `radius > threshold`.
-
-Approximate:
+For one active flow:
 
 ```text
-drive = gravityAlongGlass * mass
-resistance = basePinning
-             * surfaceHeterogeneity
-             * drySurfaceFactor
-             * contactPerimeterFactor
+M(t+dt) = M(t)
+        + collectedHeightMapWater
+        + mergedFlowMass
+        - residualTrailWater
 ```
 
-Reduce resistance when:
+Do not independently animate radius upward.
 
-- the head is on an old wet trail
-- it has just merged
-- the local water film is thick
+If the visible footprint gets larger, mobile mass must have increased.
 
-Increase resistance for:
+---
 
-- very small heads
-- dry / untouched glass
-- strong local surface-pinning noise
+## 7. Head formation / nucleation
 
-## Motion
+A new macroscopic head may form only when:
 
-The main flow direction comes from the flow front and gravity.
+- the location is connected to recent disturbance / pooling or an existing wet body
+- nearby height-map water exceeds a local threshold
+- no existing dominant collector is close enough to take the water instead
 
-Motion should include:
+Preferred locations:
 
-- physical gravity projected into screen coordinates
-- damping / terminal velocity
-- very small lateral variation from stable surface heterogeneity
-- preference for existing wet trails
+- gravity-down edge of finger contact
+- stroke intersections
+- local height-map maxima
+- existing trail/body
 
-Do not use large random jitter.
+Untouched fog should not spontaneously create a screen full of visible beads.
 
-## Trail deposition
+---
 
-A moving flow head should write a connected body into the height map and flow-ID map.
+## 8. Capillary collection heuristic
 
-The trail should:
+A formed head acts as a collector.
 
-- be narrower than the head
-- retain some residual water
-- remain optically clearer than untouched fog
-- reduce later pinning
-- allow nearby later flows to join it
+Each update it should:
 
-The trail should not be represented only as a visual line disconnected from the simulation.
+- consume height-map water from a radius larger than its rendered footprint
+- increase collection radius moderately with mass
+- collect more effectively while moving
+- prefer water ahead/downstream and along connected wet bodies
+- absorb sufficiently close smaller heads
 
-## Merge behavior
+This is a realtime heuristic for the visual effect of coalescence and film collection; it is not a literal capillary-pressure solver.
 
-There are two merge tests:
+Expected behavior:
 
-### Head merge
+```text
+small bead
+-> nearby film drains into it
+-> bead grows
+-> pinning threshold is overcome
+-> drop begins moving
+-> swept film and small drops increase its mass
+-> head gets larger
+-> flow gets faster
+```
 
-If two visible heads overlap or nearly overlap, combine mass and momentum.
+---
 
-### Body / flow-ID merge
+## 9. Merge topology
 
-If the rasterized bodies/trails of two active flows touch or overlap, unify them into one flow ID and choose a dominant head. The larger / farther-downstream head normally becomes the surviving front.
+This is the key change from the old independent-particle model.
 
-This is needed for realistic joining of nearby parallel streaks.
+### 9.1 Head-head
 
-## Gravity / orientation
+If two heads overlap / nearly overlap:
 
-Water direction must follow physical gravity on the device.
+```text
+M = M1 + M2
+P ~= P1 + P2
+```
 
-Because DeviceMotion conventions differ across devices/orientations, do not depend on one hard-coded sign convention. Use a calibration/reference strategy and verify on iPad/iPhone:
+Choose one surviving front and derive its footprint from the new mass.
 
-- portrait upright → down is screen-down
-- right edge physically downward → flow moves screen-right
-- left edge physically downward → flow moves screen-left
-- nearly flat → in-plane gravity approaches zero and drops mostly pin/pool
+### 9.2 Head-body
 
-A debug overlay or console hook for raw and transformed gravity vectors is acceptable during development.
+If a head reaches cells owned by another flow body:
 
-## Rendering implications
+- merge the two flow systems
+- transfer mass/ownership
+- normally keep the larger or farther-downstream head as the surviving front
 
-Visible water should be derived from the surface height plus active heads.
+### 9.3 Body-body
 
-Avoid complete gray/white outlines.
+If two connected body regions touch/overlap:
 
-Preferred optical cues:
+- unify their flow IDs
+- merge active ownership
+- collapse the system to one dominant moving front where practical
 
-- height-gradient normals
-- refraction/distortion of the camera image
-- partial Fresnel highlight
-- subtle darker meniscus / contact region
-- slight elongation of a moving head
-- trail normals blended continuously into the head
+This prevents two nearly parallel rivulets from remaining separate forever.
 
-## Performance strategy
+### 9.4 Local dominant collector
 
-The physically inspired representation is deliberately low resolution:
+Within a local basin, a larger flow should preferentially capture smaller nearby flows or pooling candidates.
 
-- height / wet / flow-ID maps: approximately 128–256 cells on the shorter dimension for mobile
-- only a small set of active flow heads
-- use spatial buckets or the flow-ID map instead of O(N²) interactions when possible
-- renderer may upscale/smooth the maps independently
+This reduces visual clutter and produces the expected one/few main runoff streams.
 
-## Acceptance tests for this redesign
+---
 
-1. Untouched fog does not spontaneously become a field of visible beads.
-2. Wiping produces water mainly on the gravity-down edge of the stroke.
-3. Repeated wiping in one local region tends toward one dominant drop or a few, not dozens.
-4. A moving drop grows noticeably as it travels through a wet region.
-5. Larger drops move faster than smaller drops, while small beads can remain pinned.
-6. Two nearby streaks can join into one flow even before their head centers overlap exactly.
-7. A merged flow preserves approximately the combined water mass.
-8. A flow leaves residual wet water that influences later flows.
-9. Rotating the device changes the flow direction correctly.
-10. Rendering has no obvious artificial outline around every drop.
+## 10. Pinning / contact-angle hysteresis heuristic
 
-## References
+A simple radius threshold is insufficient.
 
-- Chen, K.-C., Chen, P.-S., Wong, S.-K. (2013). *A heuristic approach to the simulation of water drops and flows on glass panes.* Computers & Graphics 37(8), 963–973. DOI: 10.1016/j.cag.2013.08.004.
-- *Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.* European Journal of Mechanics B/Fluids 48 (2014), 218–230. DOI: 10.1016/j.euromechflu.2014.06.003.
-- `frmlinn/raindrops-v2` — modern WebGL rain-window experiment using separate 2D condensation logic and optical refraction rendering.
+Use separate start/stop conditions.
+
+Conceptually:
+
+```text
+drive = planeGravityMagnitude * mass * gravityScale
+
+startResistance = basePinning
+                * contactFactor
+                * heterogeneity
+                * dryWetFactor
+
+stopResistance  = startResistance * hysteresisRatio
+```
+
+with `stopResistance < startResistance` so an already-moving drop does not instantly re-pin.
+
+Resistance reductions:
+
+- old wet trail
+- thick local liquid film
+- recent merge / disturbed contact line
+
+Resistance increases:
+
+- tiny mass
+- dry/untouched glass
+- locally stronger fixed surface heterogeneity
+
+---
+
+## 11. Motion and terminal speed
+
+The validated gravity vector is the primary direction.
+
+Motion may include:
+
+- gravity drive proportional to available in-plane gravity
+- damping / contact resistance
+- weak stable lateral heterogeneity
+- weak attraction to existing wet trails
+
+Avoid large random jitter.
+
+Mass coupling requirements:
+
+- larger mass -> greater tendency to remain moving
+- larger mass -> wider collection footprint
+- larger mass -> wider trail
+- larger mass -> higher terminal velocity, within a perceptually bounded range
+
+Therefore downstream runoff should commonly appear larger and somewhat faster than the upstream initial bead.
+
+---
+
+## 12. Trail/body deposition
+
+The moving head writes a continuous connected body.
+
+Deposited state:
+
+- residual `water`
+- increased `wet`
+- reduced `fog`
+- active/recent `flowId`
+
+Trail width should depend on current flow mass and be narrower than the head.
+
+Residual deposition must be less than the water swept into the flow or the simulation will create water from nowhere.
+
+Trails should later:
+
+- reduce pinning
+- guide new flows
+- participate in merge detection
+- re-fog optically over time while some physical wet memory persists longer
+
+---
+
+## 13. Rendering implications
+
+The old visual of a circular head dragging a constant-width dark line is not accepted.
+
+Preferred rendering source:
+
+```text
+water height map
++ connected body mask / flow IDs
++ active head geometry
+```
+
+From that derive:
+
+- normal gradients
+- local camera refraction
+- soft/highlight meniscus
+- mass-dependent footprint
+- directional elongation for moving fronts
+- continuously varying trail width
+
+Avoid:
+
+- complete outlines
+- identical dots
+- uniform black strings
+- head and trail that look visually disconnected
+
+A future WebGL renderer can downsample the glass water buffer and use its gradients for refraction, similar in architectural spirit to modern rain-window implementations.
+
+---
+
+## 14. Performance strategy
+
+Target mobile Safari.
+
+Recommended scale:
+
+- `fog/water/wet/flowId`: ~128–256 cells on the shorter dimension
+- few active heads
+- raster body/contact tests instead of large all-pairs particle clouds
+- local neighborhood operations only
+- renderer resolution independent from physics resolution
+
+Stable 30 fps is preferable to unstable 60 fps.
+
+---
+
+## 15. Validation sequence
+
+Do not tune optics before these physics tests pass.
+
+### Test A — gravity regression
+
+The existing iPad gravity behavior must remain correct. Any water-physics rewrite that breaks it is rejected.
+
+### Test B — one wiped basin
+
+Repeatedly wipe one small vertical region.
+
+Expected:
+
+- water accumulates on the gravity-down side
+- one main collector or a few form
+- not a uniform bead field
+
+### Test C — downstream growth
+
+Create one moving head over a wet path.
+
+Expected:
+
+- mass increases downstream
+- visible head grows moderately
+- speed increases moderately
+
+### Test D — two close rivulets
+
+Create two nearby runoff paths.
+
+Expected:
+
+- head-head or body-contact merge occurs
+- result becomes one connected dominant flow rather than two forever-parallel lines
+
+### Test E — trail reuse
+
+Steam/re-wet a region containing an old trail.
+
+Expected:
+
+- new water preferentially joins/follows that wet path
+
+### Test F — mass sanity
+
+No macroscopic drop should appear or grow without a traceable local water source / merge.
+
+---
+
+## 16. References
+
+1. Chen, K.-C., Chen, P.-S., Wong, S.-K. (2013). **A heuristic approach to the simulation of water drops and flows on glass panes.** *Computers & Graphics*, 37(8), 963–973. https://doi.org/10.1016/j.cag.2013.08.004
+
+2. Ahmed, G., Sellier, M., Jermy, M., Taylor, M. (2014). **Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.** *European Journal of Mechanics - B/Fluids*, 48, 218–230. https://doi.org/10.1016/j.euromechflu.2014.06.003
+
+3. `frmlinn/raindrops-v2` — realtime rain/glass rendering architecture and refraction reference. https://github.com/frmlinn/raindrops-v2
+
+These references guide architecture and qualitative behavior. Fog Mirror remains a realtime heuristic simulation designed for touch-driven condensation and mobile-browser performance.
