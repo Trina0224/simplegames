@@ -84,6 +84,11 @@ const DEFS = {
   },
 };
 
+// The densest accompaniment figures schedule nearly thirty notes a bar, and a
+// piano note rings for about four seconds, so voices pile up faster than they
+// decay. Steal the oldest rather than letting an old device run out of breath.
+const MAX_VOICES = 48;
+
 function makeImpulse(ctx, seconds = 2.4, decay = 2.6) {
   const len = Math.floor(ctx.sampleRate * seconds);
   const buffer = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -201,8 +206,19 @@ export class AudioEngine {
    * Start one note. Returns a handle with release(time).
    * `velocity` 0..1, `time` in AudioContext seconds.
    */
+  /** Release the oldest voices so the engine never exceeds its polyphony. */
+  _reap() {
+    while (this.activeVoices.size >= MAX_VOICES) {
+      const oldest = this.activeVoices.values().next().value;
+      if (!oldest) break;
+      this.activeVoices.delete(oldest);
+      oldest.release(this.ctx.currentTime);
+    }
+  }
+
   noteOn(midi, time, velocity = 1) {
     if (!this.ready) return null;
+    this._reap();
     const ctx = this.ctx;
     const def = this.def;
     const t = Math.max(time, ctx.currentTime);

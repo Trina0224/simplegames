@@ -5,6 +5,10 @@ import { arpeggioOrder } from './theory.js';
 import { meterById, rhythmById, subdivisionById } from './patterns.js';
 
 const LOOKAHEAD = 0.18;   // seconds of audio scheduled in advance
+// Ceiling on how many notes a sustaining instrument may hold at once. A cycle of
+// the densest figure is nearly thirty notes, which on an organ or a string pad
+// is a hundred-odd oscillators and starts to crackle on a small device.
+const MAX_SUSTAINED = 18;
 const TICK_MS = 25;
 
 export class Scheduler {
@@ -189,7 +193,8 @@ export class ChordPlayer {
     // Sustaining instruments would otherwise ring forever under an arpeggio.
     if (this.isArp && this.engine.sustaining) {
       const cutoff = now - this.stepDur * 1.6;
-      while (this.held.length > this.cycleNotes + 1 && this.held[0]) {
+      const keep = Math.min(this.cycleNotes + 1, MAX_SUSTAINED);
+      while (this.held.length > keep && this.held[0]) {
         const v = this.held.shift();
         v.release(Math.max(cutoff, now));
       }

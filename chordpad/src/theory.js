@@ -359,6 +359,36 @@ export function columnChordSteps(chord, bassMidi = null, beats = 4) {
 //   G2+B3+D4+G4 | D3 | G3 | B3 | G4 | B3 | D4 | G4
 // The roll is seven notes long and is truncated to whatever fills the bar, so
 // the figure always restarts on the downbeat.
+const CLIMB_FLOOR = 57; // A3 — where the right hand starts before climbing
+
+// The next inversion up: the bottom note moves an octave above the top.
+function nextInversion(notes) {
+  const [bottom, ...rest] = notes;
+  return [...rest, bottom + 12];
+}
+
+// A transition figure: an octave bass on every eighth, and a right hand that
+// climbs one inversion per beat. In G, 4/4:
+//   G1+G2+B3+D4+G4 | G1+G2 | G1+G2+D4+G4+B4 | G1+G2 | ...
+// The climb restarts each bar, so it never walks off the top of the keyboard.
+export function climbSteps(chord, bassMidi = null, slots = 8, chordEvery = 2) {
+  const high = bassMidi ?? bassMidiForPc(chord.rootPc);
+  const low = high - 12;
+  const bass = low >= 21 ? [low, high] : [high];
+  let stack = stackAbove(chord, CLIMB_FLOOR);
+
+  const steps = [];
+  for (let i = 0; i < slots; i += 1) {
+    if (i % chordEvery === 0) {
+      steps.push([...bass, ...stack]);
+      stack = nextInversion(stack);
+    } else {
+      steps.push(bass);
+    }
+  }
+  return steps;
+}
+
 export function fillSteps(chord, bassMidi = null, slots = 8) {
   const root = bassMidiForPc(chord.rootPc);
   const low = bassMidi ?? root;
