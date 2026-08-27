@@ -99,7 +99,7 @@ video.mirror { transform: scaleX(-1); }
       #a9a294 82%,
       #8b8578 100%);
   box-shadow:
-    0 7px 14px rgba(0, 0, 0, 0.62),
+    0 10px 20px rgba(0, 0, 0, 0.62),
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3);
 }
@@ -111,7 +111,7 @@ video.mirror { transform: scaleX(-1); }
   left: 0;
   right: 0;
   top: 0;
-  height: 2px;
+  height: 3px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0));
   opacity: calc(var(--open, 0) * 0.9);
 }
