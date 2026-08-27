@@ -73,7 +73,8 @@ export class ChordPlayer {
    * @param {object} opts
    *   voices  – midi notes of the chord voicing
    *   bass    – midi note or null
-   *   sequence – an explicit note figure, used instead of the derived arpeggio
+   *   sequence – an explicit figure: a list of steps, each one note or a chord
+   *   beatLocked – step on beats rather than on the arpeggio subdivision
    *   settings – { mode, subdivision, rhythm, meter, bpm, trigger }
    *   startTime – audio time of the first attack
    *   origin  – transport zero for grid alignment
@@ -97,7 +98,11 @@ export class ChordPlayer {
     this.subDur = subdivisionById(this.s.subdivision).beats * (60 / this.s.bpm);
     this.isArp = this.s.mode !== 'block';
     this.sequence = opts.sequence || null;
-    this.arp = this.isArp ? (this.sequence || arpeggioOrder(this.voices, this.s.mode)) : null;
+    // Every step is a list of notes, so a step can be a single note or a whole chord.
+    const steps = this.sequence || arpeggioOrder(this.voices, this.s.mode);
+    this.arp = this.isArp ? steps.map((step) => (Array.isArray(step) ? step : [step])) : null;
+    this.stepDur = opts.beatLocked ? this.beatDur : this.subDur;
+    this.cycleNotes = this.arp ? this.arp.reduce((n, step) => n + step.length, 0) : 0;
     // A supplied figure already starts on the bass note; a second one would double it.
     if (this.sequence) this.bass = null;
 
@@ -167,20 +172,21 @@ export class ChordPlayer {
         this.pending = pending;
         this.nextTime = pending.time;
       } else {
-        const note = this.arp[this.nextIndex % this.arp.length];
+        const step = this.arp[this.nextIndex % this.arp.length];
         if (this.nextIndex % this.arp.length === 0 && this.bass != null) {
           this._play(this.bass, this.nextTime, 0.88);
         }
-        this._play(note, this.nextTime, this.nextIndex === 0 ? 1 : 0.82);
+        const velocity = this.nextIndex === 0 ? 1 : 0.82;
+        step.forEach((midi, i) => this._play(midi, this.nextTime + i * this.strum, velocity));
         this.nextIndex += 1;
-        this.nextTime += this.subDur;
+        this.nextTime += this.stepDur;
       }
     }
 
     // Sustaining instruments would otherwise ring forever under an arpeggio.
     if (this.isArp && this.engine.sustaining) {
-      const cutoff = now - this.subDur * 1.6;
-      while (this.held.length > this.arp.length + 1 && this.held[0]) {
+      const cutoff = now - this.stepDur * 1.6;
+      while (this.held.length > this.cycleNotes + 1 && this.held[0]) {
         const v = this.held.shift();
         v.release(Math.max(cutoff, now));
       }
