@@ -152,6 +152,7 @@ export function chordFromId(id, key, mode) {
 // --- Voicing -------------------------------------------------------------
 
 const CLOSE_FLOOR = 55;
+const ACCOMPANIMENT_FLOOR = 55; // G3 — where a hymn right hand sits
 const CENTER = 62;
 
 function closeVoicing(chord) {
@@ -201,7 +202,18 @@ function voicingCost(candidate, previous) {
   return cost;
 }
 
-export function voiceChord(chord, { voicing = 'close', previous = null } = {}) {
+// `lift` moves the whole voicing by whole octaves. Under a sung melody the
+// chord wants to sit below it; the bass note is never lifted.
+export function voiceChord(chord, { voicing = 'close', previous = null, lift = 0 } = {}) {
+  const notes = voiceChordAt(chord, { voicing, previous });
+  return lift ? notes.map((n) => n + lift) : notes;
+}
+
+function voiceChordAt(chord, { voicing, previous }) {
+  // Root position cannot be kept inside a narrow register: the root lands
+  // anywhere in an octave, so the top note wanders by ten semitones across the
+  // pads and half of them end up inside the melody. Inverting is the only fix.
+  if (voicing === 'compact') return stackAbove(chord, ACCOMPANIMENT_FLOOR);
   if (voicing === 'close') return closeVoicing(chord);
   if (voicing === 'open') return openVoicing(chord);
   const candidates = inversions(chord);
@@ -305,7 +317,7 @@ export function brokenChordNotes(chord, bassMidi = null) {
 // the bar. In C, 4/4: C2, then C4+E4+G4 three times.
 // One step per beat, so the figure always fills exactly one bar.
 
-const STACK_FLOOR = 60; // C4 — the bass never reaches past B2, so C3..B3 stays empty
+const STACK_FLOOR = 55; // G3 — the hymn accompaniment register; the bass tops out at B2
 
 // The compact voicing of a chord above `floor`: the inversion with the lowest
 // top note, so every chord sits in the same register instead of the stack

@@ -14,6 +14,7 @@ export const DEFAULTS = {
   playback: 'block',
   subdivision: '1/8',
   voicing: 'close',
+  register: 'mid',
   bass: 'off',
   trigger: 'hold',
   rhythm: 'free',
