@@ -1,6 +1,7 @@
 export class MirrorInput {
-  constructor(canvas, field, droplets) {
+  constructor(canvas, field, droplets, gravityProvider = () => ({ x: 0, y: 1, plane: 1 })) {
     this.canvas=canvas; this.field=field; this.droplets=droplets;
+    this.gravityProvider=gravityProvider;
     this.active=new Map();
     this.onWipe=null;
     this._down=e=>this._pointerDown(e);
@@ -43,28 +44,34 @@ export class MirrorInput {
       this.field.wipe(x,y,0.034,speed,ux,uy);
     }
 
-    // Water pools at the wipe edge, not throughout the entire fogged surface.
-    // Use the normal to the stroke so beads appear at the moisture ridge created
-    // by the finger. Feed nearby existing beads instead of creating a field of dots.
-    const nx=-uy, ny=ux;
-    const edge=0.032*Math.min(1.45,1+speed*.18);
-    const canNucleate=(now-(prev.lastNucleate||0))>(speed>.9?55:95);
+    // Water squeezed by the fingertip accumulates on the physical *downhill*
+    // edge of the contact patch. Do not alternate left/right sides of the stroke:
+    // a real wet mirror cares about gravity, not stroke normal.
+    const gravity=this.gravityProvider() || {x:0,y:1,plane:1};
+    let gx=gravity.x, gy=gravity.y;
+    const gm=Math.hypot(gx,gy);
+    if(gm<.05){ gx=0; gy=1; }
+    else { gx/=gm; gy/=gm; }
+
+    const edge=0.031*Math.min(1.4,1+speed*.16);
+    const canNucleate=(now-(prev.lastNucleate||0))>(speed>.9?95:145);
     if(canNucleate && dist>.006){
-      const side=(Math.sin(now*.013+e.pointerId)>0)?1:-1;
-      const ex=Math.max(0,Math.min(1,p.x+nx*edge*side));
-      const ey=Math.max(0,Math.min(1,p.y+ny*edge*side));
-      this.droplets.nucleateAt(ex,ey,Math.min(1.25,.55+speed*.28),{x:ux*speed*.05,y:uy*speed*.05});
+      const ex=Math.max(0,Math.min(1,p.x+gx*edge));
+      const ey=Math.max(0,Math.min(1,p.y+gy*edge));
+      this.droplets.nucleateAt(ex,ey,Math.min(1.35,.60+speed*.26),{x:ux*speed*.028,y:uy*speed*.028});
       prev.lastNucleate=now;
     }
 
-    // A decisive sweep gathers water mainly at the leading end. It creates at
-    // most one or two pools; those pools then collect and merge naturally.
-    if(speed>1.25 && dist>.028){
+    // A broad fast sweep piles extra water at a point slightly downhill *and*
+    // ahead of the finger. This should feed the same dominant pool whenever it
+    // is nearby, not spawn a necklace of droplets along the whole gesture.
+    if(speed>1.30 && dist>.030){
+      const ex=Math.max(0,Math.min(1,p.x+gx*.026+ux*.010));
+      const ey=Math.max(0,Math.min(1,p.y+gy*.026+uy*.010));
       this.droplets.nucleateAt(
-        Math.max(0,Math.min(1,p.x+ux*.012)),
-        Math.max(0,Math.min(1,p.y+uy*.012)),
-        Math.min(1.5,.8+(speed-1.25)*.35),
-        {x:ux*speed*.10,y:uy*speed*.10},
+        ex,ey,
+        Math.min(1.65,.95+(speed-1.30)*.32),
+        {x:ux*speed*.045,y:uy*speed*.045},
       );
     }
 
