@@ -226,8 +226,13 @@ export class AudioEngine {
     const out = ctx.createGain();
     out.gain.value = 1;
     const level = ctx.createGain();
-    // Gentle high-note roll-off keeps the top of arpeggios from poking out.
-    const vel = velocity * def.gain * (1 - Math.min(0.35, Math.max(0, (midi - 60) * 0.012)));
+    // Tilt: the top of an arpeggio is rolled off so it does not poke out, and
+    // the bass is lifted, because the ear hears low notes as much quieter at
+    // the same amplitude.
+    const tilt = midi >= 60
+      ? 1 - Math.min(0.35, (midi - 60) * 0.012)
+      : 1 + Math.min(0.6, (60 - midi) * 0.02);
+    const vel = velocity * def.gain * tilt;
     level.gain.value = 0;
     out.connect(level);
     level.connect(this.dry);
@@ -308,6 +313,29 @@ export class AudioEngine {
         osc.start(t);
         nodes.push(osc);
       }
+    }
+
+    // A phone or tablet speaker cannot reproduce a 50 Hz fundamental at all.
+    // Sounding the octave above it lets the ear supply the root itself, which
+    // is what makes a bass note read as powerful rather than merely present.
+    if (midi < 48) {
+      const depth = Math.min(1, (48 - midi) / 14);
+      const body = ctx.createOscillator();
+      body.type = 'triangle';
+      body.frequency.value = freq * 2;
+      const bodyGain = ctx.createGain();
+      bodyGain.gain.value = 0.34 * depth;
+      if (!def.sustaining) {
+        // Decaying instruments must not leave the reinforcement ringing on
+        // underneath, or a piano bass turns into an organ.
+        const decay = def.partials ? (def.partials[0].decay || 2.2) : 2.2;
+        bodyGain.gain.setValueAtTime(0.34 * depth, t);
+        bodyGain.gain.setTargetAtTime(0.0001, t, decay / 3.2);
+      }
+      body.connect(bodyGain);
+      bodyGain.connect(out);
+      body.start(t);
+      nodes.push(body);
     }
 
     const attack = def.attack || 0.004;

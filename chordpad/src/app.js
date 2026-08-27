@@ -80,6 +80,8 @@ function updateStatus() {
 
 const REGISTER_LIFT = { low: -12, mid: 0, high: 12 };
 
+let lastChordAt = -Infinity;
+
 function startChord(chord, time, settings) {
   const lift = REGISTER_LIFT[state.register] ?? 0;
   const voices = voiceChord(chord, { voicing: state.voicing, previous: prevVoicing, lift });
@@ -103,11 +105,16 @@ function startChord(chord, time, settings) {
     sequence = climbSteps(chord, bass, eighths, meter.beatUnit === 8 ? 3 : 2);
     stepUnit = 'eighth';
   }
+  // Two bars of quiet means the accompaniment has stopped; anything closer is
+  // still flowing, so the new chord should pick the figure up rather than reset it.
+  const phaseLock = time - lastChordAt < measureDuration() * 2;
+  lastChordAt = time;
   const player = new ChordPlayer(engine, {
     voices,
     bass,
     sequence,
     stepUnit,
+    phaseLock,
     settings,
     startTime: time,
     origin: scheduler.origin,

@@ -9,6 +9,9 @@ const LOOKAHEAD = 0.18;   // seconds of audio scheduled in advance
 // the densest figure is nearly thirty notes, which on an organ or a string pad
 // is a hundred-odd oscillators and starts to crackle on a small device.
 const MAX_SUSTAINED = 18;
+// A bass note stands alone against three or four chord tones, so at equal
+// velocity the chord simply buries it.
+const BASS_VELOCITY = 1.3;
 const TICK_MS = 25;
 
 export class Scheduler {
@@ -118,11 +121,14 @@ export class ChordPlayer {
 
     this.nextTime = this.start;
     this.playedCount = 0;
-    // Figures are phase-locked to the shared grid, so a chord that starts
-    // mid-bar carries the pattern on from where it had got to instead of
-    // restarting. This is what stops one chord from audibly stopping dead
-    // before the next one begins.
-    this.gridIndex = this.isArp ? Math.round((this.start - this.origin) / this.stepDur) : 0;
+    // A chord arriving while the accompaniment is already flowing carries the
+    // figure on from where it had got to, instead of restarting it — that is
+    // what stops each chord change sounding like a stop and a restart. A chord
+    // struck into silence starts the figure at its beginning, so a single tap
+    // still opens on the root and is recognisable.
+    this.gridIndex = this.isArp && opts.phaseLock
+      ? Math.round((this.start - this.origin) / this.stepDur)
+      : 0;
     this.strum = engine.instrumentId === 'guitar' ? 0.022 : 0.008;
   }
 
@@ -146,7 +152,7 @@ export class ChordPlayer {
   }
 
   _attack(time, type, velocity) {
-    if (type !== 'chord' && this.bass != null) this._play(this.bass, time, velocity * 0.9);
+    if (type !== 'chord' && this.bass != null) this._play(this.bass, time, velocity * BASS_VELOCITY);
     if (type === 'bass') return;
     this.voices.forEach((midi, i) => this._play(midi, time + i * this.strum, velocity));
   }
@@ -188,8 +194,10 @@ export class ChordPlayer {
         const len = this.arp.length;
         const idx = ((this.gridIndex % len) + len) % len;
         const step = this.arp[idx];
-        if (idx === 0 && this.bass != null) this._play(this.bass, this.nextTime, 0.88);
-        const velocity = this.playedCount === 0 ? 1 : 0.82;
+        if (idx === 0 && this.bass != null) this._play(this.bass, this.nextTime, BASS_VELOCITY);
+        // The downbeat of the figure is accented every time round, not just once,
+        // and a step that carries the bass keeps its weight.
+        const velocity = idx === 0 ? 1 : 0.85;
         step.forEach((midi, i) => this._play(midi, this.nextTime + i * this.strum, velocity));
         const played = this.nextTime;
         this.playedCount += 1;
