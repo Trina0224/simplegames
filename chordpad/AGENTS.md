@@ -66,6 +66,16 @@ Slash choices must support at least:
 
 A slash setting is part of the musical event, not merely a temporary UI preference. If a user records `C/E`, playback must remain `C/E` even after the global Bass / Slash setting changes.
 
+### Register and voicing
+
+The app accompanies singing, so the chord belongs underneath the melody, which sits around C4 to D5. Root-position voicing cannot be held there: the root falls anywhere inside an octave, so the top note wanders ten semitones across the pads of one key and half of them land in the melody. Inverting is the only fix, which is what the `Compact` voicing does and why Bass + Chords voices its stack the same way.
+
+A `Register` control shifts the voicing an octave either way for taste. It is not a substitute for inverting: shifting root position down an octave rescues I and IV and buries V.
+
+### Continuity
+
+An accompaniment must not sound like a row of separate chords. Figures are phase-locked to the shared transport grid, so a chord starting mid-bar continues the pattern instead of restarting it, and recorded playback holds each chord until the next has begun. Both matter more than they sound like they should: without them every chord change is audible as a stop and a restart.
+
 ### Playback modes
 
 Playback describes how chord tones are triggered over time.

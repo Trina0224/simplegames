@@ -117,6 +117,12 @@ export class ChordPlayer {
     if (this.s.trigger === 'trigger') this.releaseAt = this.start + this.measureDur * 0.98;
 
     this.nextTime = this.start;
+    this.playedCount = 0;
+    // Figures are phase-locked to the shared grid, so a chord that starts
+    // mid-bar carries the pattern on from where it had got to instead of
+    // restarting. This is what stops one chord from audibly stopping dead
+    // before the next one begins.
+    this.gridIndex = this.isArp ? Math.round((this.start - this.origin) / this.stepDur) : 0;
     this.strum = engine.instrumentId === 'guitar' ? 0.022 : 0.008;
   }
 
@@ -179,14 +185,23 @@ export class ChordPlayer {
         this.pending = pending;
         this.nextTime = pending.time;
       } else {
-        const step = this.arp[this.nextIndex % this.arp.length];
-        if (this.nextIndex % this.arp.length === 0 && this.bass != null) {
-          this._play(this.bass, this.nextTime, 0.88);
-        }
-        const velocity = this.nextIndex === 0 ? 1 : 0.82;
+        const len = this.arp.length;
+        const idx = ((this.gridIndex % len) + len) % len;
+        const step = this.arp[idx];
+        if (idx === 0 && this.bass != null) this._play(this.bass, this.nextTime, 0.88);
+        const velocity = this.playedCount === 0 ? 1 : 0.82;
         step.forEach((midi, i) => this._play(midi, this.nextTime + i * this.strum, velocity));
-        this.nextIndex += 1;
-        this.nextTime += this.stepDur;
+        const played = this.nextTime;
+        this.playedCount += 1;
+        this.gridIndex += 1;
+        let next = this.origin + this.gridIndex * this.stepDur;
+        // The first hit is immediate wherever the press landed; from there on
+        // keep to the grid, skipping any step that has already gone past.
+        while (next < played + this.stepDur * 0.4) {
+          this.gridIndex += 1;
+          next = this.origin + this.gridIndex * this.stepDur;
+        }
+        this.nextTime = next;
       }
     }
 

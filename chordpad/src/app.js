@@ -38,6 +38,7 @@ const el = {
   clearBtn: document.getElementById('clearBtn'),
 };
 
+const LEGATO = 0.09;              // seconds one chord overlaps the next on playback
 const activePlayers = new Map();  // padId -> ChordPlayer
 const padPointers = new Map();    // padId -> pointerId
 const padElements = new Map();    // padId -> button
@@ -77,8 +78,11 @@ function updateStatus() {
 
 // ---------------------------------------------------------------- sound
 
+const REGISTER_LIFT = { low: -12, mid: 0, high: 12 };
+
 function startChord(chord, time, settings) {
-  const voices = voiceChord(chord, { voicing: state.voicing, previous: prevVoicing });
+  const lift = REGISTER_LIFT[state.register] ?? 0;
+  const voices = voiceChord(chord, { voicing: state.voicing, previous: prevVoicing, lift });
   const bass = bassNote(chord, { bass: state.bass, previous: prevBass });
   prevVoicing = voices;
   if (bass != null) prevBass = bass;
@@ -314,7 +318,17 @@ function tickPlayback() {
       const settings = playSettings({ mode: event.playback || state.playback, trigger: 'hold' });
       const player = startChord(chord, at, settings);
       playback.players.push(player);
-      const endAt = at + event.duration;
+      // Hold each chord until the next one has started, so a recording plays as
+      // one continuous accompaniment rather than a row of separate chords.
+      const next = events[playback.index + 1];
+      let endAt = at + event.duration;
+      if (next) {
+        const nextAt = playback.origin + next.start;
+        if (endAt < nextAt) endAt = nextAt + LEGATO;
+      } else if (state.loop) {
+        const loopEnd = playback.origin + loopLength();
+        if (endAt < loopEnd) endAt = loopEnd + LEGATO;
+      }
       scheduler.at(endAt, () => player.release(endAt));
       const index = playback.index;
       const delay = Math.max(0, (at - engine.currentTime) * 1000);
@@ -515,12 +529,25 @@ function buildDrawer() {
   }));
 
   // Voicing
-  body.append(segmented('Voicing', [
-    { id: 'close', name: 'Close' }, { id: 'open', name: 'Open / Wide' }, { id: 'auto', name: 'Auto' },
+  const voicingField = segmented('Voicing', [
+    { id: 'close', name: 'Close' }, { id: 'open', name: 'Open / Wide' },
+    { id: 'auto', name: 'Auto' }, { id: 'compact', name: 'Compact' },
   ], state.voicing, (voicing) => {
     prevVoicing = null;
     change({ voicing }, { rebuildDrawer: true });
-  }));
+  });
+  voicingField.append(note('Compact inverts each chord so they all sit in the same narrow band under the melody, instead of the top note wandering an octave between pads.'));
+  body.append(voicingField);
+
+  // Register
+  const registerField = segmented('Register', [
+    { id: 'low', name: 'Low' }, { id: 'mid', name: 'Mid' }, { id: 'high', name: 'High' },
+  ], state.register, (register) => {
+    prevVoicing = null;
+    change({ register }, { rebuildDrawer: true });
+  });
+  registerField.append(note('Moves the chord up or down an octave. Low keeps it under a sung melody; the bass note stays where it is. Wide figures keep their own register.'));
+  body.append(registerField);
 
   // Bass
   body.append(segmented('Bass note', [

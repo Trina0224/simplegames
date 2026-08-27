@@ -349,6 +349,7 @@ Options:
 - Close
 - Open / Wide
 - Auto
+- Compact
 
 ### Close
 
@@ -365,6 +366,42 @@ Examples:
 Advanced option. May use inversions and voice leading to reduce jumps between consecutive chords.
 
 Auto is musically useful, but it is not the default because the primary audience should be able to press a pad and immediately recognize the chord center.
+
+### Compact
+
+For accompanying singing. Each chord is inverted to the position with the lowest top note above G3, so every pad sits in the same narrow band underneath the melody.
+
+Root position cannot do this. The root lands anywhere inside an octave, so across the seven pads of a key the top note wanders ten semitones — G4 for I but C5 for IV — and half of them end up inside the melody's own range. Compact holds the tops within three semitones, around D4 to F4:
+
+```text
+C -> G3 C4 E4      G  -> G3 B3 D4
+Dm -> A3 D4 F4     Am -> A3 C4 E4
+F  -> A3 C4 F4     B° -> B3 D4 F4
+```
+
+The cost is that a pad no longer always begins on its root, which changes what Up, Down and Pattern start on. That is why it is an option rather than the default.
+
+---
+
+## 7a. Register
+
+- Low
+- Mid (default)
+- High
+
+Moves the chord voicing down or up an octave. The bass note never moves, and the wide figures — Spread, Fill, Climb — keep their own register, because their shape spans from the bass upward and cannot be split.
+
+An octave shift on its own cannot fix the register. Dropping root position by an octave puts the V chord's top note at D3, down among the bass, while I and IV land nicely. Register is a taste control for a particular song, singer and speaker; `Compact` voicing is the structural fix.
+
+---
+
+## 7b. Continuity
+
+Two things keep an accompaniment from sounding like a row of separate chords.
+
+**Figures are phase-locked to the transport grid.** A chord that starts mid-bar carries its pattern on from where the pattern had got to, rather than restarting at step one. The first attack still sounds the instant the pad is pressed, so playing stays responsive; every step after that lands on the grid. Without this, each new chord audibly stopped the pulse and started it again.
+
+**Recorded playback is legato.** Each chord is held until the next one has started, plus a small overlap, so a recording never falls silent between chords even though the pads were released between presses. The last chord is extended to the loop point in the same way.
 
 ---
 
