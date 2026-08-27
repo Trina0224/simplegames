@@ -8,192 +8,38 @@
 <title>simplegames</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23f0a848'/><rect x='7' y='9' width='7' height='6' rx='2' fill='%231b1405'/><rect x='18' y='9' width='7' height='6' rx='2' fill='%231b1405'/><rect x='7' y='18' width='7' height='6' rx='2' fill='%231b1405'/><rect x='18' y='18' width='7' height='6' rx='2' fill='%231b1405'/></svg>">
 <style>
-  :root {
-    --bg: #15171f;
-    --panel: #1e212c;
-    --panel-2: #262a38;
-    --line: #333849;
-    --text: #eef1f8;
-    --muted: #9aa3bd;
-    --accent: #f0a848;
-  }
-
-  * { box-sizing: border-box; }
-
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
-                 "PingFang TC", "Microsoft JhengHei", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    line-height: 1.6;
-  }
-
-  .wrap {
-    max-width: 880px;
-    margin: 0 auto;
-    padding: max(40px, env(safe-area-inset-top)) 20px 60px;
-  }
-
-  header { padding: 24px 0 30px; }
-
-  h1 {
-    margin: 0 0 10px;
-    font-size: clamp(30px, 6vw, 44px);
-    letter-spacing: -0.5px;
-  }
-
-  h1 .dot { color: var(--accent); }
-
-  .lede {
-    margin: 0;
-    max-width: 46ch;
-    color: var(--muted);
-    font-size: clamp(15px, 2.2vw, 17px);
-  }
-
-  .grid {
-    display: grid;
-    /* auto-fit counts tracks with the max sizing function when it is a fixed
-       length, so the cap lives on the card instead — otherwise two cards stack. */
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
-    justify-content: start;
-    gap: 16px;
-  }
-
-  .card {
-    display: flex;
-    max-width: 460px;
-    flex-direction: column;
-    gap: 14px;
-    padding: 18px;
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    background: var(--panel);
-    color: inherit;
-    text-decoration: none;
-    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
-  }
-
-  .card:hover,
-  .card:focus-visible {
-    background: var(--panel-2);
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    outline: none;
-  }
-
-  .card:active { transform: translateY(0); }
-
-  /* Miniature of the instrument's own chord pads. */
-  .thumb {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    padding: 12px;
-    border-radius: 14px;
-    background: linear-gradient(180deg, #1a1d27 0%, #14161d 100%);
-  }
-
-  .thumb span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 40px;
-    border-radius: 9px;
-    background: linear-gradient(180deg, #2c3244 0%, #232838 100%);
-    font-size: 15px;
-    font-weight: 700;
-    color: #c7cee3;
-  }
-
-  .thumb span.lit {
-    background: linear-gradient(180deg, #f3b45c 0%, #e08b2c 100%);
-    color: #1b1405;
-  }
-
-  .thumb-blinds {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-
-  .thumb-blinds span {
-    height: 14px;
-    border-radius: 3px;
-    background: linear-gradient(180deg, #ded7c9 0%, #b3ac9e 100%);
-  }
-
-  /* the peek */
-  .thumb-blinds span.gap {
-    height: 26px;
-    background: linear-gradient(180deg, #7fb4e8 0%, #cfe0ee 55%, #6f8a6c 100%);
-    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45);
-  }
-
-  .card h2 {
-    margin: 0;
-    font-size: 21px;
-    display: flex;
-    align-items: baseline;
-    gap: 9px;
-    flex-wrap: wrap;
-  }
-
-  .card h2 .en {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .card p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 15px;
-  }
-
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: auto;
-    padding-top: 4px;
-  }
-
-  .tags span {
-    padding: 3px 10px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .go {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-
-  footer {
-    margin-top: 44px;
-    padding-top: 18px;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  footer a { color: var(--muted); }
-
-  @media (prefers-reduced-motion: reduce) {
-    .card { transition: none; }
-    .card:hover, .card:focus-visible { transform: none; }
-  }
+  :root { --bg:#15171f; --panel:#1e212c; --panel-2:#262a38; --line:#333849; --text:#eef1f8; --muted:#9aa3bd; --accent:#f0a848; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",Roboto,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .wrap { max-width:880px; margin:0 auto; padding:max(40px,env(safe-area-inset-top)) 20px 60px; }
+  header { padding:24px 0 30px; }
+  h1 { margin:0 0 10px; font-size:clamp(30px,6vw,44px); letter-spacing:-.5px; }
+  h1 .dot { color:var(--accent); }
+  .lede { margin:0; max-width:46ch; color:var(--muted); font-size:clamp(15px,2.2vw,17px); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); justify-content:start; gap:16px; }
+  .card { display:flex; max-width:460px; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--line); border-radius:20px; background:var(--panel); color:inherit; text-decoration:none; transition:border-color .15s ease,transform .15s ease,background .15s ease; }
+  .card:hover,.card:focus-visible { background:var(--panel-2); border-color:var(--accent); transform:translateY(-2px); outline:none; }
+  .card:active { transform:translateY(0); }
+  .thumb { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:12px; border-radius:14px; background:linear-gradient(180deg,#1a1d27 0%,#14161d 100%); overflow:hidden; min-height:108px; }
+  .thumb span { display:flex; align-items:center; justify-content:center; height:40px; border-radius:9px; background:linear-gradient(180deg,#2c3244 0%,#232838 100%); font-size:15px; font-weight:700; color:#c7cee3; }
+  .thumb span.lit { background:linear-gradient(180deg,#f3b45c 0%,#e08b2c 100%); color:#1b1405; }
+  .thumb-blinds { grid-template-columns:1fr; gap:4px; }
+  .thumb-blinds span { height:14px; border-radius:3px; background:linear-gradient(180deg,#ded7c9 0%,#b3ac9e 100%); }
+  .thumb-blinds span.gap { height:26px; background:linear-gradient(180deg,#7fb4e8 0%,#cfe0ee 55%,#6f8a6c 100%); box-shadow:inset 0 3px 6px rgba(0,0,0,.45); }
+  .thumb-fog { position:relative; display:block; background:radial-gradient(circle at 50% 35%,#83979c 0%,#52666c 30%,#1c2b30 72%,#10171a 100%); }
+  .thumb-fog::before { content:""; position:absolute; inset:0; background:radial-gradient(circle at 34% 42%,rgba(245,250,250,.72),rgba(230,240,242,.45) 22%,rgba(225,237,239,.76) 58%,rgba(220,233,235,.62)); filter:blur(5px); }
+  .thumb-fog::after { content:"☺"; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:rgba(22,39,43,.78); font-size:52px; font-weight:300; text-shadow:0 1px 1px rgba(255,255,255,.35); }
+  .drop { position:absolute; z-index:2; width:10px; height:17px; border-radius:50% 50% 55% 55%; border:1px solid rgba(245,255,255,.65); background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(80,110,116,.18)); }
+  .d1 { right:24%; top:17%; } .d2 { right:15%; top:49%; width:7px; height:12px; } .d3 { left:18%; bottom:14%; width:8px; height:15px; }
+  .card h2 { margin:0; font-size:21px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .card h2 .en { font-size:13px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); }
+  .card p { margin:0; color:var(--muted); font-size:15px; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:auto; padding-top:4px; }
+  .tags span { padding:3px 10px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:var(--muted); }
+  .go { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:700; color:var(--accent); }
+  footer { margin-top:44px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+  footer a { color:var(--muted); }
+  @media (prefers-reduced-motion:reduce) { .card { transition:none; } .card:hover,.card:focus-visible { transform:none; } }
 </style>
 </head>
 <body>
@@ -202,37 +48,30 @@
     <h1>simplegames<span class="dot">.</span></h1>
     <p class="lede">一些看起來像小玩具、其實很好用的網頁小工具。開啟就能用，不必安裝、不用註冊。</p>
   </header>
-
   <main class="grid">
     <a class="card" href="chordpad/">
-      <div class="thumb" aria-hidden="true">
-        <span>I</span><span class="lit">IV</span><span>V</span>
-        <span>vi</span><span>ii</span><span>V7</span>
-      </div>
+      <div class="thumb" aria-hidden="true"><span>I</span><span class="lit">IV</span><span>V</span><span>vi</span><span>ii</span><span>V7</span></div>
       <h2>和弦墊 <span class="en">Chord Pad</span></h2>
       <p>用大按鈕彈和弦的伴奏樂器。不會鋼琴、不會吉他也能替詩歌伴奏：選好調，按下和弦墊就是一個完整和弦，還能錄下整段和弦進行循環播放。</p>
-      <div class="tags">
-        <span>iPad · iPhone</span><span>五種音色</span><span>錄音循環</span><span>離線可用</span>
-      </div>
+      <div class="tags"><span>iPad · iPhone</span><span>五種音色</span><span>錄音循環</span><span>離線可用</span></div>
       <div class="go">開始彈 <span aria-hidden="true">→</span></div>
     </a>
-
     <a class="card" href="blinds/">
-      <div class="thumb thumb-blinds" aria-hidden="true">
-        <span></span><span></span><span class="gap"></span><span></span><span></span><span></span>
-      </div>
+      <div class="thumb thumb-blinds" aria-hidden="true"><span></span><span></span><span class="gap"></span><span></span><span></span><span></span></div>
       <h2>百葉窗 <span class="en">Blinds</span></h2>
       <p>螢幕是一扇關著的百葉窗，後面是相機的即時畫面。手指壓上去，葉片就在指尖附近撥開，露出後面的房間；放開就彈回去。沒有快門，什麼都不會被拍下來。</p>
-      <div class="tags">
-        <span>iPhone · Android · iPad</span><span>不拍照不錄影</span><span>沒相機也能玩</span>
-      </div>
+      <div class="tags"><span>iPhone · Android · iPad</span><span>不拍照不錄影</span><span>沒相機也能玩</span></div>
       <div class="go">戳戳看 <span aria-hidden="true">→</span></div>
     </a>
+    <a class="card" href="fogmirror/">
+      <div class="thumb thumb-fog" aria-hidden="true"><i class="drop d1"></i><i class="drop d2"></i><i class="drop d3"></i></div>
+      <h2>霧鏡 <span class="en">Fog Mirror</span></h2>
+      <p>把前鏡頭變成一面三溫暖裡起霧的鏡子。用手指擦、畫笑臉，水會聚成珠、沿著舊水痕流；轉動手機，水滴也會跟著真正的重力改變方向。</p>
+      <div class="tags"><span>前鏡頭</span><span>水滴物理</span><span>裝置重力</span><span>實驗版</span></div>
+      <div class="go">擦擦看 <span aria-hidden="true">→</span></div>
+    </a>
   </main>
-
-  <footer>
-    原始碼在 <a href="https://github.com/Trina0224/simplegames">GitHub</a>。之後的小玩具會陸續加在這一頁。
-  </footer>
+  <footer>原始碼在 <a href="https://github.com/Trina0224/simplegames">GitHub</a>。之後的小玩具會陸續加在這一頁。</footer>
 </div>
 </body>
 </html>
