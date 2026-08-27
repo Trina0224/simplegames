@@ -1,28 +1,33 @@
+// orientation.js — derive gravity along the glass from DeviceOrientation beta/gamma.
+// DeviceMotion axis/sign handling differed across iPad orientations; beta/gamma have
+// a much clearer geometric meaning and are transformed explicitly into viewport axes.
+
 export class GravitySensor {
   constructor() {
     this.gx = 0;
     this.gy = 1;
-    this.gz = 0;
+    this.plane = 1;
     this.enabled = false;
-    this.available = 'DeviceMotionEvent' in window;
-    this._bound = (e) => this._onMotion(e);
+    this.available = 'DeviceOrientationEvent' in window;
+    this._bound = (e) => this._onOrientation(e);
     this._last = null;
-    this.raw = { x: 0, y: 0, z: 0, screenAngle: 0 };
+    this.raw = { beta: null, gamma: null, screenAngle: 0 };
   }
 
   async start() {
     if (!this.available) return false;
     try {
-      const Ctor = window.DeviceMotionEvent;
+      const Ctor = window.DeviceOrientationEvent;
       if (typeof Ctor.requestPermission === 'function') {
         const result = await Ctor.requestPermission();
         if (result !== 'granted') return false;
       }
-      this._last = null;
+      this.stop();
       this.gx = 0;
       this.gy = 1;
-      this.gz = 0;
-      window.addEventListener('devicemotion', this._bound, { passive: true });
+      this.plane = 1;
+      this._last = null;
+      window.addEventListener('deviceorientation', this._bound, { passive: true });
       this.enabled = true;
       return true;
     } catch (_) {
@@ -31,70 +36,77 @@ export class GravitySensor {
   }
 
   stop() {
-    window.removeEventListener('devicemotion', this._bound);
+    window.removeEventListener('deviceorientation', this._bound);
     this.enabled = false;
     this._last = null;
   }
 
-  _onMotion(e) {
-    const a = e.accelerationIncludingGravity;
-    if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) return;
+  _screenAngle() {
+    const a = Number(screen.orientation?.angle ?? window.orientation ?? 0) || 0;
+    return ((a % 360) + 360) % 360;
+  }
 
-    const z = Number.isFinite(a.z) ? a.z : 0;
-    const mag = Math.max(0.001, Math.hypot(a.x, a.y, z));
+  _onOrientation(e) {
+    if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
+
+    const beta = e.beta * Math.PI / 180;
+    const gamma = e.gamma * Math.PI / 180;
 
     /*
-     * WebKit documents the device-motion axes as:
-     *   +x = toward the right side of the screen
-     *   +y = toward the top of the screen
-     *   +z = out of the screen
+     * Device frame: x points right, y points toward the device top, z points out
+     * of the screen.  For a flat face-up device beta=gamma=0, so gravity is normal
+     * to the glass and its in-plane component is zero.
      *
-     * accelerationIncludingGravity is proper acceleration: on a supported
-     * stationary device it points opposite physical gravity. Therefore physical
-     * gravity in sensor coordinates is (-a.x, -a.y, -a.z).
+     * Project world gravity into the device plane, then express y in Canvas terms
+     * (+Y is down):
      *
-     * Canvas/CSS uses +x right and +y DOWN. Converting the physical sensor vector
-     * into Canvas coordinates flips the y axis once more:
+     *   gxNatural = sin(gamma)
+     *   gyNatural = sin(beta) * cos(gamma)
      *
-     *   canvas gx = -a.x
-     *   canvas gy = +a.y
-     *
-     * Because WebKit defines x/y relative to the screen itself, do not rotate the
-     * vector again with screen.orientation.angle; doing so double-rotates iPads.
+     * Sanity checks before viewport rotation:
+     *   portrait upright (beta≈+90, gamma≈0) -> (0,+1)
+     *   right edge physically down (gamma≈+90) -> (+1,0)
+     *   left edge physically down  (gamma≈-90) -> (-1,0)
      */
-    const tx = -a.x / mag;
-    const ty =  a.y / mag;
-    const tz = -z / mag;
+    let x = Math.sin(gamma);
+    let y = Math.sin(beta) * Math.cos(gamma);
 
-    this.raw = {
-      x: a.x,
-      y: a.y,
-      z,
-      screenAngle: Number(screen.orientation?.angle ?? window.orientation ?? 0) || 0,
-    };
+    // beta/gamma are defined in the device's natural screen orientation. Rotate
+    // that vector into the browser's current viewport coordinates.
+    const angle = this._screenAngle();
+    if (angle === 90) [x, y] = [-y, x];
+    else if (angle === 180) [x, y] = [-x, -y];
+    else if (angle === 270) [x, y] = [y, -x];
+
+    const targetPlane = Math.min(1, Math.hypot(x, y));
+
+    this.raw = { beta: e.beta, gamma: e.gamma, screenAngle: angle };
 
     const now = performance.now();
     const dt = this._last ? Math.min(0.1, (now - this._last) / 1000) : 1 / 60;
     this._last = now;
-    const tau = 0.24;
+    const tau = 0.18;
     const alpha = 1 - Math.exp(-dt / tau);
-    this.gx += (tx - this.gx) * alpha;
-    this.gy += (ty - this.gy) * alpha;
-    this.gz += (tz - this.gz) * alpha;
+
+    this.gx += (x - this.gx) * alpha;
+    this.gy += (y - this.gy) * alpha;
+    this.plane += (targetPlane - this.plane) * alpha;
   }
 
   vector() {
     if (!this.enabled) return { x: 0, y: 1, plane: 1 };
-    const plane = Math.min(1, Math.hypot(this.gx, this.gy));
-    if (plane < 0.055) return { x: 0, y: 0, plane: 0 };
-    return { x: this.gx / plane, y: this.gy / plane, plane };
+    const magnitude = Math.hypot(this.gx, this.gy);
+    const plane = Math.max(0, Math.min(1, this.plane));
+    if (plane < 0.055 || magnitude < 0.02) return { x: 0, y: 0, plane: 0 };
+    return { x: this.gx / magnitude, y: this.gy / magnitude, plane };
   }
 
   debug() {
     return {
+      source: 'DeviceOrientationEvent',
       enabled: this.enabled,
       raw: { ...this.raw },
-      filtered: { x: this.gx, y: this.gy, z: this.gz },
+      filtered: { x: this.gx, y: this.gy, plane: this.plane },
       vector: this.vector(),
     };
   }
