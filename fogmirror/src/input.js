@@ -21,7 +21,7 @@ export class MirrorInput {
   _pointerDown(e){
     e.preventDefault();
     const p=this._pos(e), now=performance.now();
-    this.active.set(e.pointerId,{...p,t:now});
+    this.active.set(e.pointerId,{...p,t:now,lastNucleate:0});
     try{this.canvas.setPointerCapture(e.pointerId);}catch(_){}
     this.field.wipe(p.x,p.y,0.035,0,0,0);
   }
@@ -35,25 +35,40 @@ export class MirrorInput {
     const speed=Math.min(3,Math.hypot(dx,dy)/dt);
     const dist=Math.hypot(dx,dy);
     const steps=Math.max(1,Math.ceil(dist/.012));
+    const ux=dx/(dist||1), uy=dy/(dist||1);
+
     for(let i=1;i<=steps;i++){
       const t=i/steps;
       const x=prev.x+dx*t,y=prev.y+dy*t;
-      this.field.wipe(x,y,0.034,speed,dx/(dist||1),dy/(dist||1));
+      this.field.wipe(x,y,0.034,speed,ux,uy);
     }
 
-    // Only a genuinely fast, meaningful sweep should knock loose macroscopic
-    // droplets. Ordinary handwriting should mostly leave wet edges and let beads
-    // form later through the condensation model.
-    if(speed>1.15 && dist>.030){
-      const amount=Math.min(1.15,.22+(speed-1.15)*.34);
-      this.droplets.seed(
-        p.x,p.y,amount,
-        Math.min(.050,.014+speed*.010),
-        {x:dx/dt*.055,y:dy/dt*.055},
+    // Water pools at the wipe edge, not throughout the entire fogged surface.
+    // Use the normal to the stroke so beads appear at the moisture ridge created
+    // by the finger. Feed nearby existing beads instead of creating a field of dots.
+    const nx=-uy, ny=ux;
+    const edge=0.032*Math.min(1.45,1+speed*.18);
+    const canNucleate=(now-(prev.lastNucleate||0))>(speed>.9?55:95);
+    if(canNucleate && dist>.006){
+      const side=(Math.sin(now*.013+e.pointerId)>0)?1:-1;
+      const ex=Math.max(0,Math.min(1,p.x+nx*edge*side));
+      const ey=Math.max(0,Math.min(1,p.y+ny*edge*side));
+      this.droplets.nucleateAt(ex,ey,Math.min(1.25,.55+speed*.28),{x:ux*speed*.05,y:uy*speed*.05});
+      prev.lastNucleate=now;
+    }
+
+    // A decisive sweep gathers water mainly at the leading end. It creates at
+    // most one or two pools; those pools then collect and merge naturally.
+    if(speed>1.25 && dist>.028){
+      this.droplets.nucleateAt(
+        Math.max(0,Math.min(1,p.x+ux*.012)),
+        Math.max(0,Math.min(1,p.y+uy*.012)),
+        Math.min(1.5,.8+(speed-1.25)*.35),
+        {x:ux*speed*.10,y:uy*speed*.10},
       );
     }
 
-    this.active.set(e.pointerId,{...p,t:now});
+    this.active.set(e.pointerId,{...p,t:now,lastNucleate:prev.lastNucleate||0});
     if(this.onWipe)this.onWipe({x:p.x,y:p.y,speed});
   }
 
