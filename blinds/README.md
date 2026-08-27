@@ -65,7 +65,7 @@ of being faked with opacity — which is why a closed blind is genuinely opaque,
 count, on any screen.
 
 Each slat is one degree of freedom: an angle with a spring and a damper. A finger sets a
-target angle with a Gaussian falloff, so pressing opens a band about five slats tall, and
+target angle with a Gaussian falloff, so pressing opens the slat under it plus its neighbours, and
 the spring stiffens under the finger so the gap tracks it without lag and springs back
 loosely when released.
 

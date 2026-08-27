@@ -2,7 +2,7 @@
 // No DOM and no camera in here, so the feel can be tested without a device.
 
 export const MAX_ANGLE = 80;      // degrees; fully edge-on would be 90
-const SIGMA = 2.0;                // falloff of a finger's influence, in slats
+const SIGMA = 1.2;                // falloff of a finger's influence, in slats
 const K_REST = 380;               // spring stiffness when nothing is touching it
 const K_DRIVE = 2400;             // stiffness under a finger, so the gap tracks it
 const Z_REST = 0.55;              // damping ratio at rest: one small overshoot

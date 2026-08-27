@@ -2,9 +2,9 @@
 
 import { MAX_ANGLE } from './blind.js';
 
-const TARGET_PITCH = 30;   // CSS px between slat centre lines
-const MIN_SLATS = 12;
-const MAX_SLATS = 44;
+const TARGET_PITCH = 60;   // CSS px between slat centre lines
+const MIN_SLATS = 6;
+const MAX_SLATS = 22;
 const EPSILON = 0.05;      // degrees; below this a slat is not worth rewriting
 
 export function slatCountFor(height) {

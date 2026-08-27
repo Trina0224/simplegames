@@ -97,7 +97,7 @@ Coverage therefore falls out of the geometry instead of being faked with opacity
 
 ### Slat count
 
-`slats = clamp(round(windowHeight / targetPitch), 12, 44)`, with `targetPitch` around 26–34 CSS px. About 30 slats on a typical phone. Recompute on resize and orientation change; `P` is then `windowHeight / slats` so the blind always fills the window exactly.
+`slats = clamp(round(windowHeight / targetPitch), 6, 22)`, with `targetPitch` around 60 CSS px. About 14 slats on a typical phone — few enough that a slat reads as a real object rather than a stripe. Recompute on resize and orientation change; `P` is then `windowHeight / slats` so the blind always fills the window exactly.
 
 Add a hair to the slat height (about 1–2%) so sub-pixel rounding never opens a hairline seam through a closed blind.
 
@@ -122,7 +122,7 @@ Tᵢ = A_max · max over active pointers of exp(−(dᵢ / σ)²)
      and A_max = 80°
 ```
 
-- `σ ≈ 2.0` slats, so a finger opens a band about five slats tall — generous enough to see through, narrow enough to still feel like peeking.
+- `σ ≈ 1.2` slats, so a finger opens the slat it is on plus its immediate neighbours. With a 60 px pitch that is a peek roughly a finger and a half tall — the falloff is tuned in slats, so it has to shrink whenever the pitch grows.
 - `max` over pointers rather than a sum, so two nearby fingers cannot push past `A_max`.
 - Only the vertical distance matters. A real slat tilts along its whole length when you push one end, so a band opening across the full width is the physically honest result, not a simplification to apologise for.
 
