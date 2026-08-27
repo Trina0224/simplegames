@@ -11,7 +11,7 @@ import {
 import {
   KEYS, PRIMARY_DEGREES, chordFromId, extendedDefsFor,
   notePc, parseNote, prettyKey, resolveChord, voiceChord, bassNote,
-  brokenChordNotes, columnChordSteps, fillSteps,
+  brokenChordNotes, columnChordSteps, fillSteps, climbSteps,
 } from './theory.js';
 
 const state = loadSettings();
@@ -91,6 +91,12 @@ function startChord(chord, time, settings) {
   } else if (settings.mode === 'fill') {
     const meter = meterById(settings.meter);
     sequence = fillSteps(chord, bass, meter.beats * (meter.beatUnit === 8 ? 1 : 2));
+    stepUnit = 'eighth';
+  } else if (settings.mode === 'climb') {
+    const meter = meterById(settings.meter);
+    const eighths = meter.beats * (meter.beatUnit === 8 ? 1 : 2);
+    // A chord on every beat in x/4, and on each dotted-quarter pulse in 6/8.
+    sequence = climbSteps(chord, bass, eighths, meter.beatUnit === 8 ? 3 : 2);
     stepUnit = 'eighth';
   }
   const player = new ChordPlayer(engine, {

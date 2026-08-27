@@ -22,6 +22,7 @@ export const PLAYBACK_MODES = [
   { id: 'spread', name: 'Spread' },
   { id: 'columns', name: 'Bass + Chords' },
   { id: 'fill', name: 'Fill' },
+  { id: 'climb', name: 'Climb' },
 ];
 
 export const SUBDIVISIONS = [

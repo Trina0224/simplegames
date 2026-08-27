@@ -260,6 +260,39 @@ thicken as chords get more complicated. A slash bass replaces the low note of th
 Nothing reaches above the octave-and-a-half over the root, so the mode stays out of the
 melody's way even on the highest pads.
 
+### Climb
+
+A transition figure, for the bar between verses: an octave bass on every eighth note, under a
+right hand that turns up one inversion per beat.
+
+```text
+G, 4/4 -> G1+G2+B3+D4+G4 | G1+G2 | G1+G2+D4+G4+B4 | G1+G2
+          | G1+G2+G4+B4+D5 | G1+G2 | G1+G2+B4+D5+G5 | G1+G2
+```
+
+Each chord is the previous one with its bottom note moved an octave above the top, so the
+right hand walks upward through the bar. The climb restarts on the next downbeat rather than
+carrying on, so it never walks off the top of the keyboard however long a pad is held.
+
+The starting inversion is the one with the lowest top note above A3, which is what a hand
+falling on the keys would find. It therefore differs by chord — G starts on its third
+(`B3 D4 G4`), C starts in root position (`C4 E4 G4`) — and that is correct rather than
+inconsistent.
+
+Chord placement follows the meter's pulse:
+
+```text
+4/4 -> chord on each of the four beats
+3/4 -> chord on each of the three beats
+6/8 -> chord on the two dotted-quarter pulses, bass filling the rest
+```
+
+The bass is the root in two octaves, an octave below the other modes' bass. In C that reaches
+C1, the deepest note the app plays; on a small speaker it will be felt more than heard.
+
+Seventh chords give four-note stacks, so a downbeat is six notes at once. This is the densest
+mode in the app by a wide margin — see the note on polyphony below.
+
 ### Extended chords
 
 Block mode may sound every chord tone, for example G7 = G+B+D+F.
@@ -267,6 +300,15 @@ Block mode may sound every chord tone, for example G7 = G+B+D+F.
 Simple sequential accompaniment modes should remain short. Seventh/additional color tones must not automatically make the pattern much longer. The core triad may be used for Pattern/Up/Down/Up & Down while Block preserves the full chord color.
 
 Spread, Bass + Chords and Fill are exempt: all three are chosen deliberately when a wider figure is wanted, and all three carry the seventh — Fill only in its downbeat chord.
+
+---
+
+### Polyphony
+
+Climb schedules about thirty notes a bar, and a piano note rings for around four seconds, so
+voices accumulate faster than they decay. The audio engine therefore caps itself: past 48
+sounding voices it releases the oldest rather than letting an older device run out of breath.
+Nothing below Climb's density comes near that ceiling.
 
 ---
 
