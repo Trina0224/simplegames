@@ -73,6 +73,7 @@ export class ChordPlayer {
    * @param {object} opts
    *   voices  – midi notes of the chord voicing
    *   bass    – midi note or null
+   *   sequence – an explicit note figure, used instead of the derived arpeggio
    *   settings – { mode, subdivision, rhythm, meter, bpm, trigger }
    *   startTime – audio time of the first attack
    *   origin  – transport zero for grid alignment
@@ -95,7 +96,10 @@ export class ChordPlayer {
     this.rhythm = rhythmById(this.s.rhythm);
     this.subDur = subdivisionById(this.s.subdivision).beats * (60 / this.s.bpm);
     this.isArp = this.s.mode !== 'block';
-    this.arp = this.isArp ? arpeggioOrder(this.voices, this.s.mode) : null;
+    this.sequence = opts.sequence || null;
+    this.arp = this.isArp ? (this.sequence || arpeggioOrder(this.voices, this.s.mode)) : null;
+    // A supplied figure already starts on the bass note; a second one would double it.
+    if (this.sequence) this.bass = null;
 
     // Trigger mode lets go on its own after one measure.
     if (this.s.trigger === 'trigger') this.releaseAt = this.start + this.measureDur * 0.98;

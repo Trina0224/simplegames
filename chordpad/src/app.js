@@ -10,7 +10,7 @@ import {
 } from './patterns.js';
 import {
   KEYS, PRIMARY_DEGREES, chordFromId, extendedDefsFor,
-  notePc, parseNote, prettyKey, resolveChord, voiceChord, bassNote,
+  notePc, parseNote, prettyKey, resolveChord, voiceChord, bassNote, brokenChordNotes,
 } from './theory.js';
 
 const state = loadSettings();
@@ -81,9 +81,11 @@ function startChord(chord, time, settings) {
   const bass = bassNote(chord, { bass: state.bass, previous: prevBass });
   prevVoicing = voices;
   if (bass != null) prevBass = bass;
+  const sequence = settings.mode === 'spread' ? brokenChordNotes(chord, bass) : null;
   const player = new ChordPlayer(engine, {
     voices,
     bass,
+    sequence,
     settings,
     startTime: time,
     origin: scheduler.origin,

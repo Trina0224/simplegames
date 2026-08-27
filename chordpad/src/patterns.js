@@ -9,12 +9,15 @@ export const METERS = [
 // Playback describes how one chord is voiced over time. Pattern is the primary
 // accompaniment mode: root -> fifth -> third -> fifth. Up/Down deliberately do
 // not add an extra octave; the pad should remain short and predictable.
+// Spread is the exception: a broken chord over three octaves, for hymns that
+// want a fuller left hand. Its six notes fill a bar of 3/4 or 6/8 exactly.
 export const PLAYBACK_MODES = [
   { id: 'block', name: 'Block' },
   { id: 'pattern', name: 'Pattern' },
   { id: 'arp-up', name: 'Up' },
   { id: 'arp-down', name: 'Down' },
   { id: 'arp-updown', name: 'Up & Down' },
+  { id: 'spread', name: 'Spread' },
 ];
 
 export const SUBDIVISIONS = [
