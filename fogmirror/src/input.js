@@ -40,9 +40,19 @@ export class MirrorInput {
       const x=prev.x+dx*t,y=prev.y+dy*t;
       this.field.wipe(x,y,0.034,speed,dx/(dist||1),dy/(dist||1));
     }
-    if(speed>.65 && dist>.018){
-      this.droplets.seed(p.x,p.y,Math.min(2.2,.6+speed*.55),Math.min(.075,.025+speed*.018),{x:dx/dt*.10,y:dy/dt*.10});
+
+    // Only a genuinely fast, meaningful sweep should knock loose macroscopic
+    // droplets. Ordinary handwriting should mostly leave wet edges and let beads
+    // form later through the condensation model.
+    if(speed>1.15 && dist>.030){
+      const amount=Math.min(1.15,.22+(speed-1.15)*.34);
+      this.droplets.seed(
+        p.x,p.y,amount,
+        Math.min(.050,.014+speed*.010),
+        {x:dx/dt*.055,y:dy/dt*.055},
+      );
     }
+
     this.active.set(e.pointerId,{...p,t:now});
     if(this.onWipe)this.onWipe({x:p.x,y:p.y,speed});
   }
