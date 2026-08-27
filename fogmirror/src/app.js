@@ -1,130 +1,218 @@
+// app.js — orchestration: sizes the simulation, runs the clock, wires the
+// controls. The physics lives in condensation.js and droplets.js; the optics
+// live in render.js; gravity comes from orientation.js unchanged.
+
+import { Surface } from './condensation.js';
+import { FlowSystem } from './droplets.js';
+import { MirrorRenderer } from './render.js';
 import { MirrorCamera } from './camera.js';
 import { GravitySensor } from './orientation.js';
-import { CondensationField } from './condensation.js';
-import { DropletSystem } from './droplets.js';
-import { MirrorRenderer } from './render.js';
-import { MirrorInput } from './input.js';
+import { PointerPaths } from './input.js';
 
-const canvas=document.getElementById('mirror');
-const video=document.getElementById('camera');
-const startCard=document.getElementById('startCard');
-const startBtn=document.getElementById('startBtn');
-const steamBtn=document.getElementById('steamBtn');
-const cameraBtn=document.getElementById('cameraBtn');
-const motionBtn=document.getElementById('motionBtn');
-const homeBtn=document.getElementById('homeBtn');
-const statusEl=document.getElementById('status');
-const gravityDebug=document.getElementById('gravityDebug');
-const gravityArrow=document.getElementById('gravityArrow');
-const gravityValues=document.getElementById('gravityValues');
+const GRID_SHORT = 144;      // simulation cells across the shorter axis
+const STEP = 1 / 60;
+const MAX_STEPS = 3;
+const FINGER_PX = 19;        // contact radius of a fingertip, in CSS pixels
 
-const camera=new MirrorCamera(video);
-const gravity=new GravitySensor();
-const field=new CondensationField(190,190);
-const droplets=new DropletSystem(field);
-const renderer=new MirrorRenderer(canvas,video,field,droplets);
-const input=new MirrorInput(canvas,field,droplets,()=>gravity.vector());
-
-let running=true;
-let last=performance.now();
-let statusTimer=null;
-let started=false;
-
-function status(text,ms=2400){
-  statusEl.textContent=text;
-  statusEl.classList.add('show');
-  clearTimeout(statusTimer);
-  statusTimer=setTimeout(()=>statusEl.classList.remove('show'),ms);
-}
-
-function resize(){
-  renderer.resize(innerWidth,innerHeight,devicePixelRatio||1);
-}
-addEventListener('resize',resize,{passive:true});
-resize();
-
-function syncButtons(){
-  cameraBtn.classList.toggle('on',camera.enabled);
-  cameraBtn.textContent=camera.enabled?'Camera on':'Camera';
-  motionBtn.classList.toggle('on',gravity.enabled);
-  motionBtn.textContent=gravity.enabled?'Gravity on':'Gravity';
-  gravityDebug.classList.toggle('show',gravity.enabled);
-}
-
-function updateGravityDebug(){
-  if(!gravity.enabled)return;
-  const d=gravity.debug();
-  const v=d.vector;
-  const angle=Math.atan2(v.y,v.x)*180/Math.PI-90;
-  gravityArrow.style.transform=`rotate(${angle}deg)`;
-  const b=Number.isFinite(d.raw?.beta)?d.raw.beta.toFixed(1):'—';
-  const g=Number.isFinite(d.raw?.gamma)?d.raw.gamma.toFixed(1):'—';
-  const a=Number.isFinite(d.raw?.screenAngle)?d.raw.screenAngle:'—';
-  gravityValues.textContent=`β ${b}°  γ ${g}°  screen ${a}°\ngx ${v.x.toFixed(2)}  gy ${v.y.toFixed(2)}  plane ${v.plane.toFixed(2)}`;
-}
-
-async function startExperience(){
-  if(started)return;
-  started=true;
-  const cameraPromise=camera.start();
-  const gravityPromise=gravity.start();
-  startCard.classList.add('hidden');
-  const [cam,motion]=await Promise.all([cameraPromise,gravityPromise]);
-  syncButtons();
-  if(cam&&motion) status('Mirror + gravity ready · check the arrow');
-  else if(cam) status('Camera ready · gravity uses screen-down fallback');
-  else if(motion) status('Gravity ready · camera unavailable');
-  else status('Camera/motion unavailable · touch simulation still works');
-}
-
-startBtn.addEventListener('click',startExperience);
-
-steamBtn.addEventListener('click',()=>{
-  field.steam(1.35);
-  status('Steam spreading across the mirror',1300);
-});
-
-cameraBtn.addEventListener('click',async()=>{
-  if(camera.enabled){camera.stop();syncButtons();status('Camera off');return;}
-  const ok=await camera.start();syncButtons();status(ok?'Camera on':'Camera permission unavailable');
-});
-
-motionBtn.addEventListener('click',async()=>{
-  if(gravity.enabled){gravity.stop();syncButtons();status('Gravity sensor off · screen-down fallback');return;}
-  const ok=await gravity.start();syncButtons();status(ok?'Gravity on · arrow shows computed physical down':'Motion permission unavailable');
-});
-
-homeBtn.addEventListener('click',()=>{ location.href='../'; });
-
-input.onWipe=({speed})=>{
-  if(speed>1.7 && Math.random()<.10) status('Water disturbed',650);
+const el = {
+  app: document.getElementById('app'),
+  canvas: document.getElementById('glass'),
+  video: document.getElementById('video'),
+  surface: document.getElementById('surface'),
+  start: document.getElementById('start'),
+  message: document.getElementById('message'),
+  diag: document.getElementById('diag'),
+  steamBtn: document.getElementById('steamBtn'),
+  cameraBtn: document.getElementById('cameraBtn'),
+  infoBtn: document.getElementById('infoBtn'),
 };
 
-function frame(now){
-  if(!running)return;
-  const dt=Math.min(.05,Math.max(0,(now-last)/1000));
-  last=now;
-  field.update(dt);
-  const gv=gravity.vector();
-  droplets.update(dt,gv);
-  renderer.render(camera.enabled);
-  updateGravityDebug();
+const surface = new Surface(GRID_SHORT, GRID_SHORT);
+const flows = new FlowSystem(surface);
+const renderer = new MirrorRenderer(el.canvas);
+const camera = new MirrorCamera(el.video);
+const gravity = new GravitySensor();
+
+let cellSize = 1;
+let viewW = 1;
+let viewH = 1;
+let started = false;
+let running = false;
+let last = 0;
+let accumulator = 0;
+let steamUntil = 0;
+let messageTimer = null;
+let showDiag = false;
+let wantCamera = true;
+
+// ---------------------------------------------------------------- layout
+
+function layout() {
+  const rect = el.app.getBoundingClientRect();
+  viewW = Math.max(1, rect.width);
+  viewH = Math.max(1, rect.height);
+  const short = Math.min(viewW, viewH);
+  cellSize = short / GRID_SHORT;
+  const cols = Math.max(32, Math.round(viewW / cellSize));
+  const rows = Math.max(32, Math.round(viewH / cellSize));
+  surface.resize(cols, rows);
+  renderer.setSurfaceSize(cols, rows);
+  // Cap the backing store: refraction is per-pixel, and a retina tablet at full
+  // density is a lot of pixels for a phone GPU to blur nine times over.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const budget = 2.6e6;
+  const scale = Math.min(dpr, Math.sqrt(budget / (viewW * viewH)));
+  renderer.resize(viewW, viewH, Math.max(1, scale));
+}
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(layout, 150);
+});
+window.addEventListener('orientationchange', () => setTimeout(layout, 250));
+
+// ---------------------------------------------------------------- input
+
+new PointerPaths(el.surface, (stroke) => {
+  if (!started) return;
+  const g = gravity.vector();
+  const r = FINGER_PX / cellSize;
+  const x0 = stroke.x0 / cellSize;
+  const y0 = stroke.y0 / cellSize;
+  const x1 = stroke.x1 / cellSize;
+  const y1 = stroke.y1 / cellSize;
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const steps = Math.max(1, Math.ceil(dist / (r * 0.55)));
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    surface.wipe(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r, g, stroke.speed);
+  }
+  wake();
+});
+
+// ---------------------------------------------------------------- loop
+
+function wake() {
+  if (running) return;
+  running = true;
+  last = performance.now();
+  accumulator = 0;
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
 
-document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){
+function frame(now) {
+  if (!running) return;
+  const dt = Math.min(0.25, (now - last) / 1000);
+  last = now;
+  accumulator += dt;
+
+  const g = gravity.vector();
+  let steps = 0;
+  while (accumulator >= STEP && steps < MAX_STEPS) {
+    if (now < steamUntil) surface.steam(0.55 * STEP);
+    surface.tick(STEP, g);
+    flows.update(STEP, g);
+    accumulator -= STEP;
+    steps += 1;
+  }
+  if (steps === MAX_STEPS) accumulator = 0;
+
+  renderer.draw(surface, flows.heads, el.video);
+  if (showDiag) updateDiag(g);
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- controls
+
+function showMessage(text) {
+  el.message.textContent = text || '';
+  el.message.classList.toggle('show', !!text);
+  clearTimeout(messageTimer);
+  if (text) messageTimer = setTimeout(() => el.message.classList.remove('show'), 4200);
+}
+
+function updateControls() {
+  const live = camera.enabled;
+  el.cameraBtn.setAttribute('aria-pressed', live ? 'true' : 'false');
+  el.cameraBtn.textContent = live ? 'Camera on' : 'Camera off';
+  el.infoBtn.setAttribute('aria-pressed', showDiag ? 'true' : 'false');
+}
+
+function updateDiag(g) {
+  const d = gravity.debug();
+  el.diag.textContent = [
+    `gravity  ${g.x >= 0 ? ' ' : ''}${g.x.toFixed(2)}, ${g.y >= 0 ? ' ' : ''}${g.y.toFixed(2)}   plane ${g.plane.toFixed(2)}`,
+    `raw      ${d.raw.x.toFixed(2)}, ${d.raw.y.toFixed(2)}, ${d.raw.z.toFixed(2)}`,
+    `sensor   ${d.enabled ? 'devicemotion' : 'off (screen down)'}`,
+    `heads    ${flows.heads.length}   merges ${flows.merges}`,
+    `water    surface ${surface.totalWater().toFixed(0)}  moving ${flows.totalMass().toFixed(0)}`,
+    `renderer ${renderer.ok ? 'webgl' : '2d fallback'}`,
+  ].join('\n');
+}
+
+el.steamBtn.addEventListener('click', () => {
+  steamUntil = performance.now() + 1600;
+  wake();
+});
+
+el.cameraBtn.addEventListener('click', async () => {
+  if (camera.enabled) {
     camera.stop();
-    syncButtons();
-    last=performance.now();
+    wantCamera = false;
+  } else {
+    wantCamera = true;
+    const ok = await camera.start();
+    if (!ok) showMessage('No camera — the glass still works');
+  }
+  updateControls();
+});
+
+el.infoBtn.addEventListener('click', () => {
+  showDiag = !showDiag;
+  el.diag.hidden = !showDiag;
+  updateControls();
+});
+
+// ---------------------------------------------------------------- start
+
+async function begin() {
+  if (started) return;
+  started = true;
+  el.start.hidden = true;
+  layout();
+
+  const cam = await camera.start();
+  if (!cam) showMessage('No camera — the glass still works');
+  const motion = await gravity.start();
+  if (!motion) showMessage('No motion sensor — water runs down the screen');
+
+  surface.steam(0.35);
+  updateControls();
+  wake();
+}
+
+el.start.addEventListener('click', begin);
+el.start.addEventListener('pointerdown', (e) => e.preventDefault());
+
+// ---------------------------------------------------------------- lifecycle
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    camera.stop();
+    running = false;
+  } else if (started) {
+    if (wantCamera) camera.start().then(updateControls);
+    wake();
   }
 });
 
-addEventListener('pagehide',()=>{
-  running=false;
-  camera.stop();
-  gravity.stop();
-});
+window.addEventListener('pagehide', () => { camera.stop(); gravity.stop(); });
 
-window.fogMirror={camera,gravity,field,droplets,renderer};
+// ---------------------------------------------------------------- boot
+
+layout();
+renderer.draw(surface, flows.heads, el.video);
+
+// Handy from Safari's inspector on a real device; it cannot capture anything.
+window.fogMirror = { surface, flows, gravity, renderer, camera, layout, cellSize: () => cellSize };

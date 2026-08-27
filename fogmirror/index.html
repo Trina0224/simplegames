@@ -1,43 +1,39 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<meta name="theme-color" content="#0b1114">
+<meta name="theme-color" content="#0d0f13">
+<meta name="description" content="Fog Mirror — a steamed mirror on your screen. Wipe the condensation and watch the water run.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Fog Mirror</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="app" class="app">
-  <video id="camera" class="camera" autoplay playsinline muted aria-hidden="true"></video>
-  <canvas id="mirror" class="mirror" aria-label="Fogged mirror surface"></canvas>
+<div class="app" id="app">
+  <canvas id="glass"></canvas>
+  <video id="video" playsinline muted autoplay disablepictureinpicture></video>
+  <div class="surface" id="surface" tabindex="0" role="application"
+       aria-label="Fogged mirror. Drag a finger to wipe the condensation."></div>
 
-  <div class="fallback" id="fallback" aria-hidden="true">
-    <div class="fallback-glow"></div>
+  <p class="message" id="message" role="status"></p>
+
+  <div class="controls">
+    <button class="pill" id="steamBtn" type="button">Steam</button>
+    <button class="pill" id="cameraBtn" type="button" aria-pressed="false">Camera off</button>
+    <button class="pill ghost" id="infoBtn" type="button" aria-pressed="false">i</button>
   </div>
 
-  <header class="topbar">
-    <button id="steamBtn" class="pill primary" type="button">Steam</button>
-    <div class="spacer"></div>
-    <button id="cameraBtn" class="pill" type="button">Camera</button>
-    <button id="motionBtn" class="pill" type="button">Gravity</button>
-    <button id="homeBtn" class="pill icon" type="button" aria-label="Back to simplegames">×</button>
-  </header>
+  <pre class="diag" id="diag" hidden></pre>
 
-  <div id="startCard" class="start-card">
-    <div class="start-copy">
+  <button class="start" id="start" type="button">
+    <span class="start-card">
       <strong>Fog Mirror</strong>
-      <span>Tap once to use the front camera and device gravity.</span>
-    </div>
-    <button id="startBtn" type="button">Touch the mirror</button>
-  </div>
-
-  <div id="gravityDebug" class="gravity-debug" aria-hidden="true">
-    <div id="gravityArrow" class="gravity-arrow">↓</div>
-    <div id="gravityValues" class="gravity-values"></div>
-  </div>
-
-  <div id="status" class="status" role="status" aria-live="polite"></div>
+      <span>Tap to steam up the glass, then wipe it with a finger.<br>Tilt the device and the water runs downhill.</span>
+      <small>The front camera is the reflection. Nothing is photographed, recorded or sent anywhere.</small>
+    </span>
+  </button>
 </div>
 <script type="module" src="src/app.js"></script>
 </body>
