@@ -14,6 +14,9 @@ const cameraBtn=document.getElementById('cameraBtn');
 const motionBtn=document.getElementById('motionBtn');
 const homeBtn=document.getElementById('homeBtn');
 const statusEl=document.getElementById('status');
+const gravityDebug=document.getElementById('gravityDebug');
+const gravityArrow=document.getElementById('gravityArrow');
+const gravityValues=document.getElementById('gravityValues');
 
 const camera=new MirrorCamera(video);
 const gravity=new GravitySensor();
@@ -45,6 +48,19 @@ function syncButtons(){
   cameraBtn.textContent=camera.enabled?'Camera on':'Camera';
   motionBtn.classList.toggle('on',gravity.enabled);
   motionBtn.textContent=gravity.enabled?'Gravity on':'Gravity';
+  gravityDebug.classList.toggle('show',gravity.enabled);
+}
+
+function updateGravityDebug(){
+  if(!gravity.enabled)return;
+  const d=gravity.debug();
+  const v=d.vector;
+  const angle=Math.atan2(v.y,v.x)*180/Math.PI-90;
+  gravityArrow.style.transform=`rotate(${angle}deg)`;
+  const b=Number.isFinite(d.raw?.beta)?d.raw.beta.toFixed(1):'—';
+  const g=Number.isFinite(d.raw?.gamma)?d.raw.gamma.toFixed(1):'—';
+  const a=Number.isFinite(d.raw?.screenAngle)?d.raw.screenAngle:'—';
+  gravityValues.textContent=`β ${b}°  γ ${g}°  screen ${a}°\ngx ${v.x.toFixed(2)}  gy ${v.y.toFixed(2)}  plane ${v.plane.toFixed(2)}`;
 }
 
 async function startExperience(){
@@ -55,9 +71,9 @@ async function startExperience(){
   startCard.classList.add('hidden');
   const [cam,motion]=await Promise.all([cameraPromise,gravityPromise]);
   syncButtons();
-  if(cam&&motion) status('Mirror + physical gravity ready');
+  if(cam&&motion) status('Mirror + gravity ready · check the arrow');
   else if(cam) status('Camera ready · gravity uses screen-down fallback');
-  else if(motion) status('Gravity ready · camera unavailable, using fallback mirror');
+  else if(motion) status('Gravity ready · camera unavailable');
   else status('Camera/motion unavailable · touch simulation still works');
 }
 
@@ -75,7 +91,7 @@ cameraBtn.addEventListener('click',async()=>{
 
 motionBtn.addEventListener('click',async()=>{
   if(gravity.enabled){gravity.stop();syncButtons();status('Gravity sensor off · screen-down fallback');return;}
-  const ok=await gravity.start();syncButtons();status(ok?'Physical gravity on · hold steady briefly to calibrate':'Motion permission unavailable');
+  const ok=await gravity.start();syncButtons();status(ok?'Gravity on · arrow shows computed physical down':'Motion permission unavailable');
 });
 
 homeBtn.addEventListener('click',()=>{ location.href='../'; });
@@ -89,8 +105,10 @@ function frame(now){
   const dt=Math.min(.05,Math.max(0,(now-last)/1000));
   last=now;
   field.update(dt);
-  droplets.update(dt,gravity.vector());
+  const gv=gravity.vector();
+  droplets.update(dt,gv);
   renderer.render(camera.enabled);
+  updateGravityDebug();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
