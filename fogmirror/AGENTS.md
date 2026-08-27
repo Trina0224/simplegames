@@ -2,363 +2,360 @@
 
 ## Purpose
 
-Fog Mirror is a touch-first browser toy that turns a phone or tablet into a convincingly fogged sauna/bathroom mirror.
+Fog Mirror is a touch-first browser toy that makes a phone or tablet feel like a real steamed bathroom / sauna mirror.
 
-The live **front-facing camera** is the reflection. Over it sits a physically inspired condensation layer that can be wiped, written in, re-fogged, and disturbed into droplets that merge and run according to the device's physical orientation.
+The live front camera is the reflection. The simulated glass carries fine condensation, liquid water, wetness memory, and a small number of connected water flows. The user can wipe the fog, write with a finger, re-fog the surface, and watch displaced water gather, merge, depin, and run under physical gravity.
 
-The point is not productivity. The point is that touching the screen should feel uncannily like touching a real steamed-up mirror.
+The primary design target is **believable physical behavior**, not a generic particle effect.
 
-Primary targets:
+Primary devices:
 
 - iPhone
 - iPad / iPad mini
-- Android phones/tablets when practical
+- Android phones/tablets where practical
 
-Static hosting on GitHub Pages is preferred. No backend.
-
----
-
-## Product principles
-
-1. **Realism is the feature.** Do not settle for a translucent gray overlay with erased circles.
-2. **The camera is the mirror.** Use the front-facing camera by default and mirror it horizontally so motion matches an actual mirror.
-3. **Condensation has memory.** Previously wiped/wet paths should affect where later moisture gathers and runs.
-4. **Water has mass.** Droplets should nucleate, grow, merge, accelerate under physical gravity, leave trails, and occasionally split or pin to the surface.
-5. **Gravity follows the device.** Water must react to the actual direction of gravity projected onto the glass, not blindly to screen-down.
-6. **Touch feels physical.** A fingertip should push/clear moisture locally; a fast broad swipe should disturb a large wet area differently from careful drawing.
-7. **The toy must remain private.** No photo capture, no recording, no upload, no camera frames sent to a server.
-8. **Graceful degradation.** If camera permission is denied, the condensation toy should still work over a fallback mirrored/neutral background.
-9. **Do not fake unsupported sensing.** Breath detection is experimental. Never claim the browser can directly sense humidity or steam when it cannot.
+Static GitHub Pages only. No backend.
 
 ---
 
-## Physics implementation contract
+## Read these first
 
-Read [`PHYSICS.md`](PHYSICS.md) before changing condensation, droplet, trail, merge, or gravity behavior.
+Before changing condensation, droplets, flow, merge, pinning, rendering, or gravity, read:
 
-The water model is intentionally based on a **height-map + active flow-head + flow-ID** architecture inspired by published real-time water-on-glass work. Do not regress it to a large set of independent decorative particles.
+1. [`SPEC.md`](SPEC.md)
+2. [`PHYSICS.md`](PHYSICS.md)
 
-Required invariants:
-
-- `fog` is microscopic condensation / optical haze, not a list of macroscopic beads.
-- `water` is a conserved-ish surface-water height map and is the source of visible mobile water.
-- `wet` stores longer-lived hysteresis / trail memory; it is not free water mass.
-- active macroscopic objects are **flow heads/fronts**, normally few in number.
-- a head grows only by collecting surface water or merging another flow.
-- a moving head leaves residual water in a connected trail/body.
-- nearby flow bodies may merge through their rasterized trail/flow-ID regions even when head centers have not literally overlapped.
-- repeated wiping in one local basin should preferentially feed a dominant collector rather than make many parallel rivulets.
-- larger flows should depin more easily and achieve a higher terminal velocity as their mass increases.
-- wiping must place most displaced water on the physical gravity-down edge of the contact patch.
-
-Mass, merge, pinning, and trail behavior are correctness features, not purely visual tuning.
+`PHYSICS.md` is the source of truth for the simulation model.
 
 ---
 
-## Privacy / camera requirements
+## NON-NEGOTIABLE: gravity is frozen
 
-- Request `getUserMedia({ video: { facingMode: 'user' }, audio: false })` for normal mirror use.
-- Mirror the preview horizontally.
-- Do not create photos, blobs, screenshots, recordings, or uploads.
-- Stop all camera tracks when the user disables camera, leaves the page, or the document becomes hidden.
-- Keep camera lifecycle isolated in its own module when implementation begins.
-- If microphone-based breath experiments are added later, request microphone permission separately and only after explicit user action. It must be opt-in and must never be needed for normal use.
+The current iPad gravity mapping is a **golden reference** because it was verified on real hardware by the user.
 
----
+The verified implementation comes from repository commit:
 
-## Visual model
+`89b765f0420f40e0f7c1831d56a242b50dc1dce5` — `Fix Fog Mirror gravity direction on iPad`
 
-Treat the mirror surface as several interacting fields, not one opacity mask.
+Its essential behavior is:
 
-At minimum maintain conceptually separate quantities such as:
-
-- `fog(x,y)` — density of tiny condensation droplets / optical haze
-- `water(x,y)` — liquid water accumulated on the surface
-- `wetness(x,y)` — persistent surface wetting / recent trail memory
-- `flowId(x,y)` — ownership/connectivity of active/recent water bodies
-- active flow-head velocity — motion of the fronts along the glass
-- shared `(gx, gy)` — physical gravity projected into screen/glass coordinates
-
-These may be represented with textures, framebuffers, lower-resolution grids, particles, or a hybrid approach. The data representation is an implementation choice; the visible behavior is not.
-
-### Optical appearance
-
-Real fogged glass does not behave like a uniform white alpha layer.
-
-The condensation layer should combine:
-
-- strong local blur / loss of detail in the camera image
-- milky forward-scattering appearance
-- subtle brightness bloom around highlights
-- fine grain / micro-droplet variation
-- sharper, darker, more refractive edges around larger droplets
-- clearer streaks where liquid has displaced the fine fog
-
-Prefer WebGL/WebGL2 shaders or GPU-backed canvas effects if necessary for convincing realtime blur/refraction. A CPU-only per-pixel simulation at full camera resolution is likely too expensive on mobile.
-
----
-
-## Fog behavior
-
-### Initial state
-
-The mirror should begin heavily fogged, like a mirror in a hot sauna or bathroom immediately after a shower.
-
-The camera reflection should still be vaguely visible as large blurred forms but facial details should be strongly obscured.
-
-### Re-fog button
-
-Provide one obvious action to restore condensation.
-
-Re-fogging should **not** erase surface history instantly.
-
-If a path was recently wiped or had water run through it:
-
-- fog can return over it,
-- but the remaining wetness should encourage new droplets to gather there,
-- so old trails subtly reappear as preferred flow channels.
-
-This is important to making the mirror feel like the same physical surface over time.
-
-### Natural re-condensation
-
-After a region is wiped clear, fine fog may slowly return even without pressing Re-fog. Keep this slow enough that drawings remain enjoyable.
-
----
-
-## Finger interaction
-
-### Slow drawing / writing
-
-Dragging a fingertip should clear fine fog along the path, allowing the camera reflection to show through.
-
-The cleared path should:
-
-- have a soft pressure-sized edge rather than a perfect vector stroke,
-- push moisture primarily to the physical gravity-down edge and secondarily to side ridges,
-- leave residual wetness rather than becoming perfectly dry,
-- allow smiley faces, names, hearts, etc. to remain readable for a while.
-
-A finger stroke is not an eraser. It redistributes moisture.
-
-### Large / fast swipe
-
-A fast long swipe should produce a visibly different event:
-
-- clear a broader region,
-- shear accumulated water,
-- feed one or a few dominant collectors near the downhill/leading edge,
-- disturb existing flow heads,
-- cause runoff after the hand passes.
-
-The toy should reward exaggerated gestures without spraying hundreds of unrelated droplets.
-
-Multi-touch is desirable: several fingers can wipe several paths at once.
-
----
-
-## Droplet / flow model
-
-This is the core realism requirement. Detailed design lives in `PHYSICS.md`.
-
-### Nucleation
-
-Visible macroscopic heads should emerge only where enough water accumulates from a recent disturbed/wiped region. Untouched fog must not spontaneously become a field of visible beads.
-
-Prefer feeding an existing dominant collector over creating a new head.
-
-### Growth and merge
-
-A formed head actively collects nearby surface water. Moving heads collect from a wider catchment and should grow as they descend through a wet region.
-
-When flows touch, merge their mass and momentum approximately. Body/trail contact counts as a merge condition, not only exact head-circle overlap.
-
-### Gravity and device orientation — REQUIRED FOR v0.1
-
-Do **not** hard-code gravity as screen-down on supported mobile devices.
-
-Use device motion/orientation sensing to estimate the physical gravity vector, then project it into the current screen coordinate system.
-
-Preferred signal:
-
-- `DeviceMotionEvent.accelerationIncludingGravity`
-- low-pass filtered to isolate the slowly varying gravity vector
-- a calibration/reference strategy rather than relying on one hard-coded axis sign
-- screen-orientation delta handling so portrait/landscape changes do not invert flow
-
-The simulation needs the component of gravity **along the mirror plane**:
-
-- device held upright: droplets visibly run toward physical down
-- device tilted diagonally: droplets run diagonally
-- device rotated 90°: established flows change direction
-- device nearly flat: in-plane gravity becomes small, so drops slow, pin, or pool instead of continuing to march toward screen-bottom
-
-Raw accelerometer values must not be fed directly into droplets. Hand tremor and transient motion must be filtered.
-
-### Pinning
-
-Use a force-style comparison, not only a hard radius threshold:
-
-```text
-drive      ~= gravityAlongGlass * mobileMass
-resistance ~= contact/pinning term modified by local wetness, heterogeneity, and recent merge state
+```js
+const a = e.accelerationIncludingGravity;
+const mag = Math.max(0.001, Math.hypot(a.x, a.y, a.z || 0));
+const tx = -a.x / mag;
+const ty = -a.y / mag;
 ```
 
-Small heads may stay pinned while a larger neighbouring head moves.
+with low-pass filtering and **no additional `screen.orientation` rotation**.
 
-### Trails
+On the tested iPad this gives the correct physical directions:
 
-A moving flow leaves a connected wet body / residual trail in simulation state.
+- upright device -> screen down
+- physical right edge down -> screen right
+- physical left edge down -> screen left
+- nearly flat -> weak in-plane gravity
 
-That trail should:
+### Rule
 
-- remain wet for a while,
-- reduce future pinning,
-- attract/funnel later water,
-- participate in body-contact merging,
-- gradually narrow/fade as it evaporates/re-fogs.
+**Do not rewrite, recalibrate, reinterpret, or replace this gravity mapping unless a new real-device test first demonstrates a concrete regression.**
 
-Do not implement the trail only as a visual line disconnected from the water state.
+Do not switch to `DeviceOrientationEvent` merely because it looks theoretically cleaner. Do not add a second screen-orientation transform. Do not infer axis signs from documentation when the existing mapping has already been empirically validated on the target hardware.
 
----
-
-## Camera composition
-
-The user's reflection should sit *behind* the entire simulated glass/water layer.
-
-Recommended conceptual render order:
-
-1. front camera video, mirrored horizontally
-2. optical distortion/refraction from water height / large flow heads / streaks
-3. fine condensation blur/scatter
-4. partial highlights/menisci derived from water normals
-5. minimal UI controls
-
-The UI should not look like a camera app. No shutter button.
+Gravity may expose debug data, but debug code must not change the vector calculation.
 
 ---
 
-## Breath / "haaa" experiment
+## Core simulation contract
 
-### Reality constraint
+The water model is based on a **surface-water height map + wetness memory + a small number of active flow heads/fronts + a flow-ID/connectivity map**.
 
-A normal phone browser has no humidity sensor API and the front camera cannot directly see ordinary warm breath reliably.
+It is inspired primarily by Chen, Chen & Wong (2013), who combine particles/fronts with a height map and ID map to simulate water drops, flows, merging, and residual water on glass.
 
-There are three possible proxies, none perfect:
+Do not regress this into hundreds of unrelated decorative particles.
 
-1. **Microphone exhalation detection**
-   - Breath produces broadband low-energy noise.
-   - Could inspect local spectral energy / noise character with Web Audio.
-   - Problems: speech, wind, fans, rubbing the microphone and room noise produce false positives.
-   - Requires microphone permission.
+Required state concepts:
 
-2. **Face-scale / approach heuristic from camera**
-   - Do not assume the mouth can be continuously tracked once the mirror is heavily fogged.
-   - More practical signal: a face rapidly grows larger / approaches the device, with recent face motion providing a coarse region where fog should appear.
-   - This estimates *intent* and location approximately, not actual steam.
-
-3. **Hybrid heuristic**
-   - Require a recent face-approach event plus an exhalation-like microphone signal.
-   - Infer a broad target region from the face trajectory rather than demanding precise mouth coordinates.
-   - Generate one fairly large local condensation patch; precision is less important than believable cause/effect.
-   - More convincing but significantly more engineering and permission burden.
-
-### Scope decision
-
-**Breath sensing is NOT required for v0.1.**
-
-For v0.1 include a manual/gesture-equivalent way to create local fresh fog if useful for testing the visual effect.
-
-For a later experiment, the hybrid face-approach + breath-noise heuristic is the preferred direction. If it is unreliable, remove it rather than shipping a gimmick that triggers incorrectly.
-
-If breath mode is implemented:
-
-- all analysis stays local,
-- no audio is stored or transmitted,
-- provide a clear microphone-off state,
-- ordinary mirror interaction works fully without microphone permission.
+- `fog(x,y)` — microscopic condensation / optical haze
+- `water(x,y)` — liquid-water height map; this is real available water mass
+- `wet(x,y)` — longer-lived wetness / hysteresis memory, not free water mass
+- `flowId(x,y)` — low-resolution connected-flow ownership / merge support
+- active `flow heads` — small set of mobile fronts carrying explicit mass and momentum
+- `(gx, gy, plane)` — frozen, validated physical gravity projection
 
 ---
 
-## Suggested implementation architecture
+## Water mass rules
 
-Keep components separate:
+Water may enter or move between representations only through explicit transfers.
 
-- `camera.js` — front camera acquisition/lifecycle only
-- `orientation.js` — device-motion permission, gravity filtering, calibration, screen-coordinate transform
-- `input.js` — pointer/multi-touch strokes and gesture velocity
-- `condensation.js` — fog / water height / wetness evolution
-- `droplets.js` — active flow heads, mass, flow IDs, merge, pinning, gravity, connected trails
-- `render.js` — GPU/canvas composition and optical effects
-- `app.js` — state, controls, animation loop, persistence
-- optional later `breath.js` — local breath heuristic only
+Allowed sources / transfers:
 
-A hybrid simulation is required in spirit:
+- wiping converts part of local fog into liquid surface water
+- wiping transports surface water toward the gravity-down side of the contact footprint
+- a flow head consumes water from the height map
+- one flow may consume / merge another flow's mass
+- a moving flow deposits a smaller residual amount into its trail/body
+- slow re-condensation may add small amounts of surface water on already-wet glass
 
-- low-resolution fog/water/wetness maps
-- low-resolution flow-ID/connectivity map
-- only a few active flow heads
-- GPU/Canvas optics layered over that simulation state
+Forbidden behavior:
 
-Do not simulate millions of literal microdroplets, and do not fake condensation by spawning hundreds of independent macroscopic circles.
+- visible droplets growing without consuming water or merging
+- Steam directly spawning macroscopic droplets
+- random whole-screen visible nucleation
+- generating a large drop from a single tiny fog sample
 
----
-
-## Performance requirements
-
-- Target smooth realtime interaction on modern iPhone/iPad Safari.
-- Prefer 60 fps, but stable 30 fps is better than unstable 60.
-- Scale simulation resolution independently from display resolution.
-- Camera video does not need to be processed at native sensor resolution.
-- Keep active flow-head count small.
-- Use flow-ID/spatial structures rather than large O(N²) particle clouds when possible.
-- Pause expensive simulation and stop the camera when the document is hidden.
-- Respect `prefers-reduced-motion` by reducing flowing/animated motion while keeping wiping functional.
+Approximate conservation is required even though this is a realtime heuristic model.
 
 ---
 
-## Controls
+## Finger wiping contract
 
-Keep controls minimal and visually secondary.
+A finger is a displacement event, not an eraser.
 
-Required:
+For each stroke sample:
 
-- Re-fog / Steam
-- Camera on/off
-- one-time motion/orientation permission flow where required by the platform
+1. reduce fine fog under the contact footprint
+2. convert a meaningful fraction of removed condensation to surface water
+3. transport most mobile water toward the **physical gravity-down edge** of the contact patch
+4. leave a smaller side ridge / wet film
+5. update wetness memory
+6. offer only a small number of local pooling/nucleation sites
 
-Possible settings hidden behind a small settings control:
+Expected behavior:
 
-- fog density
-- re-condensation speed
-- water amount / wetness feel
-- sound on/off if subtle wiping/water audio is added
-- experimental Breath mode (future only)
-
-Do not expose physics tuning parameters to normal users.
+- no uniform row of dots along the entire stroke
+- no droplets away from disturbed/wet regions
+- repeated wiping in one basin should preferentially feed an existing dominant collector
+- a fast swipe may create stronger pooling, but must not spray hundreds of unrelated beads
 
 ---
 
-## v0.1 definition of done
+## Flow-head model
 
-v0.1 succeeds when:
+A visible moving drop is the **front/head of a connected water body**, not an isolated marble.
 
-1. The front camera behaves like a mirrored reflection.
-2. The screen begins convincingly fogged rather than covered by a simple translucent layer.
-3. A finger can write a recognizable smiley face or word into the condensation.
-4. Wiping redistributes moisture rather than merely deleting opacity.
-5. Water appears mainly at the gravity-down edge of disturbed regions.
-6. Repeated wiping in one local basin tends toward one dominant flow or a few, not dozens of parallel drops.
-7. Tiny heads can remain pinned while larger flows move.
-8. A moving flow grows as it collects water and can visibly accelerate with added mass.
-9. Two nearby flow bodies can merge through trail/body contact.
-10. Flows respond to the physical gravity direction of the device on supported mobile hardware.
-11. Rotating/tilting the device changes water-flow direction plausibly.
-12. Nearly flat orientation reduces in-plane flow rather than forcing water toward screen-bottom.
-13. Running flows leave persistent residual wet trails that influence later water.
-14. Re-fogging covers the mirror again without erasing all wetness memory.
-15. Camera frames are never captured, stored, uploaded, or recorded.
-16. The toy remains usable when camera or motion permission is denied, with appropriate fallbacks.
-17. It runs as a static GitHub Pages app with no backend.
+Each active flow should conceptually contain:
 
-Breath sensing is explicitly outside the v0.1 acceptance gate.
+```text
+id
+x, y
+mass
+vx, vy
+pinned
+footprintRadius
+trailWidth
+age
+```
+
+A head's visible radius / footprint must derive from its mass.
+
+A moving head should:
+
+- collect height-map water from a catchment larger than its visible footprint
+- collect more aggressively while moving
+- become visibly larger as mass increases
+- become more likely to depin as mass increases
+- have a higher terminal speed as mass increases
+- leave residual wet water in a connected trail
+
+The desired visual sequence is:
+
+```text
+small bead
+-> collects nearby film / small drops
+-> becomes a small drop
+-> depins
+-> begins creeping
+-> sweeps up more water
+-> grows
+-> accelerates
+```
+
+---
+
+## Merge behavior is a correctness requirement
+
+Two nearby water paths must not remain parallel forever.
+
+Support at least these merge paths:
+
+1. **head-head merge** — visible fronts overlap / nearly overlap
+2. **head-body merge** — a head reaches another flow's wet connected body
+3. **body-body merge** — two connected trail regions touch / overlap in the flow-ID map
+4. **dominant collector capture** — a small nearby bead/flow is pulled into a larger local collector instead of continuing independently
+
+When flows merge:
+
+- preserve approximate combined mass
+- combine momentum sensibly
+- select one dominant surviving head/front
+- unify flow IDs / body ownership
+- prefer the larger or downstream head when choosing the surviving front
+
+A merge should normally produce one stronger flow rather than two overlapping rendered lines.
+
+---
+
+## Pinning / hysteresis
+
+Do not use only `radius > threshold`.
+
+Use a force-style heuristic inspired by contact-angle hysteresis:
+
+```text
+drive ~= inPlaneGravity * mobileMass
+resistance ~= basePinning * contactFactor * surfaceFactor
+```
+
+Resistance should decrease on:
+
+- old wet trails
+- thick local film
+- recently merged flow
+
+Resistance should increase for:
+
+- tiny heads
+- dry / untouched glass
+- stable surface heterogeneity
+
+Small beads may remain pinned while a neighbouring larger drop moves.
+
+---
+
+## Trail contract
+
+A trail is simulation state, not just a drawn line.
+
+A moving flow must write:
+
+- residual water
+- increased wetness
+- reduced fog
+- connected flow-ID/body information
+
+A trail should:
+
+- be narrower than the head
+- remain wet for a while
+- reduce later pinning
+- guide future water
+- participate in merge detection
+- gradually fade / re-fog
+
+Do not render a constant-width dark stroke behind every drop.
+
+---
+
+## Rendering contract
+
+Simulation and optics are separate.
+
+Visible water should be derived from the water height field plus active flow heads/bodies.
+
+Avoid:
+
+- full gray/white outlines around every drop
+- constant-width black trails
+- circles that read as UI dots
+- particle sprites unrelated to underlying water mass
+
+Prefer:
+
+- height-gradient normals
+- camera refraction / displacement
+- partial Fresnel highlights
+- darker meniscus/contact region only where appropriate
+- mass-dependent head footprint
+- elongation in the direction of motion
+- continuous blending between head and trail/body
+- lower-resolution simulation buffers upscaled smoothly for mobile performance
+
+A modern real-time reference is `frmlinn/raindrops-v2`, which separates glass-surface simulation from optical refraction rendering.
+
+---
+
+## Privacy / camera
+
+- front camera only by default
+- horizontally mirror the preview
+- `audio: false` for normal mirror use
+- no screenshots, photos, blobs, recordings, uploads, or frame transmission
+- stop camera tracks when disabled, hidden, or leaving page
+- breath experiments, if ever added, require separate explicit microphone permission and remain local-only
+
+---
+
+## Breath scope
+
+Breath detection is experimental and outside the v0.1 acceptance gate.
+
+Do not sacrifice fog/water realism for breath detection work.
+
+If revisited later, prefer a hybrid heuristic:
+
+- face rapidly approaches the screen
+- optional exhalation-like local audio signal
+- emit one broad local fog event
+
+No claim of actual humidity sensing.
+
+---
+
+## Implementation boundaries
+
+Recommended modules:
+
+- `camera.js` — camera lifecycle only
+- `orientation.js` — **frozen validated gravity implementation**
+- `input.js` — touch/pointer path and gesture velocity
+- `condensation.js` — fog/water/wetness fields and water transport
+- `droplets.js` — active flow heads, mass, merge, pinning, flow IDs, connected trails
+- `render.js` — optical composition/refraction
+- `app.js` — orchestration and controls
+
+Do not hide physics in rendering code.
+
+---
+
+## Performance
+
+- target current iPhone/iPad Safari
+- stable 30 fps is acceptable; 60 fps preferred
+- simulation resolution independent from display resolution
+- keep active flow-head count small
+- use flow-ID/spatial maps instead of large O(N^2) particle clouds
+- pause expensive work when hidden
+
+---
+
+## Required acceptance tests before calling physics 'better'
+
+1. Gravity remains correct on the previously tested iPad.
+2. Untouched fog does not become a field of visible beads.
+3. Wiping concentrates liquid primarily at the gravity-down edge.
+4. Repeated wiping in one local region tends toward one dominant drop or a few.
+5. A moving flow becomes larger as it collects water downstream.
+6. A larger flow reaches a higher speed than a smaller flow under the same gravity.
+7. Two nearby flows merge through head or body contact rather than remaining parallel indefinitely.
+8. Merge preserves approximate combined mass.
+9. Trails retain residual water and influence later flow.
+10. Water rendering does not look like independent dots dragging black lines.
+
+---
+
+## References
+
+Primary physics reference:
+
+- Kai-Chun Chen, Pei-Shan Chen, Sai-Keung Wong. **A heuristic approach to the simulation of water drops and flows on glass panes.** *Computers & Graphics*, 37(8), 963–973, 2013. DOI: https://doi.org/10.1016/j.cag.2013.08.004
+
+Pinning / hysteresis reference:
+
+- Gulraiz Ahmed, Mathieu Sellier, Mark Jermy, Michael Taylor. **Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.** *European Journal of Mechanics - B/Fluids*, 48, 218–230, 2014. DOI: https://doi.org/10.1016/j.euromechflu.2014.06.003
+
+Realtime rendering / implementation reference:
+
+- `frmlinn/raindrops-v2`: https://github.com/frmlinn/raindrops-v2
+
+These references inform the architecture; Fog Mirror remains a realtime heuristic simulation optimized for mobile Safari, not a full CFD solver.
