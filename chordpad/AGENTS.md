@@ -74,7 +74,11 @@ A `Register` control shifts the voicing an octave either way for taste. It is no
 
 ### Continuity
 
-An accompaniment must not sound like a row of separate chords. Figures are phase-locked to the shared transport grid, so a chord starting mid-bar continues the pattern instead of restarting it, and recorded playback holds each chord until the next has begun. Both matter more than they sound like they should: without them every chord change is audible as a stop and a restart.
+An accompaniment must not sound like a row of separate chords. Figures are phase-locked to the shared transport grid while the accompaniment is flowing, so a chord starting mid-bar continues the pattern instead of restarting it; a chord struck into silence still starts its figure at the beginning, so a single tap opens on the root. Recorded playback holds each chord until the next has begun. Both matter more than they sound like they should: without them every chord change is audible as a stop and a restart.
+
+### Bass weight
+
+The bass must sound powerful, not merely present. It is a single note against three or four chord tones, and low notes are heard as much quieter than high ones at equal amplitude, so without help it vanishes. The engine lifts low notes, reinforces the octave above any fundamental below C3 — a tablet speaker cannot reproduce 50 Hz, so the ear has to be given the octave and left to supply the root — and the bass is struck harder than the chord above it.
 
 ### Playback modes
 

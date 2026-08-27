@@ -383,6 +383,20 @@ The cost is that a pad no longer always begins on its root, which changes what U
 
 ---
 
+## 7c. Bass weight
+
+The bass is one note against three or four chord tones, and the ear hears low notes as far quieter than high ones at the same amplitude. Left alone it disappears under the chord, which is fatal for a hymn accompaniment.
+
+Three things carry it:
+
+- a loudness tilt in the engine, lifting notes below middle C by up to half again as much amplitude, and rolling off the top of arpeggios;
+- an octave reinforcement below C3 — a phone or tablet speaker cannot reproduce a 50 Hz fundamental at all, so the octave above it is sounded quietly and the ear supplies the root itself;
+- a higher velocity for the separate bass note than for the chord above it.
+
+Measured at the master bus, a bass note should end up at least as loud as a three-note chord. It currently reads about 1.15 times.
+
+---
+
 ## 7a. Register
 
 - Low
@@ -399,7 +413,7 @@ An octave shift on its own cannot fix the register. Dropping root position by an
 
 Two things keep an accompaniment from sounding like a row of separate chords.
 
-**Figures are phase-locked to the transport grid.** A chord that starts mid-bar carries its pattern on from where the pattern had got to, rather than restarting at step one. The first attack still sounds the instant the pad is pressed, so playing stays responsive; every step after that lands on the grid. Without this, each new chord audibly stopped the pulse and started it again.
+**Figures are phase-locked to the transport grid** — but only while the accompaniment is flowing. A chord arriving within two bars of the last one carries its pattern on from where the pattern had got to, rather than restarting at step one; without this, each new chord audibly stopped the pulse and started it again. A chord struck into silence starts its figure at the beginning, so a single tap still opens on the root and is recognisable. The first attack always sounds the instant the pad is pressed; every step after that lands on the grid.
 
 **Recorded playback is legato.** Each chord is held until the next one has started, plus a small overlap, so a recording never falls silent between chords even though the pads were released between presses. The last chord is extended to the loop point in the same way.
 
