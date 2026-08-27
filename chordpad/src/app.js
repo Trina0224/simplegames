@@ -11,7 +11,7 @@ import {
 import {
   KEYS, PRIMARY_DEGREES, chordFromId, extendedDefsFor,
   notePc, parseNote, prettyKey, resolveChord, voiceChord, bassNote,
-  brokenChordNotes, columnChordSteps,
+  brokenChordNotes, columnChordSteps, fillSteps,
 } from './theory.js';
 
 const state = loadSettings();
@@ -83,15 +83,21 @@ function startChord(chord, time, settings) {
   prevVoicing = voices;
   if (bass != null) prevBass = bass;
   let sequence = null;
+  let stepUnit = null;
   if (settings.mode === 'spread') sequence = brokenChordNotes(chord, bass);
   else if (settings.mode === 'columns') {
     sequence = columnChordSteps(chord, bass, meterById(settings.meter).beats);
+    stepUnit = 'beat';
+  } else if (settings.mode === 'fill') {
+    const meter = meterById(settings.meter);
+    sequence = fillSteps(chord, bass, meter.beats * (meter.beatUnit === 8 ? 1 : 2));
+    stepUnit = 'eighth';
   }
   const player = new ChordPlayer(engine, {
     voices,
     bass,
     sequence,
-    beatLocked: settings.mode === 'columns',
+    stepUnit,
     settings,
     startTime: time,
     origin: scheduler.origin,

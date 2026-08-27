@@ -353,6 +353,40 @@ export function columnChordSteps(chord, bassMidi = null, beats = 4) {
   return steps;
 }
 
+// A rolling accompaniment for filling the space between sung phrases: a full
+// chord on the downbeat, then a single-note roll through the chord tones in
+// eighth notes. In G, 4/4:
+//   G2+B3+D4+G4 | D3 | G3 | B3 | G4 | B3 | D4 | G4
+// The roll is seven notes long and is truncated to whatever fills the bar, so
+// the figure always restarts on the downbeat.
+export function fillSteps(chord, bassMidi = null, slots = 8) {
+  const root = bassMidiForPc(chord.rootPc);
+  const low = bassMidi ?? root;
+  const third = chord.intervals.length > 1 ? chord.intervals[1] : 0;
+  const fifth = chord.intervals.length > 2 ? chord.intervals[2] : third;
+  const seventh = chord.intervals.find((semi) => semi >= 9 && semi <= 11);
+
+  // The downbeat carries the colour; the roll stays on root, third and fifth
+  // so the texture does not thicken up as chords get more complicated.
+  const opening = [low, root + third + 12, root + fifth + 12, root + 24];
+  if (seventh != null) opening.push(root + seventh + 12);
+  opening.sort((a, b) => a - b);
+
+  const roll = [
+    root + fifth,
+    root + 12,
+    root + third + 12,
+    root + 24,
+    root + third + 12,
+    root + fifth + 12,
+    root + 24,
+  ];
+
+  const steps = [opening];
+  for (let i = 0; i < slots - 1; i += 1) steps.push([roll[i % roll.length]]);
+  return steps;
+}
+
 export function midiToFreq(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
