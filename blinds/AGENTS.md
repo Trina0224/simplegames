@@ -28,7 +28,8 @@ Desktop works and is where most development happens.
 - The video element must carry `playsinline`, `muted` and `autoplay`. Without `playsinline`, iOS Safari takes the video fullscreen and the blinds disappear behind it. Start playback from inside a user gesture.
 - The slats are DOM elements rotated about their horizontal centre line with `rotateX`. A slat as tall as the blind's pitch covers exactly its own share of the window at 0°, and covers `cos(angle)` of it as it tilts, so coverage falls out of the geometry rather than being faked.
 - Each slat is one degree of freedom: an angle with a spring and a damper. That is the whole simulation. Run it on a fixed timestep, decoupled from rendering.
-- Slats are strung together in a real blind. A light smoothing pass across neighbouring angles gives that connectedness for almost nothing.
+- Slats are strung together in a real blind. One smoothing pass across neighbours gives that connectedness for almost nothing — but smooth the *error* between each slat and its target, never the angle itself. Smoothing the angle diffuses the peak away, and a slat held under a finger then never reaches the angle it was asked for.
+- The falloff of a finger's influence is measured in slats, not pixels, so it has to be retuned whenever the slat pitch changes. Changing one without the other either opens half the screen or opens nothing.
 - In the animation loop, write `transform`, `filter` and `opacity` and nothing else. No reads of layout properties, no class toggles, no style recalculation per slat per frame.
 - Pointer events, with capture, and full multi-touch: several fingers should each open their own gap.
 - Synthesise any sound with the Web Audio API. No audio files.
@@ -81,6 +82,12 @@ A soft wooden clack when slats fall shut, synthesised, quiet, and scaled to impa
 - Respect `prefers-reduced-motion`: keep the opening, drop the springy overshoot.
 - Describe the state in text for assistive technology — blinds open, blinds closed, camera on, camera off.
 - Never rely on colour alone, and keep the two controls at a comfortable touch size.
+
+## Built
+
+Version 0.1 is implemented and merged. `README.md` describes what it does and how to run it;
+`SPEC.md` carries the as-built numbers. The two things most likely to want another pass are
+the spring feel and the clack, and neither can be judged anywhere but on a real device.
 
 ## Version 0.1 scope
 
