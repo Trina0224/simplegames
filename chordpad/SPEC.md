@@ -232,13 +232,41 @@ F  -> C4+F4+A4          G7 -> D4+F4+G4+B4
 Colour tones are kept and folded into the same octave rather than stacked on top, so
 `Cadd9` is `C4+D4+E4+G4`. A slash bass replaces the low note; the chord above is unchanged.
 
+### Fill
+
+A rolling accompaniment for the space between sung phrases: the whole chord on the downbeat,
+then a single-note roll through the chord tones in eighth notes.
+
+```text
+G, 4/4 -> G2+B3+D4+G4 | D3 | G3 | B3 | G4 | B3 | D4 | G4
+C, 4/4 -> C2+E3+G3+C4 | G2 | C3 | E3 | C4 | E3 | G3 | C4
+```
+
+**One step per eighth note**, so eight steps fill a bar of 4/4 and six fill a bar of 3/4 or
+6/8. The arpeggio subdivision does not apply to this mode. The roll is seven notes long and
+is truncated to whatever fits, so the figure always restarts on the downbeat.
+
+In intervals from the root, which is how it transposes:
+
+```text
+downbeat  root, third+8ve, fifth+8ve, root+2×8ve
+roll      fifth, +8ve, third+8ve, root+2×8ve, third+8ve, fifth+8ve, root+2×8ve
+```
+
+The downbeat carries the colour — a seventh joins the opening chord, so `G7` opens
+`G2+B3+D4+F4+G4` — but the roll stays on root, third and fifth so the texture does not
+thicken as chords get more complicated. A slash bass replaces the low note of the downbeat.
+
+Nothing reaches above the octave-and-a-half over the root, so the mode stays out of the
+melody's way even on the highest pads.
+
 ### Extended chords
 
 Block mode may sound every chord tone, for example G7 = G+B+D+F.
 
 Simple sequential accompaniment modes should remain short. Seventh/additional color tones must not automatically make the pattern much longer. The core triad may be used for Pattern/Up/Down/Up & Down while Block preserves the full chord color.
 
-Spread and Bass + Chords are exempt: both are chosen deliberately when a wider figure is wanted, and both carry the seventh.
+Spread, Bass + Chords and Fill are exempt: all three are chosen deliberately when a wider figure is wanted, and all three carry the seventh — Fill only in its downbeat chord.
 
 ---
 

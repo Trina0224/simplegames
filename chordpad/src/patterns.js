@@ -9,9 +9,10 @@ export const METERS = [
 // Playback describes how one chord is voiced over time. Pattern is the primary
 // accompaniment mode: root -> fifth -> third -> fifth. Up/Down deliberately do
 // not add an extra octave; the pad should remain short and predictable.
-// Spread and Bass + Chords are the exceptions: both cover three octaves, for
-// hymns that want a fuller left hand. Spread's six notes fill a bar of 3/4 or
-// 6/8 exactly; Bass + Chords is locked to the beat and fills any bar.
+// Spread, Bass + Chords and Fill are the exceptions: all three cover three
+// octaves, for hymns that want a fuller left hand. Spread's six notes fill a
+// bar of 3/4 or 6/8 exactly; Bass + Chords steps on the beat and Fill steps in
+// eighths, and both fill any bar exactly.
 export const PLAYBACK_MODES = [
   { id: 'block', name: 'Block' },
   { id: 'pattern', name: 'Pattern' },
@@ -20,6 +21,7 @@ export const PLAYBACK_MODES = [
   { id: 'arp-updown', name: 'Up & Down' },
   { id: 'spread', name: 'Spread' },
   { id: 'columns', name: 'Bass + Chords' },
+  { id: 'fill', name: 'Fill' },
 ];
 
 export const SUBDIVISIONS = [

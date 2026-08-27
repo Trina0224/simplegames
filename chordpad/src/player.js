@@ -74,7 +74,8 @@ export class ChordPlayer {
    *   voices  – midi notes of the chord voicing
    *   bass    – midi note or null
    *   sequence – an explicit figure: a list of steps, each one note or a chord
-   *   beatLocked – step on beats rather than on the arpeggio subdivision
+   *   stepUnit – 'beat' or 'eighth' to step on the meter instead of the
+   *              arpeggio subdivision
    *   settings – { mode, subdivision, rhythm, meter, bpm, trigger }
    *   startTime – audio time of the first attack
    *   origin  – transport zero for grid alignment
@@ -101,7 +102,9 @@ export class ChordPlayer {
     // Every step is a list of notes, so a step can be a single note or a whole chord.
     const steps = this.sequence || arpeggioOrder(this.voices, this.s.mode);
     this.arp = this.isArp ? steps.map((step) => (Array.isArray(step) ? step : [step])) : null;
-    this.stepDur = opts.beatLocked ? this.beatDur : this.subDur;
+    this.stepDur = opts.stepUnit === 'beat' ? this.beatDur
+      : opts.stepUnit === 'eighth' ? 30 / this.s.bpm
+      : this.subDur;
     this.cycleNotes = this.arp ? this.arp.reduce((n, step) => n + step.length, 0) : 0;
     // A supplied figure already starts on the bass note; a second one would double it.
     if (this.sequence) this.bass = null;
