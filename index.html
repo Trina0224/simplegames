@@ -56,14 +56,16 @@
 
   .grid {
     display: grid;
-    /* auto-fit + a max width keeps a single card from stretching across the page. */
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 420px));
+    /* auto-fit counts tracks with the max sizing function when it is a fixed
+       length, so the cap lives on the card instead — otherwise two cards stack. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
     justify-content: start;
     gap: 16px;
   }
 
   .card {
     display: flex;
+    max-width: 460px;
     flex-direction: column;
     gap: 14px;
     padding: 18px;
@@ -110,6 +112,24 @@
   .thumb span.lit {
     background: linear-gradient(180deg, #f3b45c 0%, #e08b2c 100%);
     color: #1b1405;
+  }
+
+  .thumb-blinds {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .thumb-blinds span {
+    height: 14px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #ded7c9 0%, #b3ac9e 100%);
+  }
+
+  /* the peek */
+  .thumb-blinds span.gap {
+    height: 26px;
+    background: linear-gradient(180deg, #7fb4e8 0%, #cfe0ee 55%, #6f8a6c 100%);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45);
   }
 
   .card h2 {
@@ -195,6 +215,18 @@
         <span>iPad · iPhone</span><span>五種音色</span><span>錄音循環</span><span>離線可用</span>
       </div>
       <div class="go">開始彈 <span aria-hidden="true">→</span></div>
+    </a>
+
+    <a class="card" href="blinds/">
+      <div class="thumb thumb-blinds" aria-hidden="true">
+        <span></span><span></span><span class="gap"></span><span></span><span></span><span></span>
+      </div>
+      <h2>百葉窗 <span class="en">Blinds</span></h2>
+      <p>螢幕是一扇關著的百葉窗，後面是相機的即時畫面。手指壓上去，葉片就在指尖附近撥開，露出後面的房間；放開就彈回去。沒有快門，什麼都不會被拍下來。</p>
+      <div class="tags">
+        <span>iPhone · Android · iPad</span><span>不拍照不錄影</span><span>沒相機也能玩</span>
+      </div>
+      <div class="go">戳戳看 <span aria-hidden="true">→</span></div>
     </a>
   </main>
 

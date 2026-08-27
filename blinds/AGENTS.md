@@ -53,7 +53,7 @@ Always visible, and kept out of the way:
 - a small control to switch the camera off and on
 - a small control to swap between front and rear cameras, where more than one exists
 
-Everything else is the blind itself. A cord or wand along one edge tilts every slat at once and stays where it is put, the way a real blind does. Finger pressure anywhere on the slats is temporary and springs back.
+Everything else is the blind itself. There is no cord and no wand: finger pressure is the only way to open it, and it always springs back. A blind you can prop open is a blind you stop poking at.
 
 Resist adding a settings drawer. This toy has almost nothing to configure, and a drawer would be ceremony.
 
@@ -62,8 +62,7 @@ Resist adding a settings drawer. This toy has almost nothing to configure, and a
 - **Press and drag on the slats** — pries them apart around the finger, strongest at the finger and falling off over a couple of slats above and below. Whole slats tilt; that is what happens when you push a real one.
 - **Multiple fingers** — each opens its own gap.
 - **Release** — the slats spring shut with a small overshoot and settle.
-- **The cord** — tilts the whole blind and holds that angle.
-- **Nothing else.** No pinch, no double-tap, no long-press menu.
+- **Nothing else.** No pinch, no double-tap, no long-press menu. The only non-drag way to open the blind is the accessibility control, which exists so the toy does not depend on a gesture.
 
 ## Camera behaviour
 
@@ -87,7 +86,6 @@ A soft wooden clack when slats fall shut, synthesised, quiet, and scaled to impa
 
 - live camera behind horizontal venetian blinds
 - finger-pry with falloff, multi-touch, spring return
-- a cord that sets the resting tilt
 - camera on/off and front/rear switch
 - graceful fallback with no camera
 - clack sound, switchable

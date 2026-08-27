@@ -77,8 +77,8 @@ Layers, back to front:
 
 1. **The camera layer** — a `<video>` covering the window.
 2. **The blind** — horizontal slats, each rotating about its own centre line.
-3. **The frame** — a restrained window frame and sill at the edges, with the cord along one side.
-4. **Two controls** — camera on/off, and front/rear swap where more than one camera exists. Small, translucent, in a bottom corner, never over the middle of the window.
+3. **The frame** — a restrained window frame and sill at the edges.
+4. **A few small controls** — camera on/off, front/rear swap where more than one camera exists, sound, and an open/close control so the toy is usable without a drag. Small, translucent, in a bottom corner, never over the middle of the window.
 
 There is no other chrome. In particular there is nothing that resembles a shutter button, because there is nothing behind it.
 
@@ -93,7 +93,7 @@ This is the heart of the toy, and it is close to free.
 - At `θ = 0°` a slat covers exactly its own pitch, so the slats tile the window and the view is fully blocked.
 - At angle `θ` a slat's projected height is `P · cos θ`, so the gap it leaves is `P · (1 − cos θ)`.
 
-Coverage therefore falls out of the geometry instead of being faked with opacity. Fully edge-on would be 90°; cap the maximum at roughly 78–82° so a slat still reads as a slat and keeps a sliver of shading.
+Coverage therefore falls out of the geometry instead of being faked with opacity. Fully edge-on would be 90°; **the maximum is 80°**, so a slat still reads as a slat and keeps a sliver of shading while the room behind is clearly visible.
 
 ### Slat count
 
@@ -117,12 +117,12 @@ Each slat is one degree of freedom: an angle `θ` and an angular velocity `ω`. 
 ### Target angle
 
 ```text
-pryᵢ  = A_max · max over active pointers of exp(−(dᵢ / σ)²)
-        where dᵢ = |pointer.y − slatCentreᵢ| / P, in slat widths
-Tᵢ    = max(cordAngle, pryᵢ)
+Tᵢ = A_max · max over active pointers of exp(−(dᵢ / σ)²)
+     where dᵢ = |pointer.y − slatCentreᵢ| / P, in slat widths
+     and A_max = 80°
 ```
 
-- `σ ≈ 1.6` slats, so a finger opens a band about three or four slats tall.
+- `σ ≈ 2.0` slats, so a finger opens a band about five slats tall — generous enough to see through, narrow enough to still feel like peeking.
 - `max` over pointers rather than a sum, so two nearby fingers cannot push past `A_max`.
 - Only the vertical distance matters. A real slat tilts along its whole length when you push one end, so a band opening across the full width is the physically honest result, not a simplification to apologise for.
 
@@ -152,12 +152,6 @@ Clamp to `[0, A_max]` at the end of each step.
 ### Idle
 
 When every slat is within a small epsilon of its target with negligible velocity, stop stepping and stop writing to the DOM until the next input. A closed blind sitting on a table should cost nothing.
-
-### The cord
-
-A drag along the cord sets `cordAngle` and it stays there, the way a real blind does. Finger pressure on the slats is temporary and always springs back to `cordAngle`.
-
-`cordAngle` is state, not a preference: the app always opens with the blind closed.
 
 ---
 
@@ -228,8 +222,7 @@ Requirements, not aspirations:
 | Press and drag on the slats | Pries a gap open around the pointer, following it |
 | Several fingers | Each opens its own gap |
 | Release | Springs shut with a small overshoot |
-| Drag the cord | Sets the resting tilt of the whole blind |
-| The open/close control | Toggles the blind fully open or fully closed |
+| The open/close control | Holds the blind fully open or lets it fall shut, for anyone who cannot drag |
 
 Nothing else. No pinch, no double-tap, no long-press.
 
@@ -289,7 +282,6 @@ On first launch:
 - Blind: closed
 - Camera: rear, on, after the opening tap
 - Sound: on, quiet
-- Cord angle: 0°
 
 ---
 
@@ -318,7 +310,7 @@ Unlike a motion-sensor toy, almost all of this is testable headlessly:
 
 - Chromium's fake media device supplies a synthetic camera, and permissions can be granted from the test harness, so the whole camera path runs end to end in automation.
 - Geometry: assert that coverage follows `cos θ` and that a closed blind leaves no gap at any slat count.
-- Simulation: assert that a pry opens a band of the expected height, that two pointers open two gaps, that release returns every slat to the cord angle, and that the blind reaches idle.
+- Simulation: assert that a pry opens a band of the expected height, that two pointers open two gaps, that release returns every slat to closed, and that the blind reaches idle.
 - Privacy: fail the suite if any network request is made after load, and if `MediaRecorder`, `captureStream` or a canvas readback of the video ever appears.
 - Lifecycle: assert that tracks are stopped when the page is hidden.
 - Layout: portrait, landscape, phone and tablet viewports, with no page scrolling.
@@ -334,7 +326,7 @@ What still needs a real device: how the spring actually feels under a thumb, how
 3. Dragging a finger opens a gap that follows it with no perceptible lag.
 4. Several fingers open several gaps.
 5. Releasing springs the slats shut with a small overshoot and a settle.
-6. The cord sets a resting tilt that holds.
+6. The open/close control opens and closes the blind without a drag.
 7. The camera view is live, cropped to cover, and correctly oriented; the front camera is mirrored and the rear is not.
 8. Camera off stops the tracks and clears the operating system's camera indicator.
 9. Hiding the page stops the tracks; returning restores them.
@@ -346,9 +338,14 @@ What still needs a real device: how the spring actually feels under a thumb, how
 
 ---
 
-## 19. Open questions
+## 19. Decisions and remaining questions
 
-1. **Is the cord worth it in v0.1?** It is authentic and cheap, but the toy might be purer with nothing but finger pressure. Currently specified as included.
-2. **Sound default.** Specified as on and quiet; a clack on every slat close may wear thin faster than it charms.
-3. **Does horizontal finger position matter?** Currently no: a whole slat tilts. Making a slat bend around the finger's x position would mean splitting every slat into segments, multiplying the element count, for a subtlety most people will not notice.
-4. **How far should a pry open?** `A_max` of about 80° shows the room clearly. A smaller maximum makes peeking feel more furtive, which may be the better toy.
+Settled:
+
+1. **No cord.** Finger pressure is the only way to open the blind, and it always springs back. An accessibility control can hold it open, but there is no everyday way to prop it.
+2. **`A_max` is 80°.** Open enough to see the room clearly.
+
+Still open:
+
+3. **Sound default.** Specified as on and quiet; a clack on every slat close may wear thin faster than it charms.
+4. **Does horizontal finger position matter?** Currently no: a whole slat tilts. Making a slat bend around the finger's x position would mean splitting every slat into segments, multiplying the element count, for a subtlety most people will not notice.
