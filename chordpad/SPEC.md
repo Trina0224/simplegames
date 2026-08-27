@@ -75,6 +75,7 @@ First launch:
 - Meter: 4/4
 - Playback: Block
 - Voicing: Close
+- Register: Mid
 - Bass: Off
 - Trigger: Hold
 - Rhythm: Free
@@ -383,20 +384,6 @@ The cost is that a pad no longer always begins on its root, which changes what U
 
 ---
 
-## 7c. Bass weight
-
-The bass is one note against three or four chord tones, and the ear hears low notes as far quieter than high ones at the same amplitude. Left alone it disappears under the chord, which is fatal for a hymn accompaniment.
-
-Three things carry it:
-
-- a loudness tilt in the engine, lifting notes below middle C by up to half again as much amplitude, and rolling off the top of arpeggios;
-- an octave reinforcement below C3 — a phone or tablet speaker cannot reproduce a 50 Hz fundamental at all, so the octave above it is sounded quietly and the ear supplies the root itself;
-- a higher velocity for the separate bass note than for the chord above it.
-
-Measured at the master bus, a bass note should end up at least as loud as a three-note chord. It currently reads about 1.15 times.
-
----
-
 ## 7a. Register
 
 - Low
@@ -416,6 +403,20 @@ Two things keep an accompaniment from sounding like a row of separate chords.
 **Figures are phase-locked to the transport grid** — but only while the accompaniment is flowing. A chord arriving within two bars of the last one carries its pattern on from where the pattern had got to, rather than restarting at step one; without this, each new chord audibly stopped the pulse and started it again. A chord struck into silence starts its figure at the beginning, so a single tap still opens on the root and is recognisable. The first attack always sounds the instant the pad is pressed; every step after that lands on the grid.
 
 **Recorded playback is legato.** Each chord is held until the next one has started, plus a small overlap, so a recording never falls silent between chords even though the pads were released between presses. The last chord is extended to the loop point in the same way.
+
+---
+
+## 7c. Bass weight
+
+The bass is one note against three or four chord tones, and the ear hears low notes as far quieter than high ones at the same amplitude. Left alone it disappears under the chord, which is fatal for a hymn accompaniment.
+
+Three things carry it:
+
+- a loudness tilt in the engine, lifting notes below middle C by up to half again as much amplitude, and rolling off the top of arpeggios;
+- an octave reinforcement below C3 — a phone or tablet speaker cannot reproduce a 50 Hz fundamental at all, so the octave above it is sounded quietly and the ear supplies the root itself;
+- a higher velocity for the separate bass note than for the chord above it.
+
+Measured at the master bus, a bass note should end up at least as loud as a three-note chord. It currently reads about 1.15 times.
 
 ---
 
@@ -525,6 +526,7 @@ Include:
 - Chord playback
 - Pattern speed/subdivision
 - Voicing
+- Register
 - Bass / Slash chord
 - Hold / Trigger
 - Rhythm
@@ -689,3 +691,10 @@ The current build is successful when:
 14. iPad mini remains the primary UX target.
 15. Record/Play/Stop/Loop continue to work.
 16. No backend is required.
+17. Spread, Bass + Chords, Fill and Climb each cover three octaves and are opt-in; the short modes stay short.
+18. Compact voicing holds the top note within a few semitones across the pads of a key, where root position wanders an octave.
+19. Register shifts the voicing an octave either way and never moves the bass.
+20. A bass note is at least as loud as a three-note chord at the master bus.
+21. A chord arriving while the accompaniment is flowing continues the figure; a chord struck into silence starts it from the beginning.
+22. Recorded playback never falls silent between chords.
+23. Every playback mode is recorded per event and replays as recorded, whatever the live setting is.
