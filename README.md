@@ -10,7 +10,7 @@
 | --- | --- |
 | [和弦墊 Chord Pad](chordpad/) | 用大按鈕彈和弦的伴奏樂器，替詩歌伴奏用（[說明](chordpad/README.md)） |
 | [百葉窗 Blinds](blinds/) | 相機畫面後面的百葉窗，用手指撥開偷看。不拍照、不錄影（[說明](blinds/README.md)） |
-| [霧鏡 Fog Mirror](fogmirror/) | 前鏡頭變成起霧的三溫暖鏡子；可擦開、畫圖、水珠合併流動，並依裝置重力改變方向（[規格](fogmirror/SPEC.md)） |
+| [霧鏡 Fog Mirror](fogmirror/) | 前鏡頭變成起霧的三溫暖鏡子；可擦開、畫圖、水珠合併流動，並依裝置重力改變方向（[說明](fogmirror/README.md)） |
 
 ## 本機執行
 
