@@ -20,7 +20,7 @@ const gravity=new GravitySensor();
 const field=new CondensationField(190,190);
 const droplets=new DropletSystem(field);
 const renderer=new MirrorRenderer(canvas,video,field,droplets);
-const input=new MirrorInput(canvas,field,droplets);
+const input=new MirrorInput(canvas,field,droplets,()=>gravity.vector());
 
 let running=true;
 let last=performance.now();
@@ -64,8 +64,6 @@ async function startExperience(){
 startBtn.addEventListener('click',startExperience);
 
 steamBtn.addEventListener('click',()=>{
-  // Steam restores microscopic condensation only. It does not create visible drops
-  // out of nowhere; visible water must coalesce later from the surface reservoir.
   field.steam(1.35);
   status('Steam spreading across the mirror',1300);
 });
@@ -77,7 +75,7 @@ cameraBtn.addEventListener('click',async()=>{
 
 motionBtn.addEventListener('click',async()=>{
   if(gravity.enabled){gravity.stop();syncButtons();status('Gravity sensor off · screen-down fallback');return;}
-  const ok=await gravity.start();syncButtons();status(ok?'Physical gravity on':'Motion permission unavailable');
+  const ok=await gravity.start();syncButtons();status(ok?'Physical gravity on · hold steady briefly to calibrate':'Motion permission unavailable');
 });
 
 homeBtn.addEventListener('click',()=>{ location.href='../'; });
@@ -111,6 +109,4 @@ addEventListener('pagehide',()=>{
   gravity.stop();
 });
 
-// Intentionally no startup macroscopic droplets. The initial mirror is made from
-// fine condensation only; visible beads must emerge through actual accumulation.
 window.fogMirror={camera,gravity,field,droplets,renderer};
