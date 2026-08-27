@@ -33,34 +33,42 @@ export class GravitySensor {
   _onMotion(e) {
     const a = e.accelerationIncludingGravity;
     if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) return;
+
     const now = performance.now();
     const dt = this._last ? Math.min(0.1, (now - this._last) / 1000) : 1 / 60;
     this._last = now;
-    const tau = 0.22;
+    const tau = 0.24;
     const alpha = 1 - Math.exp(-dt / tau);
 
-    // Device axes are rotated into current screen coordinates.
-    let x = a.x;
-    let y = a.y;
-    const angle = Number(screen.orientation?.angle ?? window.orientation ?? 0) || 0;
-    if (angle === 90 || angle === -270) [x, y] = [-y, x];
-    else if (angle === 180 || angle === -180) [x, y] = [-x, -y];
-    else if (angle === 270 || angle === -90) [x, y] = [y, -x];
+    /*
+     * DeviceMotion x/y axes already rotate with the physical screen on iOS/iPadOS.
+     * Applying screen.orientation.angle here rotates them a second time (on iPad,
+     * portrait commonly reports a non-zero orientation angle), which made physical
+     * down become screen-right. accelerationIncludingGravity points opposite the
+     * direction a free droplet should fall, so negate x and y directly.
+     *
+     * Canvas coordinates use +x right and +y down:
+     *   upright device   -> (0, +1)
+     *   right edge down  -> (+1, 0)
+     *   left edge down   -> (-1, 0)
+     */
+    const z = Number.isFinite(a.z) ? a.z : 0;
+    const mag = Math.max(0.001, Math.hypot(a.x, a.y, z));
+    const tx = -a.x / mag;
+    const ty = -a.y / mag;
+    const tz = -z / mag;
 
-    const mag = Math.max(0.001, Math.hypot(x, y, a.z || 0));
-    // Screen-space gravity: CSS/canvas +Y points down. Browser sensor Y convention
-    // varies historically, so use the stable sign that makes an upright device run down.
-    const tx = x / mag;
-    const ty = -y / mag;
     this.gx += (tx - this.gx) * alpha;
     this.gy += (ty - this.gy) * alpha;
-    this.gz += (((a.z || 0) / mag) - this.gz) * alpha;
+    this.gz += (tz - this.gz) * alpha;
   }
 
   vector() {
     if (!this.enabled) return { x: 0, y: 1, plane: 1 };
     const plane = Math.min(1, Math.hypot(this.gx, this.gy));
-    if (plane < 0.025) return { x: 0, y: 0, plane: 0 };
+    // Nearly flat glass: gravity is mostly normal to the screen, so water should
+    // pool/pin rather than inventing a lateral direction from sensor noise.
+    if (plane < 0.06) return { x: 0, y: 0, plane: 0 };
     return { x: this.gx / plane, y: this.gy / plane, plane };
   }
 }
