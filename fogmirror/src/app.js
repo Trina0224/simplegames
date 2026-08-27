@@ -50,7 +50,6 @@ function syncButtons(){
 async function startExperience(){
   if(started)return;
   started=true;
-  // Both permission-gated requests are initiated from this tap.
   const cameraPromise=camera.start();
   const gravityPromise=gravity.start();
   startCard.classList.add('hidden');
@@ -66,10 +65,11 @@ startBtn.addEventListener('click',startExperience);
 
 steamBtn.addEventListener('click',()=>{
   field.steam(1.35);
-  // Fresh steam contributes liquid, especially where the glass is already wet.
-  for(let i=0;i<10;i++){
-    const x=.08+Math.random()*.84,y=.08+Math.random()*.75;
-    if(field.sampleWet(x,y)>.12 || Math.random()<.26) droplets.seed(x,y,.45,.018);
+  // Steam primarily restores fine condensation. Only already-wet regions get a
+  // small chance of producing a visible bead; Steam must not rain on the mirror.
+  for(let i=0;i<5;i++){
+    const x=.08+Math.random()*.84,y=.08+Math.random()*.78;
+    if(field.sampleWet(x,y)>.30 && Math.random()<.32) droplets.seed(x,y,.24,.010);
   }
   status('Steam spreading across the mirror',1300);
 });
@@ -87,7 +87,7 @@ motionBtn.addEventListener('click',async()=>{
 homeBtn.addEventListener('click',()=>{ location.href='../'; });
 
 input.onWipe=({speed})=>{
-  if(speed>1.4 && Math.random()<.18) status('Water released',700);
+  if(speed>1.7 && Math.random()<.12) status('Water released',650);
 };
 
 function frame(now){
@@ -115,11 +115,12 @@ addEventListener('pagehide',()=>{
   gravity.stop();
 });
 
-// A few pinned beads make the first frame read as condensation rather than a filter.
-for(let i=0;i<28;i++) droplets.add({
-  x:.05+Math.random()*.9,
-  y:.06+Math.random()*.82,
-  radius:.003+Math.random()*.0065,
+// Start with only a few tiny pinned beads. The mirror should read primarily as
+// fine condensation; macroscopic drops are earned by wetting/wiping the surface.
+for(let i=0;i<7;i++) droplets.add({
+  x:.06+Math.random()*.88,
+  y:.08+Math.random()*.78,
+  radius:.0018+Math.random()*.0028,
 });
 
 window.fogMirror={camera,gravity,field,droplets,renderer};
