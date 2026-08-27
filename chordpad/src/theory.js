@@ -267,6 +267,38 @@ export function arpeggioOrder(notes, mode) {
   return core;
 }
 
+// A broken chord spread across three octaves: up through root, fifth and octave,
+// then down from the top octave through fifth (or seventh) and third.
+// In C that is C2 G2 C3 C4 G3 E3 — the C of three octaves.
+// Built from the chord's own intervals, not from a voicing, because the voicing
+// deliberately stays inside one octave.
+export function brokenChordNotes(chord, bassMidi = null) {
+  const root = bassMidiForPc(chord.rootPc);
+  const intervals = chord.intervals;
+  const third = intervals.length > 1 ? intervals[1] : 0;
+  const fifth = intervals.length > 2 ? intervals[2] : third;
+  // A seventh is worth hearing on the way down; a ninth or a sus tone is not.
+  const seventh = intervals.find((semi) => semi >= 9 && semi <= 11);
+  const descending = (seventh ?? fifth) + 12;
+  let low = bassMidi ?? root;
+  // A slash bass on the fifth would land on the figure's second note. Drop it an
+  // octave rather than starting on a repeated pitch; if there is no room below,
+  // lift the second note instead.
+  let second = root + fifth;
+  if (low === second) {
+    if (low - 12 >= 28) low -= 12;
+    else second += 12;
+  }
+  return [
+    low,
+    second,
+    root + 12,
+    root + 24,
+    root + descending,
+    root + third + 12,
+  ];
+}
+
 export function midiToFreq(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }

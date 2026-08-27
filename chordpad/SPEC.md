@@ -148,11 +148,54 @@ C -> E -> G -> E
 
 Avoid the older six-note `C-E-G-C-G-E` behavior.
 
+### Spread
+
+A broken chord across three octaves, for hymns that want a fuller left hand. This is the
+deliberate exception to the "keep sequential modes short" rule below, and it is opt-in.
+
+```text
+C -> C2 G2 C3 C4 G3 E3
+```
+
+Up through root, fifth and octave; then down from the top octave through the fifth and the
+third. In C that uses the C of three octaves, which is the point of the mode.
+
+More examples:
+
+```text
+Dm -> D2 A2 D3 D4 A3 F3
+G  -> G2 D3 G3 G4 D4 B3
+Am -> A2 E3 A3 A4 E4 C4
+```
+
+Unlike the other sequential modes, Spread is built from the chord's own intervals rather
+than from the voicing, because the voicing deliberately stays inside one octave.
+
+Where the chord has a seventh, it replaces the fifth on the way down, so the colour is
+heard rather than silently dropped:
+
+```text
+G7    -> G2 D3 G3 G4 F4 B3
+Cmaj7 -> C2 G2 C3 C4 B3 E3
+```
+
+Ninths and sus tones do not substitute; those chords keep the plain figure.
+
+A slash bass replaces the bottom note (`C/E` starts on E2). If the slash bass is the fifth,
+which would land on the figure's own second note, the bass drops an octave rather than
+starting on a repeated pitch.
+
+Its six notes fill a bar of 3/4 or 6/8 exactly at a 1/8 subdivision. In 4/4 it loops as a
+three-beat figure against the bar, which is a hemiola rather than a mistake — but 3/4 and
+6/8 are where it belongs.
+
 ### Extended chords
 
 Block mode may sound every chord tone, for example G7 = G+B+D+F.
 
 Simple sequential accompaniment modes should remain short. Seventh/additional color tones must not automatically make the pattern much longer. The core triad may be used for Pattern/Up/Down/Up & Down while Block preserves the full chord color.
+
+Spread is exempt: it is chosen deliberately when a longer, wider figure is wanted, and it does carry the seventh.
 
 ---
 

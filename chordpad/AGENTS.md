@@ -77,8 +77,11 @@ Required modes:
 - **Up** — low to high, using only the core chord tones.
 - **Down** — high to low, using only the core chord tones.
 - **Up & Down** — for a triad: root -> third -> fifth -> third.
+- **Spread** — a broken chord over three octaves: root -> fifth -> octave -> two octaves -> fifth -> third. In C that is C2 G2 C3 C4 G3 E3.
 
 Important: do **not** automatically append a higher octave root to Up/Down patterns.
+
+Spread is the one deliberate exception to keeping sequential modes short. It is opt-in, it is built from the chord's intervals rather than the voicing, and it substitutes a seventh for the fifth on the way down so the colour is heard. Its six notes fill a bar of 3/4 or 6/8 exactly.
 
 For a C triad:
 
@@ -87,6 +90,7 @@ For a C triad:
 - Up: C -> E -> G
 - Down: G -> E -> C
 - Up & Down: C -> E -> G -> E
+- Spread: C2 -> G2 -> C3 -> C4 -> G3 -> E3
 
 For Dm Pattern:
 
