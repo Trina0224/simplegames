@@ -4,7 +4,7 @@
 
 Fog Mirror is a touch-first browser toy that turns a phone or tablet into a convincingly fogged sauna/bathroom mirror.
 
-The live **front-facing camera** is the reflection. Over it sits a physically inspired condensation layer that can be wiped, written in, re-fogged, and disturbed into droplets that merge and run downward.
+The live **front-facing camera** is the reflection. Over it sits a physically inspired condensation layer that can be wiped, written in, re-fogged, and disturbed into droplets that merge and run according to the device's physical orientation.
 
 The point is not productivity. The point is that touching the screen should feel uncannily like touching a real steamed-up mirror.
 
@@ -23,11 +23,12 @@ Static hosting on GitHub Pages is preferred. No backend.
 1. **Realism is the feature.** Do not settle for a translucent gray overlay with erased circles.
 2. **The camera is the mirror.** Use the front-facing camera by default and mirror it horizontally so motion matches an actual mirror.
 3. **Condensation has memory.** Previously wiped/wet paths should affect where later moisture gathers and runs.
-4. **Water has mass.** Droplets should nucleate, grow, merge, accelerate under gravity, leave trails, and occasionally split or pin to the surface.
-5. **Touch feels physical.** A fingertip should push/clear moisture locally; a fast broad swipe should disturb a large wet area differently from careful drawing.
-6. **The toy must remain private.** No photo capture, no recording, no upload, no camera frames sent to a server.
-7. **Graceful degradation.** If camera permission is denied, the condensation toy should still work over a fallback mirrored/neutral background.
-8. **Do not fake unsupported sensing.** Breath detection is experimental. Never claim the browser can directly sense humidity or steam when it cannot.
+4. **Water has mass.** Droplets should nucleate, grow, merge, accelerate under physical gravity, leave trails, and occasionally split or pin to the surface.
+5. **Gravity follows the device.** Water must react to the actual direction of gravity projected onto the glass, not blindly to screen-down.
+6. **Touch feels physical.** A fingertip should push/clear moisture locally; a fast broad swipe should disturb a large wet area differently from careful drawing.
+7. **The toy must remain private.** No photo capture, no recording, no upload, no camera frames sent to a server.
+8. **Graceful degradation.** If camera permission is denied, the condensation toy should still work over a fallback mirrored/neutral background.
+9. **Do not fake unsupported sensing.** Breath detection is experimental. Never claim the browser can directly sense humidity or steam when it cannot.
 
 ---
 
@@ -51,7 +52,8 @@ At minimum maintain conceptually separate quantities such as:
 - `fog(x,y)` — density of tiny condensation droplets / optical haze
 - `water(x,y)` — liquid water accumulated on the surface
 - `wetness(x,y)` — persistent surface wetting / recent trail memory
-- `velocity(x,y)` or droplet velocity — downward and lateral liquid motion
+- `velocity(x,y)` or droplet velocity — liquid motion along the glass
+- `gravity2D(x,y)` or a shared `(gx, gy)` — physical gravity projected into screen/glass coordinates
 - optional `temperature(x,y)` or fogging tendency — only if useful for re-condensation behavior
 
 These may be represented with textures, framebuffers, lower-resolution grids, particles, or a hybrid approach. The data representation is an implementation choice; the visible behavior is not.
@@ -124,7 +126,7 @@ A fast long swipe should produce a visibly different event:
 - shear accumulated water,
 - dislodge/push droplets,
 - seed many mobile droplets along the lower/leading edges,
-- cause some of them to start running downward after the hand passes.
+- cause some of them to start running under gravity after the hand passes.
 
 The toy should reward exaggerated gestures.
 
@@ -155,16 +157,53 @@ When two drops contact, they should usually merge into a larger drop conserving 
 
 The larger drop should become more likely to overcome surface pinning and move.
 
-### Gravity
+### Gravity and device orientation — REQUIRED FOR v0.1
 
-Gravity is screen-down by default. Device orientation may later perturb gravity, but v0.1 does not need orientation sensors.
+Do **not** hard-code gravity as screen-down on supported mobile devices.
 
-Drops should not all fall at the same speed:
+Use device motion/orientation sensing to estimate the physical gravity vector, then project it into the current screen coordinate system.
 
-- tiny drops stay pinned,
-- medium drops creep,
-- large drops accelerate and run,
-- drag limits terminal speed.
+Preferred signal:
+
+- `DeviceMotionEvent.accelerationIncludingGravity`
+- low-pass filtered to isolate the slowly varying gravity vector
+- optionally informed by `DeviceOrientationEvent` where helpful
+- rotated by `screen.orientation.angle` (with an appropriate fallback) so portrait/landscape changes do not swap axes incorrectly
+
+The simulation needs the component of gravity **along the mirror plane**:
+
+- device held upright: droplets visibly run toward physical down
+- device tilted diagonally: droplets run diagonally
+- device rotated 90°: established droplets should gradually change direction
+- device nearly flat: in-plane gravity becomes small, so drops should slow, pin, or pool instead of continuing to march toward screen-bottom
+
+Raw accelerometer values must not be fed directly into droplets. Hand tremor and transient motion must be filtered; otherwise the mirror will look like it is experiencing an earthquake.
+
+Separate conceptually:
+
+- low-frequency acceleration = gravity / device pose
+- high-frequency residual = hand motion / shake / inertial disturbance
+
+The high-frequency component may later perturb or detach large drops, but it must not destabilize normal gravity flow.
+
+Sensor permission and availability vary by platform. Where motion access requires explicit permission, request it from a user gesture. If motion sensing is unavailable or denied, fall back to screen-down gravity and keep the toy usable, but this is a fallback rather than the intended mobile behavior.
+
+### Pinning
+
+Small drops should not move merely because gravity exists.
+
+Movement begins only when the gravity component acting along the glass is strong enough, relative to droplet volume and local pinning, to overcome adhesion/contact-angle hysteresis.
+
+Conceptually:
+
+```text
+if gravityAlongGlass * dropletMass <= localPinning:
+    remain pinned
+else:
+    begin / continue motion
+```
+
+This means a small droplet can remain stationary even on a vertical device while a larger neighboring droplet begins to run.
 
 ### Trails
 
@@ -181,7 +220,7 @@ This creates the user's requested behavior: places where water previously ran be
 
 ### Branching / pinning
 
-Perfectly vertical straight lines look fake.
+Perfectly straight gravity lines look fake.
 
 Introduce small spatial heterogeneity so droplets:
 
@@ -190,7 +229,7 @@ Introduce small spatial heterogeneity so droplets:
 - sometimes follow an existing trail,
 - occasionally merge into another stream.
 
-Do not make this look like Brownian noise. Gravity must remain dominant.
+Do not make this look like Brownian noise. The measured gravity vector must remain dominant.
 
 ---
 
@@ -224,14 +263,15 @@ There are three possible proxies, none perfect:
    - Problems: speech, wind, fans, rubbing the microphone and room noise produce false positives.
    - Requires microphone permission.
 
-2. **Face / mouth position from camera**
-   - If a local face-landmark model is available, detect a face close to the screen and an open/pursed mouth.
-   - This estimates *intent* to breathe, not actual breath.
-   - A model may be too large/complex for this deliberately small toy and can complicate offline/privacy guarantees.
+2. **Face-scale / approach heuristic from camera**
+   - Do not assume the mouth can be continuously tracked once the mirror is heavily fogged.
+   - More practical signal: a face rapidly grows larger / approaches the device, with recent face motion providing a coarse region where fog should appear.
+   - This estimates *intent* and location approximately, not actual steam.
 
 3. **Hybrid heuristic**
-   - Require a face/mouth near a region plus an exhalation-like microphone signal.
-   - Generate a local expanding fog patch centered in front of the detected mouth.
+   - Require a recent face-approach event plus an exhalation-like microphone signal.
+   - Infer a broad target region from the face trajectory rather than demanding precise mouth coordinates.
+   - Generate one fairly large local condensation patch; precision is less important than believable cause/effect.
    - More convincing but significantly more engineering and permission burden.
 
 ### Scope decision
@@ -240,7 +280,7 @@ There are three possible proxies, none perfect:
 
 For v0.1 include a manual/gesture-equivalent way to create local fresh fog if useful for testing the visual effect.
 
-For a later experiment, microphone-only detection is the smallest viable prototype. If it is unreliable, remove it rather than shipping a gimmick that triggers incorrectly.
+For a later experiment, the hybrid face-approach + breath-noise heuristic is the preferred direction. If it is unreliable, remove it rather than shipping a gimmick that triggers incorrectly.
 
 If breath mode is implemented:
 
@@ -256,9 +296,10 @@ If breath mode is implemented:
 Keep components separate:
 
 - `camera.js` — front camera acquisition/lifecycle only
+- `orientation.js` — device-motion permission, gravity filtering, screen-coordinate transform
 - `input.js` — pointer/multi-touch strokes and gesture velocity
 - `condensation.js` — fog/wetness field evolution
-- `droplets.js` — coarse droplet particles, merge, gravity, trails
+- `droplets.js` — coarse droplet particles, merge, pinning, gravity, trails
 - `render.js` — GPU/canvas composition and optical effects
 - `app.js` — state, controls, animation loop, persistence
 - optional later `breath.js` — local breath heuristic only
@@ -293,7 +334,7 @@ Required:
 
 - Re-fog / Steam
 - Camera on/off
-- optional Flip only if a rear-camera mode is later considered
+- one-time motion/orientation permission flow where required by the platform
 
 Possible settings hidden behind a small settings control:
 
@@ -316,13 +357,17 @@ v0.1 succeeds when:
 3. A finger can write a recognizable smiley face or word into the condensation.
 4. Wiping redistributes moisture rather than merely deleting opacity.
 5. Moisture gathers into visible droplets.
-6. Large droplets merge and run downward at different speeds.
-7. Running drops leave persistent wet trails.
-8. Old wet trails influence where later water gathers/runs.
-9. A fast broad swipe produces many disturbed droplets and visible runoff.
-10. Re-fogging covers the mirror again without erasing all wetness memory.
-11. Camera frames are never captured, stored, uploaded, or recorded.
-12. The toy remains usable when camera permission is denied.
-13. It runs as a static GitHub Pages app with no backend.
+6. Tiny droplets can remain pinned while larger droplets move.
+7. Droplets respond to the physical gravity direction of the device on supported mobile hardware.
+8. Rotating/tilting the device changes water-flow direction plausibly.
+9. Nearly flat orientation reduces in-plane flow rather than forcing water toward screen-bottom.
+10. Large droplets merge and run at different speeds.
+11. Running drops leave persistent wet trails.
+12. Old wet trails influence where later water gathers/runs.
+13. A fast broad swipe produces many disturbed droplets and visible runoff.
+14. Re-fogging covers the mirror again without erasing all wetness memory.
+15. Camera frames are never captured, stored, uploaded, or recorded.
+16. The toy remains usable when camera or motion permission is denied, with appropriate fallbacks.
+17. It runs as a static GitHub Pages app with no backend.
 
 Breath sensing is explicitly outside the v0.1 acceptance gate.
