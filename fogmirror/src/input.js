@@ -38,41 +38,57 @@ export class MirrorInput {
     const steps=Math.max(1,Math.ceil(dist/.012));
     const ux=dx/(dist||1), uy=dy/(dist||1);
 
-    for(let i=1;i<=steps;i++){
-      const t=i/steps;
-      const x=prev.x+dx*t,y=prev.y+dy*t;
-      this.field.wipe(x,y,0.034,speed,ux,uy);
-    }
-
-    // Water squeezed by the fingertip accumulates on the physical *downhill*
-    // edge of the contact patch. Do not alternate left/right sides of the stroke:
-    // a real wet mirror cares about gravity, not stroke normal.
     const gravity=this.gravityProvider() || {x:0,y:1,plane:1};
     let gx=gravity.x, gy=gravity.y;
     const gm=Math.hypot(gx,gy);
     if(gm<.05){ gx=0; gy=1; }
     else { gx/=gm; gy/=gm; }
 
+    for(let i=1;i<=steps;i++){
+      const t=i/steps;
+      const x=prev.x+dx*t,y=prev.y+dy*t;
+      this.field.wipe(x,y,0.034,speed,ux,uy);
+    }
+
+    // Move the newly-created surface film to the physical downhill edge. This is
+    // height-map transport, not particle spawning.
+    this.field.squeezeWaterDownhill(
+      p.x,
+      p.y,
+      gx,
+      gy,
+      Math.min(1.8,0.65+speed*.35),
+      0.034*Math.min(1.45,1+speed*.14),
+    );
+
+    // Only occasionally ask for a macroscopic head. The water height map is free
+    // to accumulate between these samples, so one basin grows a dominant collector
+    // rather than a dotted necklace following every pointer event.
     const edge=0.031*Math.min(1.4,1+speed*.16);
-    const canNucleate=(now-(prev.lastNucleate||0))>(speed>.9?95:145);
+    const canNucleate=(now-(prev.lastNucleate||0))>(speed>.9?150:220);
     if(canNucleate && dist>.006){
       const ex=Math.max(0,Math.min(1,p.x+gx*edge));
       const ey=Math.max(0,Math.min(1,p.y+gy*edge));
-      this.droplets.nucleateAt(ex,ey,Math.min(1.35,.60+speed*.26),{x:ux*speed*.028,y:uy*speed*.028});
+      this.droplets.nucleateAt(
+        ex,
+        ey,
+        Math.min(1.45,.68+speed*.25),
+        {x:ux*speed*.018,y:uy*speed*.018},
+      );
       prev.lastNucleate=now;
     }
 
-    // A broad fast sweep piles extra water at a point slightly downhill *and*
-    // ahead of the finger. This should feed the same dominant pool whenever it
-    // is nearby, not spawn a necklace of droplets along the whole gesture.
-    if(speed>1.30 && dist>.030){
-      const ex=Math.max(0,Math.min(1,p.x+gx*.026+ux*.010));
-      const ey=Math.max(0,Math.min(1,p.y+gy*.026+uy*.010));
+    // A decisive sweep supplies the same downhill basin rather than creating
+    // several independent droplets along the stroke.
+    if(speed>1.45 && dist>.035 && now-(prev.lastNucleate||0)>85){
+      const ex=Math.max(0,Math.min(1,p.x+gx*.030+ux*.008));
+      const ey=Math.max(0,Math.min(1,p.y+gy*.030+uy*.008));
       this.droplets.nucleateAt(
         ex,ey,
-        Math.min(1.65,.95+(speed-1.30)*.32),
-        {x:ux*speed*.045,y:uy*speed*.045},
+        Math.min(1.70,1.02+(speed-1.45)*.30),
+        {x:ux*speed*.030,y:uy*speed*.030},
       );
+      prev.lastNucleate=now;
     }
 
     this.active.set(e.pointerId,{...p,t:now,lastNucleate:prev.lastNucleate||0});
