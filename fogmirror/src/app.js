@@ -64,13 +64,9 @@ async function startExperience(){
 startBtn.addEventListener('click',startExperience);
 
 steamBtn.addEventListener('click',()=>{
+  // Steam restores microscopic condensation only. It does not create visible drops
+  // out of nowhere; visible water must coalesce later from the surface reservoir.
   field.steam(1.35);
-  // Steam primarily restores fine condensation. Only already-wet regions get a
-  // small chance of producing a visible bead; Steam must not rain on the mirror.
-  for(let i=0;i<5;i++){
-    const x=.08+Math.random()*.84,y=.08+Math.random()*.78;
-    if(field.sampleWet(x,y)>.30 && Math.random()<.32) droplets.seed(x,y,.24,.010);
-  }
   status('Steam spreading across the mirror',1300);
 });
 
@@ -87,7 +83,7 @@ motionBtn.addEventListener('click',async()=>{
 homeBtn.addEventListener('click',()=>{ location.href='../'; });
 
 input.onWipe=({speed})=>{
-  if(speed>1.7 && Math.random()<.12) status('Water released',650);
+  if(speed>1.7 && Math.random()<.10) status('Water disturbed',650);
 };
 
 function frame(now){
@@ -115,12 +111,6 @@ addEventListener('pagehide',()=>{
   gravity.stop();
 });
 
-// Start with only a few tiny pinned beads. The mirror should read primarily as
-// fine condensation; macroscopic drops are earned by wetting/wiping the surface.
-for(let i=0;i<7;i++) droplets.add({
-  x:.06+Math.random()*.88,
-  y:.08+Math.random()*.78,
-  radius:.0018+Math.random()*.0028,
-});
-
+// Intentionally no startup macroscopic droplets. The initial mirror is made from
+// fine condensation only; visible beads must emerge through actual accumulation.
 window.fogMirror={camera,gravity,field,droplets,renderer};
