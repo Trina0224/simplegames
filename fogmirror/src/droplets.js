@@ -416,7 +416,7 @@ export class FlowSystem {
   /** The body the head leaves behind: real water, wetness, cleared fog, ownership. */
   _layTrail(head, px, py, r) {
     const s = this.surface;
-    const { cols, water, wet, fog, humid, flowId } = s;
+    const { cols, water, wet, fog, flowId } = s;
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
@@ -468,16 +468,16 @@ export class FlowSystem {
           // at an honest film budget nothing would ever run far — which is not
           // what a steamed mirror does.
           const clear = 0.34 * strength * (1 - 0.55 * d);
-          fog[i] -= fog[i] * clear;
-          swept += humid[i] * clear;
-          humid[i] -= humid[i] * clear;
+          const took = fog[i] * clear;
+          fog[i] -= took;
+          swept += took;
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
         }
       }
     }
-    head.mass += swept;
+    head.mass += swept * s.fogYield;
   }
 
   /**

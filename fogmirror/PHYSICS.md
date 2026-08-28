@@ -229,33 +229,30 @@ For each stroke footprint:
 7. update local pooling candidates
 8. carry a little of it off on the finger, permanently
 
-### The haze comes back; the water it stands for does not
+### Nothing re-fogs by itself
 
-This is the one that kept the mirror producing drops for ever, and it is not a tuning number
-either.
+There used to be a slow ambient re-condensation: `fog` was driven back towards full everywhere,
+faster on wet glass, so a finger drawing would fade after a while and the pane would heal
+itself. It was there for the feel of the thing, not because anything required it.
 
-Re-condensation drives `fog` back towards full, quickly on wet glass — it has to, or a finger
-drawing never fades and the toy has no life in it. Once fog is worth liquid (§5a), that same
-line makes it an **unlimited supply of water**. A drop runs, sweeps the condensation in its
-track into itself (§8a), sheds what it cannot hold; the track re-fogs in seconds because it is
-wet; the next drop sweeps the same strip again. Measured, after one drag and then nothing at
-all: twelve to thirteen drops ran continuously for ninety seconds and the liquid on the glass
-*rose* from 141 units to 526. That is a perpetual motion machine, and it is why the glass never
-stopped shedding drops however much the rest of the model was tightened.
+It is the reason the glass never stopped producing drops. Once fog is worth liquid (§5a), an
+endless supply of fog is an endless supply of **water**: a drop runs, sweeps the condensation in
+its track into itself (§8a), sheds what it cannot hold; the track re-fogs within seconds
+because it is wet; the next drop sweeps the same strip again. Measured, after one drag on a
+tablet and then nothing at all: twelve to thirteen drops ran continuously for ninety seconds
+and the liquid on the glass *rose* from 141 units to 526. A perpetual motion machine, and no
+amount of tightening anything downstream of it could have helped.
 
-The two things `fog` was doing are not the same thing:
+So there is no ambient re-condensation at all. What you wipe off stays wiped off, for as long
+as you leave it. Fog arrives from one place only — **Steam** — and **Fresh** is how you start
+over. That is also the more honest model: a mirror that quietly mists itself back up while you
+watch is not a mirror, and both buttons exist precisely so the user decides when the glass
+gets misty again.
 
-- **Optical haze.** A mist of sub-micron droplets scatters enormously per unit of water, and it
-  re-forms in seconds. This is what the renderer reads and what makes a drawing fade.
-- **Liquid held.** Actual water out of the air, arriving at the rate the air can deliver it.
-
-So they are separate fields now. `fog` recovers as before. `humid` — the water that fog is
-holding, in the same height units as everything else — is topped up by **Steam**, which is the
-one thing that genuinely brings water to the glass, and otherwise trickles back at a small
-fraction of the haze's rate. A finger and a running drop both harvest `humid`, not `fog`.
-
-The budget is closed over `water + moving mass + humid`, and it is exact: the only ways out are
-evaporation and the share a finger carries off, and the only way in is Steam.
+The consequences run right through the rest of this document. The budget over
+`water + moving mass + fog x fogYield` now only ever goes **down**: evaporation and the share a
+finger carries off are the only ways out, and Steam is the only way in. Wetness memory still
+fades on its own, because that is the glass drying, not the glass fogging.
 
 ### The finger is a squeegee, and its track is not wet
 

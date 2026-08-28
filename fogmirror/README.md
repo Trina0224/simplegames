@@ -44,7 +44,7 @@ side — plus a small number of moving water heads.
 
 | File | Role |
 | --- | --- |
-| `src/condensation.js` | The fields: steam, re-condensation, levelling, downhill sag, and wiping |
+| `src/condensation.js` | The fields: steam, evaporation, levelling, downhill sag, and wiping |
 | `src/droplets.js` | Flow heads: collection, pinning, motion, trails, merging |
 | `src/render.js` | Optics: refraction, highlight, haze. Reads the fields, never writes them |
 | `src/orientation.js` | Gravity. Frozen — see below |
@@ -99,7 +99,8 @@ regression. The rewrite treats gravity as an input.
 ## Controls
 
 - **Drag** anywhere to wipe.
-- **Steam** re-fogs the glass without erasing the water or the wetness memory.
+- **Steam** re-fogs the glass without erasing the water or the wetness memory. Nothing else
+  puts fog back: what you wipe off stays wiped off until you ask for more.
 - **Fresh** starts over: every drop, streak and wet mark is gone and the glass
   carries one even sheet of new condensation. Steam adds to what is there;
   Fresh replaces it.
