@@ -183,7 +183,13 @@ export class MirrorRenderer {
     const px = this.pixels;
     for (let i = 0, p = 0; i < fog.length; i += 1, p += 4) {
       px[p] = fog[i] * 255;
-      px[p + 1] = Math.min(1, water[i] / WATER_SCALE) * 255;
+      // Wet glass carries a film. A trail deposits far too little water to
+      // register optically — it must, or the drop laying it would bleed out in
+      // a couple of cells — so without this a rivulet's track is nothing but a
+      // hole in the fog: no edge, no refraction, no highlight. It reads as a
+      // scratch rather than as water. The film gives it a surface to catch.
+      const film = water[i] + wet[i] * wet[i] * 0.42;
+      px[p + 1] = Math.min(1, film / WATER_SCALE) * 255;
       px[p + 2] = wet[i] * 255;
       px[p + 3] = 255;
     }

@@ -24,7 +24,7 @@ const MIN_RADIUS_PX = 0.2 * MM;
 // (sweeping up water, growing, merging, leaving a tail) then never happens.
 const DEPIN_RADIUS_PX = 0.5 * MM;   // ~1 mm across is where a drop starts to slide
 const COLLECT_MAX_PX = 5 * MM;
-const MAX_HEADS = 8;
+const MAX_HEADS = 9;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 // Everything sideways must be a fraction of gravity, and must be scaled by cell
@@ -156,7 +156,11 @@ export class FlowSystem {
       // evidence of disturbance. Untouched fog has none and cannot bead.
       // The gate follows the surface's own texture, so beads appear where the
       // glass favours them rather than in an evenly spaced row along a stroke.
-      if (water[i] < 0.95 * s.heterogeneity[i]) continue;
+      // Squaring the surface term spreads the gate much further apart across
+      // the glass, so beads appear where it happens to favour them instead of
+      // at even intervals along a stroke, which reads as a comb.
+      const het = s.heterogeneity[i];
+      if (water[i] < 0.62 * het * het * het) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
       // Water lying in a trail that is still running belongs to that flow. It
       // may bead up later, once the flow has gone, but not behind a live head.
@@ -189,7 +193,7 @@ export class FlowSystem {
       // A collector already within reach should be drinking this, not a rival.
       let taken = false;
       for (const head of this.heads) {
-        const rr = radiusForMass(head.mass) * 5 + 13;
+        const rr = radiusForMass(head.mass) * 3 + 6;
         if ((head.x - x) ** 2 + (head.y - y) ** 2 < rr * rr) { taken = true; break; }
       }
       if (taken) continue;
@@ -381,7 +385,7 @@ export class FlowSystem {
           const i = y * cols + x;
           water[i] += (1 - d) * scale;
           wet[i] = Math.min(1, Math.max(wet[i], 0.85 - 0.3 * d));
-          fog[i] *= 0.66 + 0.28 * d;
+          fog[i] *= 0.74 + 0.22 * d;
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
@@ -408,7 +412,7 @@ export class FlowSystem {
         // moment it forms, which is both unphysical and the thing that made
         // every trail start off at an angle. Contact lines bridge when they are
         // nearly touching; until then water falls straight down.
-        const reach = (ra + rb) * 2 + 3;
+        const reach = (ra + rb) * 2.6 + 5;
         let dx = B.x - A.x;
         let dy = B.y - A.y;
         const d = Math.hypot(dx, dy);

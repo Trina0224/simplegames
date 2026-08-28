@@ -530,6 +530,24 @@ Trails should later:
 
 ---
 
+## 12a. A trail has to be *seen* as water, and it cannot pay for that itself
+
+A trail deposits very little water — it must, because it comes out of the head, and a head
+that leaves much behind bleeds out within a few millimetres. That amount is far below what
+the optics can read as a surface: about a hundredth of what registers.
+
+So a rivulet's track was drawn as nothing but a hole in the fog. No edge, no refraction, no
+highlight, no meniscus. It read as a scratch or a trickle of sand, not as water, and no
+amount of tuning the trail deposit could fix it without killing the drop that lays it.
+
+The wetness map pays for it instead. Wet glass carries a film, so the renderer adds a share
+of `wet` to the water height it reads for the optics — not to the simulation, which stays
+exactly conservative. The trail then has a surface: gradients at its edges, a highlight along
+it, a rounded head. This is a rendering decision resting on a physical fact, and the split
+matters: `wet` is not mass and must never become mass.
+
+---
+
 ## 13. Rendering implications
 
 The old visual of a circular head dragging a constant-width dark line is not accepted.

@@ -100,7 +100,9 @@ Each of these was a bug that looked like a tuning problem and was not.
 
 1. **Evaporation is a fraction of the water in a cell, never a fixed amount per cell.** A fixed amount makes the loss proportional to wetted area, and one wipe dries out in seconds.
 2. **A thin film must coarsen towards its thickest neighbour.** Diffusion alone smooths water into a sheet too thin to bead, and nothing downstream can happen. Only deep cells level.
-3. **The size at which a drop breaks away must be reachable from one catchment.** A bead drains its surroundings and stops growing; if it needs more than that, it sits just under the threshold for ever and never moves, merges or leaves a tail.
+3. **A trail is drawn from the wetness map, not from the water it deposits.** The deposit is a hundredth of what the optics can read, and it cannot be raised — it comes out of the head. Without a film derived from `wet`, a rivulet is a hole in the fog with no edge and no highlight, and it reads as a scratch. `wet` contributes to the rendered surface only; it is never mass.
+4. **Beads must be born close enough together to reach each other.** The spacing rule kept new drops further apart than the bridging distance, so however keen the merging, nothing ever met.
+5. **The size at which a drop breaks away must be reachable from one catchment.** A bead drains its surroundings and stops growing; if it needs more than that, it sits just under the threshold for ever and never moves, merges or leaves a tail.
 
 ---
 
