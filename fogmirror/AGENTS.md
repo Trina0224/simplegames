@@ -244,6 +244,11 @@ A moving flow must write:
 - reduced fog
 - connected flow-ID/body information
 
+A trail must be **thin**. This is not a look, it is a physical constraint: a head that leaves
+much of itself behind stalls after a few millimetres, and the water it drops re-beads and runs
+and drops again, so one wipe produces drops forever. A wiped patch holds a fixed amount of
+water. Water inside a flow body that is still running must not nucleate a new head.
+
 A trail should:
 
 - be narrower than the head
@@ -277,7 +282,8 @@ Prefer:
 - partial Fresnel highlights
 - darker meniscus/contact region only where appropriate
 - mass-dependent head footprint
-- elongation in the direction of motion
+- a teardrop shape for a moving head — round in front, tapered behind into its
+  own trail; a symmetric ellipse reads as an egg
 - continuous blending between head and trail/body
 - lower-resolution simulation buffers upscaled smoothly for mobile performance
 

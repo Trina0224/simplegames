@@ -192,10 +192,14 @@ export class MirrorRenderer {
     for (const head of heads) {
       const r = radiusForMass(head.mass);
       const speed = Math.hypot(head.vx, head.vy);
-      const stretch = 1 + Math.min(0.45, speed / 120);
+      // A drop at rest is round. A running one is a teardrop: the leading edge
+      // stays round because that is where the water piles up, and the trailing
+      // edge is drawn out and narrowed into the streak it is leaving. A
+      // symmetric ellipse — the same at both ends — is what reads as an egg.
+      const tail = 1 + Math.min(1.4, speed / 55);
       const ux = speed > 0.01 ? head.vx / speed : 0;
       const uy = speed > 0.01 ? head.vy / speed : 1;
-      const reach = r * stretch + 1;
+      const reach = r * tail + 1;
       const x0 = Math.max(0, Math.floor(head.x - reach));
       const x1 = Math.min(cols - 1, Math.ceil(head.x + reach));
       const y0 = Math.max(0, Math.floor(head.y - reach));
@@ -207,7 +211,10 @@ export class MirrorRenderer {
           // a moving head is drawn out along its direction of travel
           const along = dx * ux + dy * uy;
           const across = dx * -uy + dy * ux;
-          const d = Math.hypot(along / stretch, across) / r;
+          const behind = along < 0 ? Math.min(1, -along / (r * tail)) : 0;
+          const lengthwise = along >= 0 ? 1 : tail;
+          const widthwise = 1 - 0.5 * behind;          // the tail narrows as it goes
+          const d = Math.hypot(along / lengthwise, across / widthwise) / r;
           if (d > 1.05) continue;
           const dome = Math.sqrt(Math.max(0, 1 - d * d));
           const p = (y * cols + x) * 4 + 1;
