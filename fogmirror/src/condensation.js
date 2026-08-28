@@ -24,6 +24,9 @@ const ADHERED_MM = 0.00517;   // bound to the glass by adhesion, cannot be gathe
 const SAG_HEIGHT = 0.25;       // film deep enough to creep downhill on its own
 const POOL_HEIGHT = 0.9;       // deep enough to level like a pool rather than bead
 const MM = 6.2;                // CSS pixels per millimetre
+// A finger that has wiped a steamed mirror is wet: this much of what each
+// stroke sample mobilises leaves with it and never comes back.
+const CARRIED_OFF = 0.09;
 
 export class Surface {
   constructor(cols, rows) {
@@ -250,10 +253,16 @@ export class Surface {
 
   /**
    * A finger is a displacement, not an eraser. Returns how much liquid the
-   * stroke sample mobilised, so the caller can see water is conserved.
+   * stroke sample mobilised, so the caller can see water is conserved: what it
+   * mobilises is deposited around the contact patch, apart from the small share
+   * that leaves on the finger itself.
+   *
+   * `dirX, dirY` is the direction the finger is travelling, if known: water is
+   * pushed out to the sides of the *track*, which is not the same as the sides
+   * of the gravity vector once you draw anything but a horizontal line.
    */
-  wipe(px, py, radius, gravity, speed) {
-    const { cols, rows, fog, water, wet } = this;
+  wipe(px, py, radius, gravity, speed, dirX = 0, dirY = 0) {
+    const { cols, rows, fog, water, wet, heterogeneity } = this;
     const r = Math.max(1.5, radius);
     const r2 = r * r;
     const x0 = Math.max(0, Math.floor(px - r));
@@ -268,11 +277,15 @@ export class Surface {
         const dy = y - py;
         const d2 = dx * dx + dy * dy;
         if (d2 > r2) continue;
-        const falloff = 1 - Math.sqrt(d2) / r;
+        // A fingertip is not a soft brush. Almost all of the contact patch is
+        // pressed flat against the glass and only the rim tapers off, so the
+        // track a finger leaves has a definite edge.
+        const t = Math.sqrt(d2) / r;
+        const contact = 1 - t * t * t;
         const i = y * cols + x;
 
         // 1. the fine mist goes
-        const removedFog = fog[i] * 0.82 * falloff;
+        const removedFog = fog[i] * 0.94 * contact;
         fog[i] -= removedFog;
 
         // 2. a little of it was already liquid, and the finger gathers that.
@@ -280,37 +293,51 @@ export class Surface {
         // much of it into liquid and the glass never stops producing drops.
         collected += removedFog * this.fogYield;
 
-        // 3. so is most of the free water already sitting there
-        const mobile = water[i] * (0.55 + 0.35 * falloff);
+        // 3. and the free water goes with it. A finger is a squeegee: it takes
+        // everything but the film adhesion binds to the glass, so the track
+        // behind it is clear, not a wet band. Leaving half the water where the
+        // finger went made the whole length of a stroke go on beading.
+        const bound = Math.min(water[i], this.adhered * heterogeneity[i]);
+        const mobile = (water[i] - bound) * contact;
         water[i] -= mobile;
         collected += mobile;
 
-        // 4. the glass stays wet
-        wet[i] = Math.min(1, Math.max(wet[i], 0.55 * falloff + 0.25));
+        // 4. the glass stays wetted — but only just. Wetness is what the optics
+        // read as a film (see PHYSICS.md §12a), and a squeegeed track has had
+        // its film taken away: it is clear glass that happens to wet easily,
+        // not a band of water. A rivulet's track, which really does carry a
+        // film, is left far wetter than this.
+        wet[i] = Math.min(1, Math.max(wet[i], 0.3 * contact + 0.14));
       }
     }
 
     if (collected <= 0) return 0;
 
-    // Most of it is pushed to the gravity-down edge of the contact patch; the
-    // rest is left as a thinner ridge either side and a damp film in the middle.
+    // All of it goes to the rim of the contact patch: the gravity-down edge
+    // takes most, the sides of the track take the rest, and nothing at all is
+    // put back in the middle. Water does not stay where a finger has just been.
+    // A little leaves on the finger — a finger that has wiped a steamed mirror
+    // is wet, and that water is off the glass for good.
     const g = gravity && gravity.plane > 0.08 ? gravity : null;
     const fast = Math.min(1, speed / 320);
-    const downShare = g ? 0.62 + 0.16 * fast : 0.3;
-    const sideShare = (1 - downShare) * 0.6;
-    const filmShare = 1 - downShare - sideShare;
+    const carried = CARRIED_OFF;
+    const spread = collected * (1 - carried);
+    const downShare = g ? 0.68 + 0.14 * fast : 0.34;
+    const sideShare = 1 - downShare;
+    // Sideways means either side of the track, not either side of gravity —
+    // they are only the same thing while you are drawing a horizontal line.
+    let sx = -dirY;
+    let sy = dirX;
+    if (sx * sx + sy * sy < 0.01) { sx = g ? -g.y : 1; sy = g ? g.x : 0; }
 
     if (g) {
-      this._deposit(px + g.x * r * 0.95, py + g.y * r * 0.95, r * 0.7, collected * downShare);
-      this._deposit(px - g.y * r * 0.85, py + g.x * r * 0.85, r * 0.6, collected * sideShare * 0.5);
-      this._deposit(px + g.y * r * 0.85, py - g.x * r * 0.85, r * 0.6, collected * sideShare * 0.5);
+      this._deposit(px + g.x * r * 0.95, py + g.y * r * 0.95, r * 0.7, spread * downShare);
     } else {
-      this._deposit(px, py + r * 0.9, r * 0.7, collected * downShare * 0.5);
-      this._deposit(px, py - r * 0.9, r * 0.7, collected * downShare * 0.5);
-      this._deposit(px - r * 0.9, py, r * 0.6, collected * sideShare * 0.5);
-      this._deposit(px + r * 0.9, py, r * 0.6, collected * sideShare * 0.5);
+      this._deposit(px, py + r * 0.9, r * 0.7, spread * downShare * 0.5);
+      this._deposit(px, py - r * 0.9, r * 0.7, spread * downShare * 0.5);
     }
-    this._deposit(px, py, r * 0.9, collected * filmShare);
+    this._deposit(px + sx * r * 0.9, py + sy * r * 0.9, r * 0.6, spread * sideShare * 0.5);
+    this._deposit(px - sx * r * 0.9, py - sy * r * 0.9, r * 0.6, spread * sideShare * 0.5);
     return collected;
   }
 

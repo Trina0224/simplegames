@@ -86,10 +86,12 @@ new PointerPaths(el.surface, (stroke) => {
   const x1 = stroke.x1 / cellSize;
   const y1 = stroke.y1 / cellSize;
   const dist = Math.hypot(x1 - x0, y1 - y0);
+  const dirX = dist > 0.001 ? (x1 - x0) / dist : 0;
+  const dirY = dist > 0.001 ? (y1 - y0) / dist : 0;
   const steps = Math.max(1, Math.ceil(dist / (r * 0.55)));
   for (let i = 1; i <= steps; i += 1) {
     const t = i / steps;
-    surface.wipe(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r, g, stroke.speed);
+    surface.wipe(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r, g, stroke.speed, dirX, dirY);
   }
   wake();
 });
