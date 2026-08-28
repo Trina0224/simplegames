@@ -84,6 +84,16 @@ Required state concepts:
 
 ---
 
+## Sizes are physical
+
+Drop sizes are defined in CSS pixels — a stand-in for millimetres — and converted to simulation cells at runtime, never the other way round. A cell is a different real length on every screen, so any size expressed in cells is a different drop on a phone than on a tablet.
+
+Water's capillary length is about 2.7 mm. A drop much bigger than that cannot be held on vertical glass: it sheds into a rivulet or falls off. Nucleation, depinning and the maximum size are all set from that scale, and the pinning resistance, gravity drive and drag are scaled by cell size so the same drop behaves the same way on every device.
+
+If a drop looks too big, the number to change is `MAX_RADIUS_PX`, in millimetres. Do not compensate elsewhere.
+
+---
+
 ## Water mass rules
 
 Water may enter or move between representations only through explicit transfers.

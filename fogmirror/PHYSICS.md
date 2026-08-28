@@ -177,6 +177,38 @@ The rendered visible drop is the thick front/head of a connected water body.
 
 ---
 
+## 4.6 Physical scale — sizes are millimetres, not cells
+
+Water has a capillary length of about 2.7 mm: `sqrt(surface tension / (density x g))`.
+It is the length at which surface tension stops being able to hold water against gravity.
+A drop much larger than that on vertical glass does not creep — it sheds into a rivulet or
+runs off. Anyone who has looked at a steamed mirror knows the sizes: a haze of beads well
+under a millimetre, a scattering of one- and two-millimetre drops, and the few that reach
+three or four millimetres are the ones that leave a streak down the glass.
+
+Every size in `droplets.js` is therefore defined in CSS pixels and converted to cells at
+runtime, because a cell is a different physical length on every device — nearly twice as
+long on a tablet as on a phone. A CSS pixel is close to 0.16 mm on both, so it stands in
+for millimetres well enough.
+
+```text
+new bead            ~0.7 mm across
+breaks away at      ~1.7 mm across, earlier on a wet trail than on dry glass
+maximum             ~3.8 mm across; beyond this the head sheds into its trail
+terminal speed      ~13-15 mm/s at full size, and it rises with mass^0.4
+```
+
+The three constants that must scale with cell size are the pinning resistance, the gravity
+drive, and the drag — otherwise the same drop breaks away at one size on a phone and a very
+different one on a tablet. Measured on both, a drop now nucleates, depins and caps out at
+the same physical size to within a few hundredths of a millimetre.
+
+A cap is not a special case bolted on. Past it the head keeps collecting and deposits the
+excess into its trail, which is exactly how a drop that has outgrown the glass behaves: it
+runs, and it leaves the extra water behind it.
+
+---
+
 ## 5. Finger wiping as water transport
 
 A finger is not an opacity eraser.

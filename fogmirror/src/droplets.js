@@ -2,24 +2,28 @@
 // body of water, not an independent particle: it takes its mass from the
 // surface, leaves some of it behind as a trail, and merges with anything it
 // runs into. Nothing here draws.
+//
+// Sizes are defined in CSS pixels, not simulation cells, because the physics is
+// physical: water's capillary length is about 2.7 mm, and a drop much larger
+// than that cannot be held on vertical glass by surface tension — it sheds into
+// a rivulet or falls off. A CSS pixel is close to 0.16 mm on both a phone and a
+// tablet, so px is a usable stand-in for millimetres, and the same drop is the
+// same real size whatever the grid resolution happens to be.
 
-const MIN_HEAD_MASS = 3.4;      // below this a head dissolves back into the film
-const NUCLEATE_MASS = 4.2;      // a new head must be able to start this heavy
+const MM = 6.2;                     // CSS pixels per millimetre, near enough
+const MAX_RADIUS_PX = 1.9 * MM;     // ~3.8 mm across: about as big as glass holds
+const NUCLEATE_RADIUS_PX = 0.34 * MM;
+const MIN_RADIUS_PX = 0.27 * MM;
+const DEPIN_RADIUS_PX = 1.2 * MM;   // ~2.4 mm across is where a drop starts to slide
+const COLLECT_MAX_PX = 2.6 * MM;
 const MAX_HEADS = 40;
-const MAX_MASS = 240;           // a drop this size sheds as fast as it collects
-const HEIGHT = 0.62;            // mean height of a head, for mass <-> radius
-const GRAVITY_ACC = 46;         // cells per second squared at full tilt
-// Terminal speed rises with mass, but only as its fourth root: a fat drop is
-// visibly faster than a bead without becoming a bullet.
-const DRAG = 3.0;
-const PIN_BASE = 5.6;           // resistance per unit of contact radius
-const PIN_HYSTERESIS = 0.55;    // a moving drop stops less easily than it starts
-// A rivulet leaves a thin trail relative to what it carries. Too generous here
-// and a small head bleeds out before it can pick up speed, which kills the
-// whole bead -> creep -> grow sequence.
-const TRAIL_RATE = 0.12;        // residual water per cell of travel, scaled by radius
-const TRAIL_MAX_SHARE = 0.03;   // ...and never more than this much of the head per cell
-const COLLECT_RATE = 3.4;       // how fast a head drains the film it sits on
+const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
+const ACC_PX = 82;                  // gravity drive, CSS px per second squared
+const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
+const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it starts
+const TRAIL_RATE = 0.12;            // residual water per cell of travel, scaled by radius
+const TRAIL_MAX_SHARE = 0.03;       // ...and never more than this much of the head per cell
+const COLLECT_RATE = 3.4;           // how fast a head drains the film it sits on
 
 export function radiusForMass(mass) {
   return Math.sqrt(Math.max(0, mass) / (Math.PI * HEIGHT));
@@ -28,11 +32,32 @@ export function radiusForMass(mass) {
 export class FlowSystem {
   constructor(surface) {
     this.surface = surface;
+    this.setScale(3);
     this.heads = [];
     this.nextId = 1;
     this.parent = [0];          // union-find over flow-body ids
     this.scanCursor = 0;
     this.merges = 0;
+  }
+
+  /**
+   * Fix the physical scale. Everything that has a real size is derived here, so
+   * a drop is the same few millimetres across on a phone and on a tablet even
+   * though a simulation cell is nearly twice as long on one of them.
+   */
+  setScale(cellPx) {
+    const px = Math.max(0.5, cellPx);
+    this.cellPx = px;
+    const massFor = (radiusPx) => Math.PI * HEIGHT * (radiusPx / px) ** 2;
+    this.maxMass = massFor(MAX_RADIUS_PX);
+    this.nucleateMass = massFor(NUCLEATE_RADIUS_PX);
+    this.minMass = massFor(MIN_RADIUS_PX);
+    this.collectMax = COLLECT_MAX_PX / px;
+    // Drive grows with mass, resistance with the contact radius, so the size at
+    // which a drop breaks away falls out of this one number.
+    this.pinBase = Math.PI * HEIGHT * DEPIN_RADIUS_PX / px;
+    this.acc = ACC_PX / px;
+    this.drag = DRAG_PX / Math.sqrt(px);
   }
 
   reset() {
@@ -80,7 +105,7 @@ export class FlowSystem {
     for (const head of this.heads) this._step(head, dt, gravity);
     this._mergeHeads();
     this.heads = this.heads.filter((h) => {
-      if (h.mass >= MIN_HEAD_MASS) return true;
+      if (h.mass >= this.minMass) return true;
       // A head that shrinks away gives its water back rather than vanishing.
       s._deposit(h.x, h.y, Math.max(1.2, radiusForMass(h.mass)), h.mass);
       return false;
@@ -141,7 +166,7 @@ export class FlowSystem {
       if (taken) continue;
 
       const mass = this._drain(x, y, 4.2, 1);
-      if (mass < NUCLEATE_MASS) {
+      if (mass < this.nucleateMass) {
         s._deposit(x, y, 4.2, mass);   // not enough gathered yet: put it back
         continue;
       }
@@ -205,10 +230,15 @@ export class FlowSystem {
     // grows with the drop but far more slowly than the drop does, or a big head
     // would vacuum the whole pane.
     const moving = speed > 1;
-    if (head.mass < MAX_MASS) {
-      const collectRadius = Math.min(14, r * (moving ? 1.5 : 1.1) + 2.2);
-      const share = Math.min(0.85, COLLECT_RATE * dt * (moving ? 1.4 : 1));
-      head.mass = Math.min(MAX_MASS, head.mass + this._drain(head.x, head.y, collectRadius, share, dirX, dirY));
+    const collectRadius = Math.min(this.collectMax, r * (moving ? 1.5 : 1.1) + 2.2);
+    const share = Math.min(0.85, COLLECT_RATE * dt * (moving ? 1.4 : 1));
+    head.mass += this._drain(head.x, head.y, collectRadius, share, dirX, dirY);
+    // Past the size glass can hold, a drop does not keep swelling: it runs and
+    // sheds, which is what turns a fat drop into a rivulet.
+    if (head.mass > this.maxMass) {
+      const excess = head.mass - this.maxMass;
+      head.mass = this.maxMass;
+      s._deposit(head.x, head.y, Math.max(1.2, r), excess);
     }
 
     // --- head-body merge: standing in someone else's body joins the two
@@ -224,7 +254,7 @@ export class FlowSystem {
     const wetness = wet[i];
     const het = heterogeneity[i];
     const drive = gravity.plane * head.mass;
-    const base = PIN_BASE * r * het * (1 - 0.55 * wetness);
+    const base = this.pinBase * r * het * (1 - 0.55 * wetness);
     if (head.pinned) {
       if (drive > base) head.pinned = false;
     } else if (drive < base * PIN_HYSTERESIS && speed < 2) {
@@ -240,7 +270,7 @@ export class FlowSystem {
     }
 
     // --- motion: gravity, mass-dependent drag, a weak pull along wet glass
-    const acc = GRAVITY_ACC * gravity.plane;
+    const acc = this.acc * gravity.plane;
     head.vx += gravity.x * acc * dt;
     head.vy += gravity.y * acc * dt;
 
@@ -254,7 +284,9 @@ export class FlowSystem {
     head.vx += (het - 1) * 14 * dt * -dirY;
     head.vy += (het - 1) * 14 * dt * dirX;
 
-    const drag = DRAG / Math.pow(Math.max(1, head.mass), 0.25);
+    // Terminal speed rises with mass^0.4: a full drop runs about half again as
+    // fast as one that has only just broken away, which is what you see.
+    const drag = this.drag / Math.pow(Math.max(1, head.mass), 0.4);
     head.vx -= head.vx * drag * dt;
     head.vy -= head.vy * drag * dt;
 
