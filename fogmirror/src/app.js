@@ -23,6 +23,7 @@ const el = {
   message: document.getElementById('message'),
   diag: document.getElementById('diag'),
   steamBtn: document.getElementById('steamBtn'),
+  freshBtn: document.getElementById('freshBtn'),
   cameraBtn: document.getElementById('cameraBtn'),
   infoBtn: document.getElementById('infoBtn'),
 };
@@ -56,6 +57,7 @@ function layout() {
   const cols = Math.max(32, Math.round(viewW / cellSize));
   const rows = Math.max(32, Math.round(viewH / cellSize));
   surface.resize(cols, rows);
+  surface.setScale(cellSize);
   flows.setScale(cellSize);
   renderer.setSurfaceSize(cols, rows);
   // Cap the backing store: refraction is per-pixel, and a retina tablet at full
@@ -154,6 +156,15 @@ function updateDiag(g) {
 
 el.steamBtn.addEventListener('click', () => {
   steamUntil = performance.now() + 1600;
+  wake();
+});
+
+// Not the same as Steam: this clears the glass of water, streaks and memory and
+// puts an even sheet of fresh condensation back on it.
+el.freshBtn.addEventListener('click', () => {
+  surface.refresh();
+  flows.reset();
+  steamUntil = 0;
   wake();
 });
 

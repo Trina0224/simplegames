@@ -6,15 +6,38 @@
 
 export const NONE = 0;
 
-// The film a mirror simply holds on to. Below this height water is bound by
-// adhesion to the glass and cannot be gathered into a drop, however long you
-// wait; it leaves only by evaporating. This is why a wiped mirror stays faintly
-// damp instead of resolving into beads and clear glass.
-const ADHERED = 0.03;
+// Film thicknesses, in millimetres. One unit of `water` height is one cell
+// length deep, so every one of these has to be divided by the cell size to
+// become a height — exactly as drop sizes are (see droplets.js).
+//
+// These set the *water budget* of the whole toy, and getting the budget wrong
+// is not a look, it is a factual error: a fully fogged pane carries a few
+// microns of condensation, and wiping a hand's width of it yields a couple of
+// drops. This used to hand out about thirty times that, so one scribble put two
+// hundred drops' worth of water on the glass and the mirror then spent a minute
+// working through it. That is the real reason water kept appearing.
+const FOG_FILM_MM = 0.045;     // liquid equivalent of fully fogged glass
+const BEAD_FILM_MM = 0.10714;   // thick enough that the film breaks up into beads
+const ADHERED_MM = 0.00517;   // bound to the glass by adhesion, cannot be gathered
+// These two are not part of that budget: they are set by the balance between
+// gravity and surface tension, so they are drop-scale, not film-scale.
+const SAG_HEIGHT = 0.25;       // film deep enough to creep downhill on its own
+const POOL_HEIGHT = 0.9;       // deep enough to level like a pool rather than bead
+const MM = 6.2;                // CSS pixels per millimetre
 
 export class Surface {
   constructor(cols, rows) {
+    this.setScale(3);
     this.resize(cols, rows);
+  }
+
+  /** Fix the physical scale, so a micron of film is a micron on any device. */
+  setScale(cellPx) {
+    const cellMm = Math.max(0.02, cellPx / MM);
+    this.cellMm = cellMm;
+    this.fogYield = FOG_FILM_MM / cellMm;
+    this.beadFilm = BEAD_FILM_MM / cellMm;
+    this.adhered = ADHERED_MM / cellMm;
   }
 
   resize(cols, rows) {
@@ -38,6 +61,22 @@ export class Surface {
     this.wet.fill(0);
     this.flowId.fill(NONE);
     this._seedFog();
+  }
+
+  /**
+   * Start over: no liquid, no wetness memory, no tracks, and an even sheet of
+   * fresh condensation. This is not the Steam button — steam adds to whatever
+   * is already on the glass, keeps every drop and streak, and leaves the
+   * patchiness where it was. This puts the mirror back to how it looked before
+   * anyone touched it.
+   */
+  refresh() {
+    this.water.fill(0);
+    this.wet.fill(0);
+    this.flowId.fill(NONE);
+    this._seedFog();
+    // Thick and even — only a trace of the unevenness a mirror always has.
+    for (let i = 0; i < this.fog.length; i += 1) this.fog[i] = 0.93 + 0.07 * this.fog[i];
   }
 
   /** Fog is never uniform on a real mirror; seed it with a few octaves of noise. */
@@ -160,8 +199,8 @@ export class Surface {
         const i = y * cols + x;
         const h = scratch[i];
         // A residual film in a flow's own track is pinned, not free to gather.
-        if (h < 0.4 && this.flowId[i] !== NONE) continue;
-        const bound = ADHERED * this.heterogeneity[i];
+        if (h < 0.65 * this.beadFilm && this.flowId[i] !== NONE) continue;
+        const bound = this.adhered * this.heterogeneity[i];
         const free = h - bound;
         if (free <= 0) continue;
         let best = -1;
@@ -170,7 +209,7 @@ export class Surface {
           const j = n === 0 ? i - 1 : n === 1 ? i + 1 : n === 2 ? i - cols : i + cols;
           if (scratch[j] > best) { best = scratch[j]; bi = j; }
         }
-        if (h > 0.9) {
+        if (h > POOL_HEIGHT) {
           // A real pool does level out; only the thin film coarsens.
           const avg = (scratch[i - 1] + scratch[i + 1] + scratch[i - cols] + scratch[i + cols]) * 0.25;
           water[i] += (avg - h) * level;
@@ -193,11 +232,11 @@ export class Surface {
         for (let x = 0; x < cols; x += 1) {
           const i = y * cols + x;
           const h = scratch[i];
-          if (h < 0.25) continue;
+          if (h < SAG_HEIGHT) continue;
           const nx = x + (gx > 0.35 ? 1 : gx < -0.35 ? -1 : 0);
           const ny = y + (gy > 0.35 ? 1 : gy < -0.35 ? -1 : 0);
           if ((nx === x && ny === y) || !this.inside(nx, ny)) continue;
-          const move = (h - 0.25) * step;
+          const move = (h - SAG_HEIGHT) * step;
           water[i] -= move;
           const j = ny * cols + nx;
           water[j] += move;
@@ -239,7 +278,7 @@ export class Surface {
         // 2. a little of it was already liquid, and the finger gathers that.
         // Most condensation is far too fine to become free water at all — turn
         // much of it into liquid and the glass never stops producing drops.
-        collected += removedFog * 0.26;
+        collected += removedFog * this.fogYield;
 
         // 3. so is most of the free water already sitting there
         const mobile = water[i] * (0.55 + 0.35 * falloff);
