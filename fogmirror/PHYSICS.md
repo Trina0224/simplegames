@@ -241,6 +241,35 @@ A long stroke may produce several pooling zones, but repeated wiping over one lo
 Both were found by measuring rather than by looking, and both had the same symptom: water
 sat there as a film, beads never grew enough to move, nothing merged, and nothing left a tail.
 
+### The water budget is a physical quantity, and it was thirty times too big
+
+How much liquid a wipe yields is not a free parameter. A fully fogged pane carries a film a
+few tens of microns thick; a `water` height of 1 means one cell deep, and a cell is about half
+a millimetre. So the liquid equivalent of full fog is a few hundredths of a height unit — and
+this handed out **0.26**, about 0.15 mm of water, thirty times more than a mirror can hold.
+One hand-sized scribble put two hundred drops' worth of water on the glass, and the mirror
+then spent a minute working through it, shedding drop after drop. That is the honest answer to
+*「還是會生水出來」*: the glass was being given far more water than it had.
+
+Worse, it was **scale-dependent**. A height unit is a cell deep, so the same constant means
+twice as much real water on a tablet as on a phone. Every other physical size in this project
+is declared in millimetres and divided by the cell size; these were not.
+
+So the three film thicknesses — fully fogged glass, the thickness at which a film breaks up
+into beads, and the residue adhesion binds to the glass — are declared in millimetres and
+converted, exactly like drop radii. What they must preserve is the *ratio* between them: they
+were originally tuned against each other, and the ratio is what decides whether a wipe beads
+at all.
+
+Two consequences follow, and neither is optional:
+
+- **The patch a new bead dewets has to be solved for, not fixed.** A bead's mass comes out of
+  the area of film it clears, so a thinner film must clear a wider patch. With the radius
+  fixed at 2.4 cells, a realistic film simply could never assemble one — fifteen cells passed
+  the beading threshold and the best of them could only supply half of what a bead needs. That
+  is the starvation trap above, at birth rather than at growth.
+- **A running drop has to sweep the fog it crosses.** See §8a.
+
 ### Evaporation must be proportional to water, not to area
 
 Removing a fixed amount of water per cell per second makes the total loss proportional to the
@@ -367,6 +396,28 @@ small bead
 -> head gets larger
 -> flow gets faster
 ```
+
+---
+
+## 8a. Condensation is the reservoir; a run sweeps it up
+
+A drop running down a fogged mirror leaves a clear track. It is not pushing the mist aside —
+it is collecting it, and that is where most of the water in a long run comes from. Without
+this a head can only live on liquid already lying about, so once the water budget is honest
+(§5a) nothing runs more than a few millimetres: every drop bleeds into its own trail and dies.
+With it, a run *grows as it goes* — the streak is thin where the drop set off and thick at the
+bottom where it has been feeding for a hundred millimetres, which is exactly what a steamed
+mirror looks like.
+
+It also closes the accounting. `fog` was previously outside the water budget, mass appearing
+from nowhere at the wipe and vanishing at the edges. Now the total — liquid on the glass, plus
+liquid in the moving heads, plus fog times its liquid equivalent — is conserved *exactly*
+through a wipe and through minutes of running water. The test is in the harness and it returns
+zero, not nearly zero.
+
+The practical effect on the complaint above is larger than the budget change itself: a wipe
+now sheds its drops once, they run the length of the glass because they are feeding as they
+go, and no further water appears afterwards.
 
 ---
 

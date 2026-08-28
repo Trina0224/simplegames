@@ -24,7 +24,7 @@ const MIN_RADIUS_PX = 0.2 * MM;
 // (sweeping up water, growing, merging, leaving a tail) then never happens.
 const DEPIN_RADIUS_PX = 0.5 * MM;   // ~1 mm across is where a drop starts to slide
 const COLLECT_MAX_PX = 5 * MM;
-const MAX_HEADS = 9;
+const MAX_HEADS = 12;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 // Everything sideways must be a fraction of gravity, and must be scaled by cell
@@ -45,8 +45,9 @@ const TRAIL_RATE = 0.045;           // residual water per cell of travel, scaled
 const TRAIL_MAX_SHARE = 0.008;      // ...and never more than this much of the head per cell
 const COLLECT_RATE = 3.4;           // how fast a head drains the film it sits on
 // Water must actually be put back on a used track before it can bead there
-// again; the residual film left by the flow itself is nowhere near this deep.
-const TRACK_REBEAD = 2.2;
+// again — this many times the film thickness that beads on fresh glass. The
+// residual film a flow leaves is nowhere near that deep.
+const TRACK_REBEAD = 3.5;
 const TRAIL_WET_MIN = 0.42;         // wetness a barely-moving drop leaves behind
 
 export function radiusForMass(mass) {
@@ -166,8 +167,9 @@ export class FlowSystem {
       // the glass, so beads appear where it happens to favour them instead of
       // at even intervals along a stroke, which reads as a comb.
       const het = s.heterogeneity[i];
-      if (water[i] < 0.62 * het * het * het) continue;
-      if (wet[i] < 0.08 && water[i] < 0.5) continue;
+      const gate = s.beadFilm * het * het * het;
+      if (water[i] < gate) continue;
+      if (wet[i] < 0.08 && water[i] < 0.8 * s.beadFilm) continue;
       // Water lying in a trail belongs to that flow, not to a rival bead.
       // Once the flow has gone the track is drained glass carrying a bound
       // residual film, so it still cannot bead: only water actively put back
@@ -177,7 +179,7 @@ export class FlowSystem {
       const owner = s.flowId[i];
       if (owner > 0) {
         if (this.liveRoots.has(this.find(owner))) continue;
-        if (water[i] < TRACK_REBEAD * het) continue;
+        if (water[i] < TRACK_REBEAD * s.beadFilm * het) continue;
       }
 
       // Walk uphill to the top of the local gathering. A wiped ridge is broad
@@ -211,12 +213,19 @@ export class FlowSystem {
       }
       if (taken) continue;
 
-      // Take only the water immediately underneath. Draining as wide as the
-      // head can later reach starves it from birth: it never gathers enough to
-      // break away, and every bead sits where it formed for ever.
-      const mass = this._drain(x, y, 2.4, 0.85);
+      // A bead's mass comes out of the patch of film it clears, so a thinner
+      // film has to dewet over a wider patch to make the same bead. A fixed
+      // radius means that below some thickness no bead can form at all, however
+      // much water is lying about — the starvation trap of §5a, at birth this
+      // time instead of at growth. So the radius is solved for: just wide
+      // enough to supply one, and no wider, because draining further than that
+      // eats the catchment the newborn needs in order to grow and move.
+      const share = 0.85;
+      const h = Math.max(1e-4, water[y * cols + x]);
+      const rDrain = Math.min(7, Math.max(2, Math.sqrt(3 * this.nucleateMass / (Math.PI * h * share))));
+      const mass = this._drain(x, y, rDrain, share);
       if (mass < this.nucleateMass) {
-        s._deposit(x, y, 2.4, mass);   // not enough gathered yet: put it back
+        s._deposit(x, y, rDrain, mass);   // not enough gathered yet: put it back
         continue;
       }
       this.heads.push({
@@ -394,6 +403,7 @@ export class FlowSystem {
     const strength = TRAIL_WET_MIN + (1 - TRAIL_WET_MIN) * load;
     const steps = Math.max(1, Math.ceil(dist));
     const perStep = TRAIL_RATE * width * (dist / steps);
+    let swept = 0;
 
     for (let k = 1; k <= steps; k += 1) {
       const t = k / steps;
@@ -422,13 +432,22 @@ export class FlowSystem {
           const i = y * cols + x;
           water[i] += (1 - d) * scale;
           wet[i] = Math.min(1, Math.max(wet[i], strength * (1 - 0.3 * d)));
-          fog[i] *= 1 - 0.3 * strength * (1 - 0.55 * d);
+          // The condensation the drop runs through is swept into it. This is
+          // why a run leaves a clear track behind it, why it grows and speeds
+          // up as it goes, and why runs are longer the foggier the glass is.
+          // Without it a head can only live off water already lying about, so
+          // at an honest film budget nothing would ever run far — which is not
+          // what a steamed mirror does.
+          const before = fog[i];
+          fog[i] *= 1 - 0.34 * strength * (1 - 0.55 * d);
+          swept += before - fog[i];
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
         }
       }
     }
+    head.mass += swept * s.fogYield;
   }
 
   /**

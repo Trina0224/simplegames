@@ -462,6 +462,19 @@ The surface should feel persistent across repeated Steam cycles.
 
 ---
 
+## 15a. Fresh — an even sheet again
+
+Steam is additive and deliberately keeps everything: it is for making the glass
+mistier while the water you already have is still running. It is not a way back
+to a clean mirror, and after a few minutes of play there is no way back at all.
+
+Fresh is that way back. It clears `water`, `wet` and `flowId` outright and lays
+down one even sheet of new condensation — thick enough to hide the reflection,
+with only a trace of the patchiness a mirror always has. It is the state the
+glass is in when you walk into the bathroom, before anyone has touched it.
+
+---
+
 ## 16. Natural re-condensation
 
 Cleared areas may slowly re-fog without pressing Steam.

@@ -100,6 +100,9 @@ regression. The rewrite treats gravity as an input.
 
 - **Drag** anywhere to wipe.
 - **Steam** re-fogs the glass without erasing the water or the wetness memory.
+- **Fresh** starts over: every drop, streak and wet mark is gone and the glass
+  carries one even sheet of new condensation. Steam adds to what is there;
+  Fresh replaces it.
 - **Camera** switches the reflection off and on.
 - **i** shows the live gravity vector, head count and water totals — the readout
   that makes it possible to check the physics on a real device.
