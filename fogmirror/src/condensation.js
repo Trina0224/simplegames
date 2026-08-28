@@ -162,7 +162,7 @@ export class Surface {
     if (gravity && gravity.plane > 0.05) {
       const gx = gravity.x;
       const gy = gravity.y;
-      const step = Math.min(0.24, 0.8 * dt * gravity.plane);
+      const step = Math.min(0.3, 1.3 * dt * gravity.plane);
       scratch.set(water);
       for (let y = 0; y < rows; y += 1) {
         for (let x = 0; x < cols; x += 1) {
