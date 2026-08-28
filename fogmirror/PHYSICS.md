@@ -183,8 +183,8 @@ Water has a capillary length of about 2.7 mm: `sqrt(surface tension / (density x
 It is the length at which surface tension stops being able to hold water against gravity.
 A drop much larger than that on vertical glass does not creep — it sheds into a rivulet or
 runs off. Anyone who has looked at a steamed mirror knows the sizes: a haze of beads well
-under a millimetre, a scattering of one- and two-millimetre drops, and the few that reach
-three or four millimetres are the ones that leave a streak down the glass.
+under a millimetre, a scattering at one millimetre, and the two-millimetre ones are the few
+that leave a streak down the glass. Larger than that and it has already gone.
 
 Every size in `droplets.js` is therefore defined in CSS pixels and converted to cells at
 runtime, because a cell is a different physical length on every device — nearly twice as
@@ -192,11 +192,16 @@ long on a tablet as on a phone. A CSS pixel is close to 0.16 mm on both, so it s
 for millimetres well enough.
 
 ```text
-new bead            ~0.7 mm across
-breaks away at      ~1.7 mm across, earlier on a wet trail than on dry glass
-maximum             ~3.8 mm across; beyond this the head sheds into its trail
-terminal speed      ~13-15 mm/s at full size, and it rises with mass^0.4
+new bead            ~0.5 mm across
+breaks away at      ~1.0 mm across, earlier on a wet trail than on dry glass
+maximum             ~2.3 mm across; beyond this the head sheds into its trail
+terminal speed      ~10-12 mm/s at full size, and it rises with mass^0.4
 ```
+
+Note that the renderer widens a drop slightly: the water channel is smoothed before it
+becomes a surface, which costs a fraction of a millimetre on the apparent diameter. The
+smoothing has to stay light for that reason — enough to stop the coarse grid showing as
+facets, not enough to fatten every bead.
 
 The three constants that must scale with cell size are the pinning resistance, the gravity
 drive, and the drag — otherwise the same drop breaks away at one size on a phone and a very
