@@ -431,6 +431,37 @@ Resistance increases:
 
 ---
 
+## 10a. Sideways forces must be a fraction of gravity — and scaled like it
+
+Water on vertical glass falls **down**. Every sideways term — capillary attraction between
+neighbouring flows, the preference for running along existing wet glass, the surface's own
+unevenness — has to be a fraction of the gravity drive, and has to be scaled by cell size in
+exactly the same way.
+
+They were not. Gravity was converted from px/s² into cells/s²; the sideways terms were left
+as raw cell-unit numbers. On a tablet that made the attraction between two drops **more than
+twice the gravity drive**, so a new bead was hauled sideways the instant it formed and no
+trail ever started vertical. Measured after the fix, a lone drop falls 142 cells and drifts
+0.1 of a cell: one part in a thousand.
+
+The attraction is also short range now, reaching only a couple of drop radii. A long reach
+produces the same symptom by another route — drops curving towards each other across the
+glass — and it is not what bridging is. Contact lines bridge when they nearly touch.
+
+## 10b. Grid resolution is not free
+
+A trail one or two cells wide draws a staircase, because a cell is several device pixels and
+the trail's position quantises to it. Two things fix it together: enough cells (208 across the
+short side, where 144 was visibly stepped on a tablet) and a trail at least a couple of cells
+wide. Cost measured on the finer grid: 1.2 ms of simulation and 2.3 ms to pack and draw,
+against a 16.7 ms frame.
+
+Note that water height per cell depends on cell area, so **changing the grid changes every
+height threshold**. Nucleation, coarsening and sag all had to be rebalanced when the grid
+changed.
+
+---
+
 ## 11. Motion and terminal speed
 
 The validated gravity vector is the primary direction.
