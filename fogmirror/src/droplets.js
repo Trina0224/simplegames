@@ -24,7 +24,7 @@ const MIN_RADIUS_PX = 0.2 * MM;
 // (sweeping up water, growing, merging, leaving a tail) then never happens.
 const DEPIN_RADIUS_PX = 0.5 * MM;   // ~1 mm across is where a drop starts to slide
 const COLLECT_MAX_PX = 5 * MM;
-const MAX_HEADS = 12;
+const MAX_HEADS = 30;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 // Everything sideways must be a fraction of gravity, and must be scaled by cell
@@ -138,8 +138,9 @@ export class FlowSystem {
     this._mergeHeads();
     this.heads = this.heads.filter((h) => {
       if (h.mass >= this.minMass) return true;
-      // A head that shrinks away gives its water back rather than vanishing.
-      s._deposit(h.x, h.y, Math.max(1.2, radiusForMass(h.mass)), h.mass);
+      // A head that shrinks away gives its water back rather than vanishing —
+      // into its own body, not onto fresh glass.
+      this._shed(h, Math.max(1.2, radiusForMass(h.mass)), h.mass);
       return false;
     });
   }
@@ -298,7 +299,12 @@ export class FlowSystem {
     if (head.mass > this.maxMass) {
       const excess = head.mass - this.maxMass;
       head.mass = this.maxMass;
-      s._deposit(head.x, head.y, Math.max(1.2, r), excess);
+      // Past the size glass can hold, the water goes into the body behind the
+      // head — it becomes rivulet, which is what the wet track is. It must be
+      // laid down *as* track, owned by this flow: dropped as loose water it
+      // simply beads again a moment later, and one run turns into a queue of
+      // them coming down the same line for ever.
+      this._shed(head, Math.max(1.2, r), excess);
     }
 
     // --- head-body merge: standing in someone else's body joins the two
@@ -384,10 +390,33 @@ export class FlowSystem {
     void water;
   }
 
+  /** Put water down at the head and claim it for this flow. */
+  _shed(head, radius, amount) {
+    if (amount <= 0) return;
+    const s = this.surface;
+    const { cols, flowId } = s;
+    s._deposit(head.x, head.y, radius, amount);
+    const root = this.find(head.id);
+    const r = Math.max(1, radius);
+    const x0 = Math.max(0, Math.floor(head.x - r));
+    const x1 = Math.min(s.cols - 1, Math.ceil(head.x + r));
+    const y0 = Math.max(0, Math.floor(head.y - r));
+    const y1 = Math.min(s.rows - 1, Math.ceil(head.y + r));
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        if ((x - head.x) ** 2 + (y - head.y) ** 2 > r * r) continue;
+        const i = y * cols + x;
+        const owner = flowId[i];
+        if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
+        flowId[i] = root;
+      }
+    }
+  }
+
   /** The body the head leaves behind: real water, wetness, cleared fog, ownership. */
   _layTrail(head, px, py, r) {
     const s = this.surface;
-    const { cols, water, wet, fog, flowId } = s;
+    const { cols, water, wet, fog, humid, flowId } = s;
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
@@ -438,16 +467,17 @@ export class FlowSystem {
           // Without it a head can only live off water already lying about, so
           // at an honest film budget nothing would ever run far — which is not
           // what a steamed mirror does.
-          const before = fog[i];
-          fog[i] *= 1 - 0.34 * strength * (1 - 0.55 * d);
-          swept += before - fog[i];
+          const clear = 0.34 * strength * (1 - 0.55 * d);
+          fog[i] -= fog[i] * clear;
+          swept += humid[i] * clear;
+          humid[i] -= humid[i] * clear;
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
         }
       }
     }
-    head.mass += swept * s.fogYield;
+    head.mass += swept;
   }
 
   /**
