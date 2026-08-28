@@ -506,6 +506,64 @@ and a drop runs about 113 mm down a 145 mm screen.
 
 ---
 
+## 11b. A track that water has already run down is drained glass
+
+Section 11a stopped a *live* body from beading behind its own head, and that was not enough.
+The same column still shed drop after drop for half a minute after the flow had gone: the
+head dies, its `flowId` is no longer live, the residual film coarsens (§5a), a new bead forms
+in the old track, runs, dies, and the next one starts. On a device this reads as water welling
+up out of the glass — the complaint was exactly *「水流下來的位置跟附近還會出水好幾次」*.
+
+The physics says otherwise. A rivulet drains the channel it runs in. What is left behind is a
+**bound residual film** held by contact-angle hysteresis, not free water: it is below the
+thickness at which a film is unstable, so it does not dewet into fresh beads — it evaporates
+in place. Three rules follow, and none of them is a tuned number:
+
+- Residual film in a marked track **dries several times faster** than water elsewhere. It is
+  thin, so it has far more surface per unit volume.
+- Film in a marked track **does not coarsen**. The gathering term of §5a is what turns a film
+  into beads; a pinned residual film is exempt from it.
+- A cell that has ever carried a flow **cannot nucleate** until water is actively *put back*
+  there — by a new wipe, or by a flow arriving from above. The threshold is far above anything
+  the track's own film can reach, so it is a structural block, not a bias.
+
+The track mark is released only when the glass has dried and re-fogged (`wet` below about
+0.2), which is also when a real mirror would have forgotten it.
+
+Measured: one wipe near the top now produces eleven drops, **all inside the first five
+seconds**, and not one afterwards; before, new heads kept appearing for thirty seconds and
+three of them were born inside the run-off tracks.
+
+---
+
+## 11c. Two streams a few millimetres apart join through wet glass
+
+Surface tension has no reach. Two drops bridge when their contact lines nearly touch — a
+fraction of a millimetre — and the short-range attraction in §9.1 is deliberately kept that
+short, because a long reach is what used to drag every new bead sideways instead of letting it
+fall (§10a). But on real glass two rivulets running five or ten millimetres apart *do* converge,
+and they were staying parallel to the bottom of the screen here.
+
+The mechanism at that range is not tension, it is the **wet track**. Wet glass has a lower
+contact angle, so a flow meets less resistance on the side where the glass is already wet, and
+it veers that way. So a head senses `wet` at two lateral distances — its own channel, and about
+eight millimetres out, far enough to feel a neighbouring track — and steers towards the wetter
+side.
+
+Two things make this safe where a direct attraction was not:
+
+- It is a **difference**. On even glass it is exactly zero, so a lone drop still falls straight
+  down: measured 0.1 cells of drift over a 142-cell fall.
+- It acts on the *path*, not on the drop, so it cannot pull a bead off the spot where it formed.
+
+Once two heads' trails do overlap, `flowId` joins them into one body, and from then on they are
+one piece of water: the pull between them roughly doubles and they merge at several times the
+distance. Measured: two flows starting 8 mm apart used to run 76 mm side by side before
+merging; they now join after 29 mm. At 12 mm they still run separately to the bottom, which is
+correct — nothing at that range should pull them together.
+
+---
+
 ## 12. Trail/body deposition
 
 The moving head writes a continuous connected body.
@@ -545,6 +603,25 @@ of `wet` to the water height it reads for the optics — not to the simulation, 
 exactly conservative. The trail then has a surface: gradients at its edges, a highlight along
 it, a rounded head. This is a rendering decision resting on a physical fact, and the split
 matters: `wet` is not mass and must never become mass.
+
+---
+
+## 12b. Every trail the same width is a grid artefact, not a look
+
+Trail width was `max(2.2 cells, radius * 0.5)`. A drop is about two cells across at the grid
+this runs at, so the radius term never once beat the floor: every streak on the glass came out
+identical, and each was about three times wider than the drop that laid it. Water does not do
+that — *「每個水痕都一樣粗細看起來很怪」*.
+
+The floor exists for a real reason: a trail thinner than about a cell draws as a staircase.
+But it must sit *below* the width a drop actually has, not above it, or it swallows the whole
+range. With the floor lowered the geometry varies by about 1.7× across the drop sizes this
+produces.
+
+That is still not much to look at, so most of the difference a viewer reads has to be carried
+by **how wet the track is left**, which §12a turns into a rendered film: a heavy drop leaves a
+strongly wet, obviously watery streak, a small one leaves a faint thread. Wetness laid down by
+a trail therefore scales with the head's mass. It used to be a constant.
 
 ---
 

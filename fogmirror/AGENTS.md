@@ -94,7 +94,7 @@ If a drop looks too big, the number to change is `MAX_RADIUS_PX`, in millimetres
 
 ---
 
-## Three rules that are not tuning
+## Rules that are not tuning
 
 Each of these was a bug that looked like a tuning problem and was not.
 
@@ -103,6 +103,9 @@ Each of these was a bug that looked like a tuning problem and was not.
 3. **A trail is drawn from the wetness map, not from the water it deposits.** The deposit is a hundredth of what the optics can read, and it cannot be raised — it comes out of the head. Without a film derived from `wet`, a rivulet is a hole in the fog with no edge and no highlight, and it reads as a scratch. `wet` contributes to the rendered surface only; it is never mass.
 4. **Beads must be born close enough together to reach each other.** The spacing rule kept new drops further apart than the bridging distance, so however keen the merging, nothing ever met.
 5. **The size at which a drop breaks away must be reachable from one catchment.** A bead drains its surroundings and stops growing; if it needs more than that, it sits just under the threshold for ever and never moves, merges or leaves a tail.
+6. **A track that water has already run down cannot bead again.** A rivulet drains its channel; what is left is a bound residual film that dries in place. So a marked track evaporates several times faster, is exempt from coarsening, and cannot nucleate until water is actively put back there. Blocking only *live* bodies is not enough — the procession simply restarts the moment the head dies, and a mirror never wells water up out of itself. See PHYSICS.md §11b.
+7. **Streams a few millimetres apart converge through wet glass, not through surface tension.** Tension reaches a fraction of a millimetre and must stay that short, or every new bead gets dragged sideways instead of falling. What acts at millimetres is the lower contact angle on already-wet glass, so a head senses `wet` several millimetres to each side and steers towards the wetter one. Being a difference, it is exactly zero on even glass and a lone drop still falls straight. See PHYSICS.md §11c.
+8. **Trail width must sit below the drop's own radius, not above it.** The anti-staircase floor was wider than any drop this produces, so every streak came out the same width and three times fatter than its head. Lower the floor, and carry the visible difference in how wet the track is left — which scales with the head's mass. See PHYSICS.md §12b.
 
 ---
 
@@ -259,7 +262,12 @@ A moving flow must write:
 A trail must be **thin**. This is not a look, it is a physical constraint: a head that leaves
 much of itself behind stalls after a few millimetres, and the water it drops re-beads and runs
 and drops again, so one wipe produces drops forever. A wiped patch holds a fixed amount of
-water. Water inside a flow body that is still running must not nucleate a new head.
+water. Water inside a flow body must not nucleate a new head — not while that body is running,
+and not after it has gone either, because the track it left is drained glass.
+
+A trail must also **vary**. Its width follows the head's mass, and so does the wetness it lays
+down, which is what the optics turn into a visible film. Identical streaks are the sign that a
+grid-derived floor has swallowed the whole range.
 
 A trail should:
 
@@ -365,9 +373,9 @@ Do not hide physics in rendering code.
 4. Repeated wiping in one local region tends toward one dominant drop or a few.
 5. A moving flow becomes larger as it collects water downstream.
 6. A larger flow reaches a higher speed than a smaller flow under the same gravity.
-7. Two nearby flows merge through head or body contact rather than remaining parallel indefinitely.
+7. Two nearby flows merge through head or body contact rather than remaining parallel indefinitely; two starting 8 mm apart should join within about a third of that fall, and a lone drop should still fall straight.
 8. Merge preserves approximate combined mass.
-9. Trails retain residual water and influence later flow.
+9. Trails retain residual water and influence later flow, vary in width and strength with the flow that laid them, and do not shed fresh drops of their own once the flow has passed.
 10. Water rendering does not look like independent dots dragging black lines.
 
 ---

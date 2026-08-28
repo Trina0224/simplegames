@@ -120,9 +120,17 @@ export class Surface {
       // proportional to the wetted *area*, so a single wipe covering thousands
       // of cells boils itself dry in seconds and no drop can ever feed.
       if (water[i] > 0) {
-        water[i] -= water[i] * 0.022 * dt;
+        // Water lying in the track a flow has already run down is not free
+        // water: the flow drained the channel, and what is left is a bound
+        // residual film held by contact-angle hysteresis. It dries in place —
+        // it does not gather itself into a second drop, and a third, down the
+        // same line. That procession is the least real thing this can do.
+        const track = this.flowId[i] !== NONE ? 3.5 : 1;
+        water[i] -= water[i] * 0.022 * track * dt;
         if (water[i] < 1e-4) water[i] = 0;
       }
+      // The glass forgets a track once it has dried and re-fogged over.
+      if (this.flowId[i] !== NONE && wet[i] < 0.2) this.flowId[i] = NONE;
     }
 
     // --- coarsening: a thin film on glass does not sit there evenly, it breaks
@@ -140,6 +148,8 @@ export class Surface {
         const i = y * cols + x;
         const h = scratch[i];
         if (h < 0.004) continue;
+        // A residual film in a flow's own track is pinned, not free to gather.
+        if (h < 0.4 && this.flowId[i] !== NONE) continue;
         let best = -1;
         let bi = -1;
         for (let n = 0; n < 4; n += 1) {

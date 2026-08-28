@@ -32,7 +32,8 @@ const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 // attraction between drops came out at more than twice the gravity drive, so a
 // new bead was dragged sideways instead of falling. Water goes down.
 const ATTRACT_PX = 46;              // capillary bridging, but only at close range
-const STEER_PX = 11;                // preference for running down existing wet glass
+const STEER_PX = 26;                // preference for running down existing wet glass
+const WET_SENSE_PX = 52;            // ...felt this far to either side, ~8 mm
 const TEXTURE_PX = 7;               // the glass's own stable unevenness
 const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
 const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it starts
@@ -43,6 +44,10 @@ const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it s
 const TRAIL_RATE = 0.045;           // residual water per cell of travel, scaled by radius
 const TRAIL_MAX_SHARE = 0.008;      // ...and never more than this much of the head per cell
 const COLLECT_RATE = 3.4;           // how fast a head drains the film it sits on
+// Water must actually be put back on a used track before it can bead there
+// again; the residual film left by the flow itself is nowhere near this deep.
+const TRACK_REBEAD = 2.2;
+const TRAIL_WET_MIN = 0.42;         // wetness a barely-moving drop leaves behind
 
 export function radiusForMass(mass) {
   return Math.sqrt(Math.max(0, mass) / (Math.PI * HEIGHT));
@@ -79,6 +84,7 @@ export class FlowSystem {
     this.acc = ACC_PX / px;
     this.attract = ATTRACT_PX / px;
     this.steer = STEER_PX / px;
+    this.wetSense = WET_SENSE_PX / px;
     this.texture = TEXTURE_PX / px;
     this.drag = DRAG_PX / Math.sqrt(px);
   }
@@ -162,10 +168,17 @@ export class FlowSystem {
       const het = s.heterogeneity[i];
       if (water[i] < 0.62 * het * het * het) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
-      // Water lying in a trail that is still running belongs to that flow. It
-      // may bead up later, once the flow has gone, but not behind a live head.
+      // Water lying in a trail belongs to that flow, not to a rival bead.
+      // Once the flow has gone the track is drained glass carrying a bound
+      // residual film, so it still cannot bead: only water actively put back
+      // there — a fresh wipe, or a flow arriving from above — can start a new
+      // drop. Without this the same column sheds one drop after another for
+      // as long as the water lasts, which is what a mirror never does.
       const owner = s.flowId[i];
-      if (owner > 0 && this.liveRoots.has(this.find(owner))) continue;
+      if (owner > 0) {
+        if (this.liveRoots.has(this.find(owner))) continue;
+        if (water[i] < TRACK_REBEAD * het) continue;
+      }
 
       // Walk uphill to the top of the local gathering. A wiped ridge is broad
       // and smooth, so testing whether one cell beats its 24 neighbours is far
@@ -312,10 +325,25 @@ export class FlowSystem {
     head.vx += gravity.x * acc * dt;
     head.vy += gravity.y * acc * dt;
 
-    const ahead = 2 + r;
-    const wl = wet[s.index(head.x - ahead * dirY - ahead * dirX * 0.4, head.y + ahead * dirX - ahead * dirY * 0.4)];
-    const wr = wet[s.index(head.x + ahead * dirY - ahead * dirX * 0.4, head.y - ahead * dirX - ahead * dirY * 0.4)];
-    const steer = (wr - wl) * this.steer * gravity.plane;
+    // A rivulet running near a track that is already wet veers into it: wet
+    // glass wets further, so that side offers less resistance. This is the only
+    // thing that acts at a few millimetres — surface tension certainly does not
+    // — and it is why two streams a finger's width apart join instead of
+    // running to the bottom side by side. It is sampled at two distances so a
+    // head feels both the channel it is in and the neighbouring one. Being a
+    // difference, it is exactly zero on even glass, so water still falls
+    // straight; only a lopsided neighbourhood bends it.
+    // Positive means the left-hand side is wetter, and the pull is towards it.
+    // The samples sit slightly behind the head, where the contact line is.
+    const sense = (reach) => {
+      const bx = -reach * dirX * 0.4;
+      const by = -reach * dirY * 0.4;
+      const lx = -reach * dirY;
+      const ly = reach * dirX;
+      return wet[s.index(head.x + bx + lx, head.y + by + ly)]
+           - wet[s.index(head.x + bx - lx, head.y + by - ly)];
+    };
+    const steer = (sense(2 + r) + 0.8 * sense(this.wetSense)) * this.steer * gravity.plane;
     head.vx += -dirY * steer * dt;
     head.vy += dirX * steer * dt;
     // stable surface texture nudges the path; no random wandering
@@ -354,7 +382,16 @@ export class FlowSystem {
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
-    const width = Math.max(2.2, r * 0.5);
+    // A big drop drags a broad, obviously wet streak; a small one leaves a
+    // barely-there thread. Both used to come out identical, because the width
+    // was radius-derived and a real drop is only a cell or two across, so the
+    // anti-staircase floor won every time. The floor still sets the geometry —
+    // a trail thinner than about two cells draws as a staircase — so the
+    // difference a viewer actually reads has to be carried by how wet the
+    // track is left, which is what the optics turn into a film.
+    const load = Math.min(1, head.mass / this.maxMass);
+    const width = Math.max(1.2, r * 0.95 * (0.7 + 0.6 * load));
+    const strength = TRAIL_WET_MIN + (1 - TRAIL_WET_MIN) * load;
     const steps = Math.max(1, Math.ceil(dist));
     const perStep = TRAIL_RATE * width * (dist / steps);
 
@@ -384,8 +421,8 @@ export class FlowSystem {
           if (d > 1) continue;
           const i = y * cols + x;
           water[i] += (1 - d) * scale;
-          wet[i] = Math.min(1, Math.max(wet[i], 0.85 - 0.3 * d));
-          fog[i] *= 0.74 + 0.22 * d;
+          wet[i] = Math.min(1, Math.max(wet[i], strength * (1 - 0.3 * d)));
+          fog[i] *= 1 - 0.3 * strength * (1 - 0.55 * d);
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
@@ -412,7 +449,13 @@ export class FlowSystem {
         // moment it forms, which is both unphysical and the thing that made
         // every trail start off at an angle. Contact lines bridge when they are
         // nearly touching; until then water falls straight down.
-        const reach = (ra + rb) * 2.6 + 5;
+        // Two heads already joined into one body — their trails have touched,
+        // so there is a continuous film between them — are not two drops being
+        // shy of each other. Water in one channel feels the other, and they
+        // close up quickly. This is the case the user sees most: two rivulets
+        // a couple of millimetres apart running side by side far too long.
+        const bridged = this.find(A.id) === this.find(B.id);
+        const reach = bridged ? (ra + rb) * 5 + 15 : (ra + rb) * 2.6 + 5;
         let dx = B.x - A.x;
         let dy = B.y - A.y;
         const d = Math.hypot(dx, dy);
@@ -420,7 +463,7 @@ export class FlowSystem {
         dx /= d;
         dy /= d;
         // Closer pairs pull harder, and the lighter one moves further.
-        const pull = this.attract * (1 - d / reach) * dt;
+        const pull = this.attract * (bridged ? 2 : 1) * (1 - d / reach) * dt;
         const total = A.mass + B.mass;
         A.vx += dx * pull * (B.mass / total);
         A.vy += dy * pull * (B.mass / total);
@@ -446,7 +489,7 @@ export class FlowSystem {
         const d = Math.hypot(A.x - B.x, A.y - B.y);
         // Contact lines bridge before the drawn circles overlap, so drops
         // coalesce a little before they visibly touch.
-        const touching = d < (ra + rb) * 1.35;
+        const touching = d < (ra + rb) * (this.find(A.id) === this.find(B.id) ? 3.2 : 1.6);
         // a dominant collector reaches further than it touches
         const big = A.mass > B.mass * 1.6 ? A : B.mass > A.mass * 1.6 ? B : null;
         const captures = big && d < radiusForMass(big.mass) * 3.4 + 5;
