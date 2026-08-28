@@ -27,9 +27,6 @@ const MM = 6.2;                // CSS pixels per millimetre
 // A finger that has wiped a steamed mirror is wet: this much of what each
 // stroke sample mobilises leaves with it and never comes back.
 const CARRIED_OFF = 0.09;
-// How much of the haze's recovery rate the *water* behind it recovers at.
-// One is a perpetual motion machine; see §5c.
-const AMBIENT_SUPPLY = 0.06;
 
 export class Surface {
   constructor(cols, rows) {
@@ -41,25 +38,17 @@ export class Surface {
   setScale(cellPx) {
     const cellMm = Math.max(0.02, cellPx / MM);
     this.cellMm = cellMm;
-    const was = this.fogYield || 0;
     this.fogYield = FOG_FILM_MM / cellMm;
     this.beadFilm = BEAD_FILM_MM / cellMm;
     this.adhered = ADHERED_MM / cellMm;
-    // A height unit is a cell deep, so changing the cell size changes what a
-    // given height *means*. The charge already in the fog has to move with it.
-    if (was > 0 && this.humid) {
-      const k = this.fogYield / was;
-      for (let i = 0; i < this.humid.length; i += 1) this.humid[i] *= k;
-    }
   }
 
   resize(cols, rows) {
     const n = cols * rows;
-    const old = this.cols ? { cols: this.cols, rows: this.rows, fog: this.fog, humid: this.humid, water: this.water, wet: this.wet } : null;
+    const old = this.cols ? { cols: this.cols, rows: this.rows, fog: this.fog, water: this.water, wet: this.wet } : null;
     this.cols = cols;
     this.rows = rows;
     this.fog = new Float32Array(n);
-    this.humid = new Float32Array(n);
     this.water = new Float32Array(n);
     this.wet = new Float32Array(n);
     this.flowId = new Int32Array(n);
@@ -75,7 +64,6 @@ export class Surface {
     this.wet.fill(0);
     this.flowId.fill(NONE);
     this._seedFog();
-    this._chargeFog();
   }
 
   /**
@@ -92,12 +80,6 @@ export class Surface {
     this._seedFog();
     // Thick and even — only a trace of the unevenness a mirror always has.
     for (let i = 0; i < this.fog.length; i += 1) this.fog[i] = 0.93 + 0.07 * this.fog[i];
-    this._chargeFog();
-  }
-
-  /** Give the fog the liquid it stands for — a freshly steamed pane is loaded. */
-  _chargeFog() {
-    for (let i = 0; i < this.fog.length; i += 1) this.humid[i] = this.fog[i] * this.fogYield;
   }
 
   /** Fog is never uniform on a real mirror; seed it with a few octaves of noise. */
@@ -134,7 +116,6 @@ export class Surface {
         const s = sy * old.cols + sx;
         const d = y * cols + x;
         this.fog[d] = old.fog[s];
-        this.humid[d] = old.humid[s];
         this.water[d] = old.water[s];
         this.wet[d] = old.wet[s];
       }
@@ -160,11 +141,7 @@ export class Surface {
       const patch = 0.75 + 0.5 * valueNoise(x * 0.05 + 3.1, y * 0.05 + 7.7, 53);
       // Wet glass takes condensation slightly more readily than dry glass.
       const affinity = 1 + 0.35 * wet[i];
-      const add = amount * patch * affinity;
-      fog[i] = Math.min(1, fog[i] + add);
-      // Steam is the one thing that actually brings water to the glass, so it
-      // is the one thing that recharges what a finger or a drop can harvest.
-      this.humid[i] = Math.min(this.fogYield, this.humid[i] + add * this.fogYield);
+      fog[i] = Math.min(1, fog[i] + amount * patch * affinity);
     }
     void rows;
   }
@@ -177,25 +154,13 @@ export class Surface {
     const { fog, water, wet, cols, rows, scratch } = this;
     const n = fog.length;
 
-    // --- re-condensation: slow, so a finger drawing survives a while
-    const rate = 0.016 * dt;
+    // No ambient re-fogging. What you wipe off stays wiped off: fog arrives only
+    // from Steam, and Fresh is how you start over. This is not a simplification
+    // — a mirror that quietly mists itself back up is not a mirror, and once
+    // fog is worth liquid (§5a) an endless supply of it is an endless supply of
+    // water, which is what kept the glass shedding drops for ever. See §5c.
     for (let i = 0; i < n; i += 1) {
-      const affinity = 1 + 4.5 * wet[i];
-      const target = 1;
-      fog[i] += (target - fog[i]) * rate * affinity;
-      if (fog[i] > 1) fog[i] = 1;
-      // ...and the water it stands for arrives far more slowly than the haze
-      // does. See §5c: the haze is a scattering effect and recovers in seconds
-      // on wet glass, but the liquid behind it is real water out of the air,
-      // and at the haze's rate it is an unlimited supply that never stops
-      // feeding drops.
-      const cap = fog[i] * this.fogYield;
-      if (this.humid[i] < cap) {
-        this.humid[i] += (cap - this.humid[i]) * rate * affinity * AMBIENT_SUPPLY;
-      } else {
-        this.humid[i] = cap;
-      }
-      // wetness fades much more slowly than fog returns
+      // wetness fades slowly
       wet[i] -= wet[i] * 0.02 * dt;
       // A little water is always evaporating — as a fraction of what is there,
       // not as a fixed amount per cell. A fixed amount makes the total loss
@@ -211,7 +176,7 @@ export class Surface {
         water[i] -= water[i] * 0.022 * track * dt;
         if (water[i] < 1e-4) water[i] = 0;
       }
-      // The glass forgets a track once it has dried and re-fogged over.
+      // The glass forgets a track once it has dried out.
       if (this.flowId[i] !== NONE && wet[i] < 0.2) this.flowId[i] = NONE;
     }
 
@@ -324,13 +289,11 @@ export class Surface {
         const i = y * cols + x;
 
         // 1. the fine mist goes
-        const clear = 0.94 * contact;
-        fog[i] -= fog[i] * clear;
+        const removedFog = fog[i] * 0.94 * contact;
+        fog[i] -= removedFog;
 
         // 2. and the water that mist was holding comes with it
-        const took = this.humid[i] * clear;
-        this.humid[i] -= took;
-        collected += took;
+        collected += removedFog * this.fogYield;
 
         // 3. and the free water goes with it. A finger is a squeegee: it takes
         // everything but the film adhesion binds to the glass, so the track

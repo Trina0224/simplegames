@@ -69,7 +69,7 @@ The current visible water still behaves too much like independent drops dragging
 11. Running flows grow as they sweep up water and nearby small flows.
 12. Nearby streams merge into dominant connected flows.
 13. Flowing water leaves residual wet trails that affect later runoff.
-14. Steam restores fine fog without deleting surface wetness history.
+14. Steam restores fine fog without deleting surface wetness history; nothing else puts fog back.
 
 ---
 
@@ -475,13 +475,21 @@ glass is in when you walk into the bathroom, before anyone has touched it.
 
 ---
 
-## 16. Natural re-condensation
+## 16. No natural re-condensation
 
-Cleared areas may slowly re-fog without pressing Steam.
+Cleared areas do **not** re-fog on their own. What the user wipes off stays wiped off for as
+long as they leave it.
 
-Keep this slow enough for finger drawings to remain enjoyable.
+This was once the other way round — a slow ambient re-fog so drawings would fade — and it was
+wrong twice over. A mirror that quietly mists itself back up while you watch is not a mirror;
+Steam and Fresh exist precisely so that the user decides when the glass gets misty again. And
+because fog carries the liquid a wipe or a running drop harvests, an endless supply of fog is
+an endless supply of water: it kept the glass shedding drops for minutes on end. See
+PHYSICS.md §5c.
 
-Recently wet areas may re-condense somewhat differently from untouched glass.
+Wetness memory still fades by itself. That is the glass drying, which is a different thing.
+
+Recently wet areas take Steam somewhat more readily than untouched glass.
 
 ---
 
@@ -612,7 +620,7 @@ v0.1 is not accepted until all of these are true:
 17. Old trails influence later flow.
 18. Gravity remains correct on the already-tested iPad.
 19. Nearly flat orientation reduces in-plane flow.
-20. Steam restores fog without deleting water/wetness history.
+20. Steam restores fog without deleting water/wetness history, and is the only thing that puts fog back.
 21. Water rendering no longer looks like dots dragging constant-width dark lines.
 22. Interaction remains stable on iPad/iPhone-class hardware.
 23. App remains static-hostable with no backend.
