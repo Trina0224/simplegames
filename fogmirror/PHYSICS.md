@@ -222,11 +222,33 @@ For each stroke footprint:
 
 1. clear/reduce microscopic `fog`
 2. convert some removed condensation into liquid `water`
-3. gather some pre-existing local liquid water
-4. transport most mobile water toward the physical gravity-down side of the contact footprint
-5. leave a smaller side ridge / central wet film
-6. raise `wet`
+3. gather **all** the free liquid water under the contact patch
+4. transport most of it toward the physical gravity-down side of the footprint
+5. leave the rest as a ridge either side of the **track**
+6. raise `wet` — but only a little
 7. update local pooling candidates
+8. carry a little of it off on the finger, permanently
+
+### The finger is a squeegee, and its track is not wet
+
+A finger is a displacement, but it is not a *soft* one. Two things followed from treating it as
+a brush, and both were wrong:
+
+- It **left water where it had just been**: a little under half of the liquid under the rim of
+  the contact patch stayed put, and a further share of what it did gather was deposited back
+  into the middle of the footprint. So the whole length of a stroke stayed loaded with water
+  and went on beading along its entire length. What actually happens is that a fingertip is
+  pressed flat against the glass and takes everything the glass is not holding on to by
+  adhesion (§5a) — the track behind it is clear glass. Nothing is put back in the middle.
+- Its track **read as a band of water**. The optics derive a film from `wet` (§12a), and the
+  wipe was raising `wet` almost as high as a rivulet does. But a rivulet's track really does
+  carry a film, and a squeegeed track has had its film taken away. Both are "wetted glass";
+  only one of them has water on it. So a finger leaves far less wetness behind than a flow.
+
+Two smaller consequences. The contact patch tapers only at its rim, not smoothly from the
+centre, so a finger's track has a definite edge. And the side ridges go either side of the
+*track*, which is only the same as either side of gravity while you are drawing a horizontal
+line.
 
 Important consequence:
 
@@ -327,14 +349,27 @@ surfaceMass = sum(water cells)
 mobileMass  = sum(active flow mass)
 ```
 
+Not approximate, as it turns out — it is exact, and the harness checks it. But the total has
+to include the condensation, because that is where the water comes from:
+
+```text
+budget = sum(water cells) + sum(active flow mass) + sum(fog cells) * fogYield
+```
+
 Transfers:
 
 ```text
 fog -> water              wiped condensation / slow condensation
+fog -> mobile flow        a running head sweeping the glass it crosses (§8a)
 water -> mobile flow      collection / pooling
 flow + flow -> flow       merge
 mobile flow -> water      residual trail deposit
+water -> gone             evaporation, and the share a finger carries off
 ```
+
+Everything but the last line is a transfer and must conserve exactly. A wipe returns
+everything it mobilises to the glass apart from a fixed share that leaves on the finger —
+a finger that has wiped a steamed mirror is wet, and that water is off the glass for good.
 
 For one active flow:
 
