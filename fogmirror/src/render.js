@@ -192,7 +192,7 @@ export class MirrorRenderer {
     for (const head of heads) {
       const r = radiusForMass(head.mass);
       const speed = Math.hypot(head.vx, head.vy);
-      const stretch = 1 + Math.min(0.7, speed / 90);
+      const stretch = 1 + Math.min(0.45, speed / 120);
       const ux = speed > 0.01 ? head.vx / speed : 0;
       const uy = speed > 0.01 ? head.vy / speed : 1;
       const reach = r * stretch + 1;
@@ -232,7 +232,7 @@ export class MirrorRenderer {
         const i = y * cols + x;
         const l = pixels[(i - (x > 0 ? 1 : 0)) * 4 + 1];
         const r = pixels[(i + (x < cols - 1 ? 1 : 0)) * 4 + 1];
-        tmp[i] = (l + r + pixels[i * 4 + 1] * 2) * 0.25;
+        tmp[i] = (l + r) * 0.14 + pixels[i * 4 + 1] * 0.72;
       }
     }
     for (let y = 0; y < rows; y += 1) {
@@ -240,7 +240,7 @@ export class MirrorRenderer {
         const i = y * cols + x;
         const u = tmp[i - (y > 0 ? cols : 0)];
         const d = tmp[i + (y < rows - 1 ? cols : 0)];
-        pixels[i * 4 + 1] = (u + d + tmp[i] * 2) * 0.25;
+        pixels[i * 4 + 1] = (u + d) * 0.14 + tmp[i] * 0.72;
       }
     }
   }

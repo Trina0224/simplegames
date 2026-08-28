@@ -11,14 +11,17 @@
 // same real size whatever the grid resolution happens to be.
 
 const MM = 6.2;                     // CSS pixels per millimetre, near enough
-const MAX_RADIUS_PX = 1.9 * MM;     // ~3.8 mm across: about as big as glass holds
-const NUCLEATE_RADIUS_PX = 0.34 * MM;
-const MIN_RADIUS_PX = 0.27 * MM;
-const DEPIN_RADIUS_PX = 1.2 * MM;   // ~2.4 mm across is where a drop starts to slide
-const COLLECT_MAX_PX = 2.6 * MM;
+// Sizes checked against a real steamed mirror: a haze of beads well under a
+// millimetre, a scattering at one to two, and the two-millimetre ones are the
+// few that leave a streak. Anything larger has already run off.
+const MAX_RADIUS_PX = 1.15 * MM;    // ~2.3 mm across, plus a little render bloom
+const NUCLEATE_RADIUS_PX = 0.26 * MM;
+const MIN_RADIUS_PX = 0.2 * MM;
+const DEPIN_RADIUS_PX = 0.75 * MM;  // ~1.5 mm across is where a drop starts to slide
+const COLLECT_MAX_PX = 1.8 * MM;
 const MAX_HEADS = 40;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
-const ACC_PX = 82;                  // gravity drive, CSS px per second squared
+const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
 const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it starts
 const TRAIL_RATE = 0.12;            // residual water per cell of travel, scaled by radius
