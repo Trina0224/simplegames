@@ -419,6 +419,26 @@ Therefore downstream runoff should commonly appear larger and somewhat faster th
 
 ---
 
+## 11a. A trail must be thin, or one wipe becomes a drip factory
+
+Trail deposition looks like a free parameter and is not. Bleeding much of a head's mass into
+its trail has two consequences that are only obvious once you watch it on a device:
+
+- **Drops stall.** A head losing three percent of itself per cell of travel is down to a
+  twentieth of its mass after a hundred cells, so it re-pins after a few millimetres. Real
+  drops run the length of the glass and leave a long thin streak.
+- **The wipe never stops producing.** The water the stalled head dropped re-beads behind it,
+  that bead runs, stalls, and drops water of its own. One wipe turns into an endless
+  procession of drops, which is the single most unphysical thing this simulation can do —
+  a wiped patch holds a fixed amount of water and it either runs off or dries.
+
+So the trail is thin, and water lying inside a body that is **still running** cannot nucleate
+a new head. It may bead up later, once that flow has gone; it may not bead up behind a live
+one. Measured: one wipe now produces seven drops in the first five seconds and never another,
+and a drop runs about 113 mm down a 145 mm screen.
+
+---
+
 ## 12. Trail/body deposition
 
 The moving head writes a continuous connected body.
@@ -461,7 +481,9 @@ From that derive:
 - local camera refraction
 - soft/highlight meniscus
 - mass-dependent footprint
-- directional elongation for moving fronts
+- a teardrop for moving fronts: round at the leading edge where water piles up,
+  drawn out and narrowed behind into the streak it is leaving. A symmetric
+  ellipse — identical at both ends — reads as an egg, not as water
 - continuously varying trail width
 
 Avoid:

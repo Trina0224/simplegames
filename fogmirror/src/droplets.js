@@ -24,8 +24,12 @@ const HEIGHT = 0.62;                // mean height of a head, for mass <-> radiu
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
 const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it starts
-const TRAIL_RATE = 0.12;            // residual water per cell of travel, scaled by radius
-const TRAIL_MAX_SHARE = 0.03;       // ...and never more than this much of the head per cell
+// A drop running down a mirror leaves a thin wet streak and reaches the bottom.
+// Bleeding much into the trail is what makes a drop stall after a few
+// millimetres — and worse, the water it drops re-beads behind it, so one wipe
+// turns into an endless procession of new drops.
+const TRAIL_RATE = 0.045;           // residual water per cell of travel, scaled by radius
+const TRAIL_MAX_SHARE = 0.008;      // ...and never more than this much of the head per cell
 const COLLECT_RATE = 3.4;           // how fast a head drains the film it sits on
 
 export function radiusForMass(mass) {
@@ -41,6 +45,7 @@ export class FlowSystem {
     this.parent = [0];          // union-find over flow-body ids
     this.scanCursor = 0;
     this.merges = 0;
+    this.liveRoots = new Set();
   }
 
   /**
@@ -103,6 +108,8 @@ export class FlowSystem {
 
   update(dt, gravity) {
     const s = this.surface;
+    this.liveRoots.clear();
+    for (const h of this.heads) this.liveRoots.add(this.find(h.id));
     this._nucleate(gravity);
     this._attract(dt);
     for (const head of this.heads) this._step(head, dt, gravity);
@@ -136,6 +143,10 @@ export class FlowSystem {
       // glass favours them rather than in an evenly spaced row along a stroke.
       if (water[i] < 0.30 * s.heterogeneity[i]) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
+      // Water lying in a trail that is still running belongs to that flow. It
+      // may bead up later, once the flow has gone, but not behind a live head.
+      const owner = s.flowId[i];
+      if (owner > 0 && this.liveRoots.has(this.find(owner))) continue;
 
       // Walk uphill to the top of the local gathering. A wiped ridge is broad
       // and smooth, so testing whether one cell beats its 24 neighbours is far
