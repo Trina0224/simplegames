@@ -214,7 +214,7 @@ export class Surface {
         // 2. a little of it was already liquid, and the finger gathers that.
         // Most condensation is far too fine to become free water at all — turn
         // much of it into liquid and the glass never stops producing drops.
-        collected += removedFog * 0.28;
+        collected += removedFog * 0.26;
 
         // 3. so is most of the free water already sitting there
         const mobile = water[i] * (0.55 + 0.35 * falloff);

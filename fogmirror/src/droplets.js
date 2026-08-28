@@ -27,6 +27,13 @@ const COLLECT_MAX_PX = 5 * MM;
 const MAX_HEADS = 8;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
+// Everything sideways must be a fraction of gravity, and must be scaled by cell
+// size exactly as gravity is. These were raw cell-unit numbers: on a tablet the
+// attraction between drops came out at more than twice the gravity drive, so a
+// new bead was dragged sideways instead of falling. Water goes down.
+const ATTRACT_PX = 46;              // capillary bridging, but only at close range
+const STEER_PX = 11;                // preference for running down existing wet glass
+const TEXTURE_PX = 7;               // the glass's own stable unevenness
 const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
 const PIN_HYSTERESIS = 0.55;        // a moving drop stops less easily than it starts
 // A drop running down a mirror leaves a thin wet streak and reaches the bottom.
@@ -70,6 +77,9 @@ export class FlowSystem {
     // which a drop breaks away falls out of this one number.
     this.pinBase = Math.PI * HEIGHT * DEPIN_RADIUS_PX / px;
     this.acc = ACC_PX / px;
+    this.attract = ATTRACT_PX / px;
+    this.steer = STEER_PX / px;
+    this.texture = TEXTURE_PX / px;
     this.drag = DRAG_PX / Math.sqrt(px);
   }
 
@@ -146,7 +156,7 @@ export class FlowSystem {
       // evidence of disturbance. Untouched fog has none and cannot bead.
       // The gate follows the surface's own texture, so beads appear where the
       // glass favours them rather than in an evenly spaced row along a stroke.
-      if (water[i] < 1.1 * s.heterogeneity[i]) continue;
+      if (water[i] < 0.95 * s.heterogeneity[i]) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
       // Water lying in a trail that is still running belongs to that flow. It
       // may bead up later, once the flow has gone, but not behind a live head.
@@ -196,6 +206,8 @@ export class FlowSystem {
         id: this._newFlowId(),
         x, y,
         mass,
+        // A bead that gathered more starts heavier and leaves sooner, so a
+        // wiped edge sheds its drops over a while instead of all at once.
         vx: 0,
         vy: 0,
         pinned: true,
@@ -299,15 +311,15 @@ export class FlowSystem {
     const ahead = 2 + r;
     const wl = wet[s.index(head.x - ahead * dirY - ahead * dirX * 0.4, head.y + ahead * dirX - ahead * dirY * 0.4)];
     const wr = wet[s.index(head.x + ahead * dirY - ahead * dirX * 0.4, head.y - ahead * dirX - ahead * dirY * 0.4)];
-    const steer = (wr - wl) * 9 * gravity.plane;
+    const steer = (wr - wl) * this.steer * gravity.plane;
     head.vx += -dirY * steer * dt;
     head.vy += dirX * steer * dt;
     // stable surface texture nudges the path; no random wandering
     // The surface field varies smoothly over many cells, so this bends a path
     // gently. The per-cell wetness steering above is what used to draw stairs,
     // which is why that one stays weak and this one carries the wander.
-    head.vx += (het - 1) * 11 * dt * -dirY;
-    head.vy += (het - 1) * 11 * dt * dirX;
+    head.vx += (het - 1) * this.texture * dt * -dirY;
+    head.vy += (het - 1) * this.texture * dt * dirX;
 
     // Terminal speed rises with mass^0.4: a full drop runs about half again as
     // fast as one that has only just broken away, which is what you see.
@@ -338,7 +350,7 @@ export class FlowSystem {
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
-    const width = Math.max(1.35, r * 0.42);
+    const width = Math.max(2.2, r * 0.5);
     const steps = Math.max(1, Math.ceil(dist));
     const perStep = TRAIL_RATE * width * (dist / steps);
 
@@ -392,7 +404,11 @@ export class FlowSystem {
         const B = heads[b];
         const ra = radiusForMass(A.mass);
         const rb = radiusForMass(B.mass);
-        const reach = (ra + rb) * 5 + 13;
+        // Short range on purpose. A long reach drags a new drop sideways the
+        // moment it forms, which is both unphysical and the thing that made
+        // every trail start off at an angle. Contact lines bridge when they are
+        // nearly touching; until then water falls straight down.
+        const reach = (ra + rb) * 2 + 3;
         let dx = B.x - A.x;
         let dy = B.y - A.y;
         const d = Math.hypot(dx, dy);
@@ -400,7 +416,7 @@ export class FlowSystem {
         dx /= d;
         dy /= d;
         // Closer pairs pull harder, and the lighter one moves further.
-        const pull = 44 * (1 - d / reach) * dt;
+        const pull = this.attract * (1 - d / reach) * dt;
         const total = A.mass + B.mass;
         A.vx += dx * pull * (B.mass / total);
         A.vy += dy * pull * (B.mass / total);

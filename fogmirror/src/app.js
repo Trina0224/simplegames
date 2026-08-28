@@ -9,7 +9,7 @@ import { MirrorCamera } from './camera.js';
 import { GravitySensor } from './orientation.js';
 import { PointerPaths } from './input.js';
 
-const GRID_SHORT = 144;      // simulation cells across the shorter axis
+const GRID_SHORT = 208;      // simulation cells across the shorter axis
 const STEP = 1 / 60;
 const MAX_STEPS = 3;
 const FINGER_PX = 19;        // contact radius of a fingertip, in CSS pixels
