@@ -94,6 +94,16 @@ If a drop looks too big, the number to change is `MAX_RADIUS_PX`, in millimetres
 
 ---
 
+## Three rules that are not tuning
+
+Each of these was a bug that looked like a tuning problem and was not.
+
+1. **Evaporation is a fraction of the water in a cell, never a fixed amount per cell.** A fixed amount makes the loss proportional to wetted area, and one wipe dries out in seconds.
+2. **A thin film must coarsen towards its thickest neighbour.** Diffusion alone smooths water into a sheet too thin to bead, and nothing downstream can happen. Only deep cells level.
+3. **The size at which a drop breaks away must be reachable from one catchment.** A bead drains its surroundings and stops growing; if it needs more than that, it sits just under the threshold for ever and never moves, merges or leaves a tail.
+
+---
+
 ## Water mass rules
 
 Water may enter or move between representations only through explicit transfers.

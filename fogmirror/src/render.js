@@ -196,7 +196,7 @@ export class MirrorRenderer {
       // stays round because that is where the water piles up, and the trailing
       // edge is drawn out and narrowed into the streak it is leaving. A
       // symmetric ellipse — the same at both ends — is what reads as an egg.
-      const tail = 1 + Math.min(1.4, speed / 55);
+      const tail = 1 + Math.min(2.6, speed / 32);
       const ux = speed > 0.01 ? head.vx / speed : 0;
       const uy = speed > 0.01 ? head.vy / speed : 1;
       const reach = r * tail + 1;
@@ -213,7 +213,7 @@ export class MirrorRenderer {
           const across = dx * -uy + dy * ux;
           const behind = along < 0 ? Math.min(1, -along / (r * tail)) : 0;
           const lengthwise = along >= 0 ? 1 : tail;
-          const widthwise = 1 - 0.5 * behind;          // the tail narrows as it goes
+          const widthwise = 1 - 0.68 * behind;         // the tail narrows to a point
           const d = Math.hypot(along / lengthwise, across / widthwise) / r;
           if (d > 1.05) continue;
           const dome = Math.sqrt(Math.max(0, 1 - d * d));

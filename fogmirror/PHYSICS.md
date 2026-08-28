@@ -236,6 +236,42 @@ A long stroke may produce several pooling zones, but repeated wiping over one lo
 
 ---
 
+## 5a. Two mistakes that break everything downstream
+
+Both were found by measuring rather than by looking, and both had the same symptom: water
+sat there as a film, beads never grew enough to move, nothing merged, and nothing left a tail.
+
+### Evaporation must be proportional to water, not to area
+
+Removing a fixed amount of water per cell per second makes the total loss proportional to the
+**wetted area**. One wipe covers thousands of cells, so the film boiled itself dry in about
+five seconds — far faster than any bead could gather from it. Evaporation is a fraction of
+what is in the cell.
+
+### A film must coarsen, not just level
+
+Diffusion smooths a film out. On its own it does the opposite of what glass does: a thin film
+is unstable, surface tension breaks it up, and it gathers into beads. With levelling alone the
+water spread into a sheet too thin to reach any nucleation threshold, and the simulation
+became a wet rectangle where nothing ever happened.
+
+Water therefore moves **towards its thickest neighbour** while it is thin, and only levels
+once a cell is deep enough to count as a pool. Transfers are explicit, so it stays exactly
+conservative. This one term is what makes a wiped mirror pull itself into drops.
+
+Measured after both fixes, from a single straight wipe: 27 beads form, 24 merges happen, and
+a drop runs 114 mm down a 145 mm screen.
+
+### A drop must be able to reach the size at which it moves
+
+A bead drains the film within its reach and then stops growing. If it needs more mass than its
+catchment holds, it sits at ninety-odd percent of the pinning threshold indefinitely — and
+because drying glass raises that threshold, the gap never closes. Everything that depends on
+moving (sweeping up water, growing, merging, leaving a trail) then never happens at all. The
+size at which a drop breaks away has to be reachable from what one catchment can supply.
+
+---
+
 ## 6. Water mass accounting
 
 Use approximate mass conservation.
