@@ -56,6 +56,7 @@ function layout() {
   const cols = Math.max(32, Math.round(viewW / cellSize));
   const rows = Math.max(32, Math.round(viewH / cellSize));
   surface.resize(cols, rows);
+  flows.setScale(cellSize);
   renderer.setSurfaceSize(cols, rows);
   // Cap the backing store: refraction is per-pixel, and a retina tablet at full
   // density is a lot of pixels for a phone GPU to blur nine times over.

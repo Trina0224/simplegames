@@ -82,6 +82,8 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`;
 
+import { radiusForMass } from './droplets.js';
+
 const WATER_SCALE = 2.6;   // height mapped into 0..1 for the texture
 
 export class MirrorRenderer {
@@ -188,7 +190,7 @@ export class MirrorRenderer {
     // Heads are added on top of the field they came from, so the drop and its
     // trail are one surface rather than a sprite sitting on a map.
     for (const head of heads) {
-      const r = Math.sqrt(head.mass / (Math.PI * 0.62));
+      const r = radiusForMass(head.mass);
       const speed = Math.hypot(head.vx, head.vy);
       const stretch = 1 + Math.min(0.7, speed / 90);
       const ux = speed > 0.01 ? head.vx / speed : 0;
