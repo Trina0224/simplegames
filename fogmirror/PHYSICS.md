@@ -229,6 +229,34 @@ For each stroke footprint:
 7. update local pooling candidates
 8. carry a little of it off on the finger, permanently
 
+### The haze comes back; the water it stands for does not
+
+This is the one that kept the mirror producing drops for ever, and it is not a tuning number
+either.
+
+Re-condensation drives `fog` back towards full, quickly on wet glass — it has to, or a finger
+drawing never fades and the toy has no life in it. Once fog is worth liquid (§5a), that same
+line makes it an **unlimited supply of water**. A drop runs, sweeps the condensation in its
+track into itself (§8a), sheds what it cannot hold; the track re-fogs in seconds because it is
+wet; the next drop sweeps the same strip again. Measured, after one drag and then nothing at
+all: twelve to thirteen drops ran continuously for ninety seconds and the liquid on the glass
+*rose* from 141 units to 526. That is a perpetual motion machine, and it is why the glass never
+stopped shedding drops however much the rest of the model was tightened.
+
+The two things `fog` was doing are not the same thing:
+
+- **Optical haze.** A mist of sub-micron droplets scatters enormously per unit of water, and it
+  re-forms in seconds. This is what the renderer reads and what makes a drawing fade.
+- **Liquid held.** Actual water out of the air, arriving at the rate the air can deliver it.
+
+So they are separate fields now. `fog` recovers as before. `humid` — the water that fog is
+holding, in the same height units as everything else — is topped up by **Steam**, which is the
+one thing that genuinely brings water to the glass, and otherwise trickles back at a small
+fraction of the haze's rate. A finger and a running drop both harvest `humid`, not `fog`.
+
+The budget is closed over `water + moving mass + humid`, and it is exact: the only ways out are
+evaporation and the share a finger carries off, and the only way in is Steam.
+
 ### The finger is a squeegee, and its track is not wet
 
 A finger is a displacement, but it is not a *soft* one. Two things followed from treating it as
@@ -402,6 +430,25 @@ Preferred locations:
 - existing trail/body
 
 Untouched fog should not spontaneously create a screen full of visible beads.
+
+---
+
+## 7a. A wiped edge beads in one go, not in a queue
+
+A stroke across a steamed pane liberates a real volume of water — a finger's width by a hand's
+length of forty-micron film is something like twenty microlitres, a dozen or more full drops.
+That much *should* bead along the lower edge of the stroke.
+
+What it must not do is come out in instalments. With a low cap on the number of live heads, the
+ridge cannot bead all at once: it makes a dozen, and as those run to the bottom and die it makes
+a dozen more, and it goes on doing that for as long as the water lasts. Measured against a real
+drag on a tablet: new drops were still appearing seventy seconds later. Nothing about that
+reads as water — it reads as the glass generating water.
+
+Raising the cap so the whole ridge can bead in one pass fixes it outright: the same drag now
+produces twenty-five drops inside the first ten seconds and **not one after twenty-five**. The
+total is barely changed; it is the queueing that was wrong. The head cap is a performance
+budget, and it must be set high enough that it never becomes a metering valve.
 
 ---
 
