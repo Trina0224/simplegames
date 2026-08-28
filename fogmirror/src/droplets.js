@@ -17,8 +17,13 @@ const MM = 6.2;                     // CSS pixels per millimetre, near enough
 const MAX_RADIUS_PX = 1.15 * MM;    // ~2.3 mm across, plus a little render bloom
 const NUCLEATE_RADIUS_PX = 0.26 * MM;
 const MIN_RADIUS_PX = 0.2 * MM;
-const DEPIN_RADIUS_PX = 0.75 * MM;  // ~1.5 mm across is where a drop starts to slide
-const COLLECT_MAX_PX = 1.8 * MM;
+// A bead drains the film around it and then stops growing, so if the size it
+// must reach to move is larger than its catchment can supply, it sits at
+// ninety-odd percent of the threshold for ever — and drying glass raises the
+// threshold faster than it can close the gap. Everything downstream of moving
+// (sweeping up water, growing, merging, leaving a tail) then never happens.
+const DEPIN_RADIUS_PX = 0.5 * MM;   // ~1 mm across is where a drop starts to slide
+const COLLECT_MAX_PX = 5 * MM;
 const MAX_HEADS = 40;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
@@ -141,7 +146,7 @@ export class FlowSystem {
       // evidence of disturbance. Untouched fog has none and cannot bead.
       // The gate follows the surface's own texture, so beads appear where the
       // glass favours them rather than in an evenly spaced row along a stroke.
-      if (water[i] < 0.30 * s.heterogeneity[i]) continue;
+      if (water[i] < 0.34 * s.heterogeneity[i]) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
       // Water lying in a trail that is still running belongs to that flow. It
       // may bead up later, once the flow has gone, but not behind a live head.
@@ -174,14 +179,17 @@ export class FlowSystem {
       // A collector already within reach should be drinking this, not a rival.
       let taken = false;
       for (const head of this.heads) {
-        const rr = radiusForMass(head.mass) * 4 + 7;
+        const rr = radiusForMass(head.mass) * 3 + 5;
         if ((head.x - x) ** 2 + (head.y - y) ** 2 < rr * rr) { taken = true; break; }
       }
       if (taken) continue;
 
-      const mass = this._drain(x, y, 4.2, 1);
+      // Take only the water immediately underneath. Draining as wide as the
+      // head can later reach starves it from birth: it never gathers enough to
+      // break away, and every bead sits where it formed for ever.
+      const mass = this._drain(x, y, 2.4, 0.85);
       if (mass < this.nucleateMass) {
-        s._deposit(x, y, 4.2, mass);   // not enough gathered yet: put it back
+        s._deposit(x, y, 2.4, mass);   // not enough gathered yet: put it back
         continue;
       }
       this.heads.push({
@@ -327,7 +335,7 @@ export class FlowSystem {
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
-    const width = Math.max(0.9, r * 0.62);
+    const width = Math.max(0.7, r * 0.36);
     const steps = Math.max(1, Math.ceil(dist));
     const perStep = TRAIL_RATE * width * (dist / steps);
 
@@ -381,7 +389,7 @@ export class FlowSystem {
         const B = heads[b];
         const ra = radiusForMass(A.mass);
         const rb = radiusForMass(B.mass);
-        const reach = (ra + rb) * 2.8 + 5;
+        const reach = (ra + rb) * 4.2 + 9;
         let dx = B.x - A.x;
         let dy = B.y - A.y;
         const d = Math.hypot(dx, dy);
@@ -389,7 +397,7 @@ export class FlowSystem {
         dx /= d;
         dy /= d;
         // Closer pairs pull harder, and the lighter one moves further.
-        const pull = 26 * (1 - d / reach) * dt;
+        const pull = 44 * (1 - d / reach) * dt;
         const total = A.mass + B.mass;
         A.vx += dx * pull * (B.mass / total);
         A.vy += dy * pull * (B.mass / total);
@@ -413,10 +421,12 @@ export class FlowSystem {
         const ra = radiusForMass(A.mass);
         const rb = radiusForMass(B.mass);
         const d = Math.hypot(A.x - B.x, A.y - B.y);
-        const touching = d < ra + rb;
+        // Contact lines bridge before the drawn circles overlap, so drops
+        // coalesce a little before they visibly touch.
+        const touching = d < (ra + rb) * 1.35;
         // a dominant collector reaches further than it touches
-        const big = A.mass > B.mass * 2.5 ? A : B.mass > A.mass * 2.5 ? B : null;
-        const captures = big && d < radiusForMass(big.mass) * 2.6 + 3;
+        const big = A.mass > B.mass * 1.6 ? A : B.mass > A.mass * 1.6 ? B : null;
+        const captures = big && d < radiusForMass(big.mass) * 3.4 + 5;
         if (!touching && !captures) continue;
 
         // the survivor is the heavier one; ties go to whichever is further downstream

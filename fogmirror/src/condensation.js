@@ -115,23 +115,46 @@ export class Surface {
       if (fog[i] > 1) fog[i] = 1;
       // wetness fades much more slowly than fog returns
       wet[i] -= wet[i] * 0.02 * dt;
-      // a little water is always evaporating
+      // A little water is always evaporating — as a fraction of what is there,
+      // not as a fixed amount per cell. A fixed amount makes the total loss
+      // proportional to the wetted *area*, so a single wipe covering thousands
+      // of cells boils itself dry in seconds and no drop can ever feed.
       if (water[i] > 0) {
-        water[i] -= Math.min(water[i], 0.012 * dt * (0.4 + 0.6 * water[i]));
+        water[i] -= water[i] * 0.022 * dt;
         if (water[i] < 1e-4) water[i] = 0;
       }
     }
 
-    // --- film levelling: thick water spreads a little into its neighbours
+    // --- coarsening: a thin film on glass does not sit there evenly, it breaks
+    // up and gathers into beads, because surface tension makes a flat film
+    // unstable. Diffusion alone does the opposite — it smooths the film out —
+    // so with only diffusion the water spreads into a sheet too thin to ever
+    // bead, and nothing further can happen. Water therefore moves towards its
+    // thickest neighbour, which is what makes a wiped mirror pull itself into
+    // drops. Transfers are explicit, so this conserves water exactly.
     scratch.set(water);
-    const k = Math.min(0.22, 1.6 * dt);
+    const gather = Math.min(0.3, 1.4 * dt);
+    const level = Math.min(0.18, 1.2 * dt);
     for (let y = 1; y < rows - 1; y += 1) {
       for (let x = 1; x < cols - 1; x += 1) {
         const i = y * cols + x;
         const h = scratch[i];
-        if (h < 0.05) continue;
-        const avg = (scratch[i - 1] + scratch[i + 1] + scratch[i - cols] + scratch[i + cols]) * 0.25;
-        water[i] += (avg - h) * k;
+        if (h < 0.004) continue;
+        let best = -1;
+        let bi = -1;
+        for (let n = 0; n < 4; n += 1) {
+          const j = n === 0 ? i - 1 : n === 1 ? i + 1 : n === 2 ? i - cols : i + cols;
+          if (scratch[j] > best) { best = scratch[j]; bi = j; }
+        }
+        if (h > 0.9) {
+          // A real pool does level out; only the thin film coarsens.
+          const avg = (scratch[i - 1] + scratch[i + 1] + scratch[i - cols] + scratch[i + cols]) * 0.25;
+          water[i] += (avg - h) * level;
+        } else if (best > h) {
+          const move = Math.min(h * 0.3, gather * (best - h) * h * 2.2);
+          water[i] -= move;
+          water[bi] += move;
+        }
       }
     }
 
@@ -145,11 +168,11 @@ export class Surface {
         for (let x = 0; x < cols; x += 1) {
           const i = y * cols + x;
           const h = scratch[i];
-          if (h < 0.42) continue;
+          if (h < 0.25) continue;
           const nx = x + (gx > 0.35 ? 1 : gx < -0.35 ? -1 : 0);
           const ny = y + (gy > 0.35 ? 1 : gy < -0.35 ? -1 : 0);
           if ((nx === x && ny === y) || !this.inside(nx, ny)) continue;
-          const move = (h - 0.42) * step;
+          const move = (h - 0.25) * step;
           water[i] -= move;
           const j = ny * cols + nx;
           water[j] += move;
@@ -188,8 +211,10 @@ export class Surface {
         const removedFog = fog[i] * 0.82 * falloff;
         fog[i] -= removedFog;
 
-        // 2. part of it was already liquid, and the squeegee gathers it
-        collected += removedFog * 0.42;
+        // 2. a little of it was already liquid, and the finger gathers that.
+        // Most condensation is far too fine to become free water at all — turn
+        // much of it into liquid and the glass never stops producing drops.
+        collected += removedFog * 0.28;
 
         // 3. so is most of the free water already sitting there
         const mobile = water[i] * (0.55 + 0.35 * falloff);
