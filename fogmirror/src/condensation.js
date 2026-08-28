@@ -6,6 +6,12 @@
 
 export const NONE = 0;
 
+// The film a mirror simply holds on to. Below this height water is bound by
+// adhesion to the glass and cannot be gathered into a drop, however long you
+// wait; it leaves only by evaporating. This is why a wiped mirror stays faintly
+// damp instead of resolving into beads and clear glass.
+const ADHERED = 0.03;
+
 export class Surface {
   constructor(cols, rows) {
     this.resize(cols, rows);
@@ -140,6 +146,12 @@ export class Surface {
     // bead, and nothing further can happen. Water therefore moves towards its
     // thickest neighbour, which is what makes a wiped mirror pull itself into
     // drops. Transfers are explicit, so this conserves water exactly.
+    // Not all of it can gather, though. Glass holds water: adhesion and the
+    // roughness of a real mirror pin a thin residue that surface tension cannot
+    // pull along, so a wiped pane never gathers itself completely into beads —
+    // it keeps a faint damp haze that only evaporation removes. A perfectly
+    // smooth surface would be the case where the whole film beads up. How much
+    // is held follows the same heterogeneity field that decides where drops pin.
     scratch.set(water);
     const gather = Math.min(0.3, 1.4 * dt);
     const level = Math.min(0.18, 1.2 * dt);
@@ -147,9 +159,11 @@ export class Surface {
       for (let x = 1; x < cols - 1; x += 1) {
         const i = y * cols + x;
         const h = scratch[i];
-        if (h < 0.004) continue;
         // A residual film in a flow's own track is pinned, not free to gather.
         if (h < 0.4 && this.flowId[i] !== NONE) continue;
+        const bound = ADHERED * this.heterogeneity[i];
+        const free = h - bound;
+        if (free <= 0) continue;
         let best = -1;
         let bi = -1;
         for (let n = 0; n < 4; n += 1) {
@@ -161,7 +175,8 @@ export class Surface {
           const avg = (scratch[i - 1] + scratch[i + 1] + scratch[i - cols] + scratch[i + cols]) * 0.25;
           water[i] += (avg - h) * level;
         } else if (best > h) {
-          const move = Math.min(h * 0.3, gather * (best - h) * h * 2.2);
+          // only the water above what the glass holds is free to move
+          const move = Math.min(free * 0.3, gather * (best - h) * free * 2.2);
           water[i] -= move;
           water[bi] += move;
         }

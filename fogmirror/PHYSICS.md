@@ -262,6 +262,21 @@ conservative. This one term is what makes a wiped mirror pull itself into drops.
 Measured after both fixes, from a single straight wipe: 27 beads form, 24 merges happen, and
 a drop runs 114 mm down a 145 mm screen.
 
+### ...but a film cannot coarsen *completely*
+
+Coarsening is not free to run to completion, because glass holds on to water. Adhesion — and
+on a real mirror, its roughness and whatever is left on it — pins a thin residue that surface
+tension cannot drag along, so a wiped pane never resolves itself into beads and clear glass.
+It keeps a faint damp haze, and that haze leaves only by evaporating. A perfectly smooth,
+ideal surface is the case where the whole film would bead up; a bathroom mirror is not one.
+
+So the gathering term acts only on the water **above** a bound height, and how much is bound
+follows the same heterogeneity field that decides where drops pin: glass that holds drops well
+holds film well. The levelling term for deep water is unaffected — a pool does level.
+
+Without this the model quietly claims a perfect surface, and the tail of a wipe is a film that
+keeps re-gathering into one more bead, and one more, until the water is gone.
+
 ### A drop must be able to reach the size at which it moves
 
 A bead drains the film within its reach and then stops growing. If it needs more mass than its
