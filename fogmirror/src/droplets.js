@@ -24,7 +24,7 @@ const MIN_RADIUS_PX = 0.2 * MM;
 // (sweeping up water, growing, merging, leaving a tail) then never happens.
 const DEPIN_RADIUS_PX = 0.5 * MM;   // ~1 mm across is where a drop starts to slide
 const COLLECT_MAX_PX = 5 * MM;
-const MAX_HEADS = 40;
+const MAX_HEADS = 8;
 const HEIGHT = 0.62;                // mean height of a head, for mass <-> radius
 const ACC_PX = 100;                 // gravity drive, CSS px per second squared
 const DRAG_PX = 6;                  // terminal speed rises with mass^0.4
@@ -146,7 +146,7 @@ export class FlowSystem {
       // evidence of disturbance. Untouched fog has none and cannot bead.
       // The gate follows the surface's own texture, so beads appear where the
       // glass favours them rather than in an evenly spaced row along a stroke.
-      if (water[i] < 0.34 * s.heterogeneity[i]) continue;
+      if (water[i] < 1.1 * s.heterogeneity[i]) continue;
       if (wet[i] < 0.08 && water[i] < 0.5) continue;
       // Water lying in a trail that is still running belongs to that flow. It
       // may bead up later, once the flow has gone, but not behind a live head.
@@ -179,7 +179,7 @@ export class FlowSystem {
       // A collector already within reach should be drinking this, not a rival.
       let taken = false;
       for (const head of this.heads) {
-        const rr = radiusForMass(head.mass) * 3 + 5;
+        const rr = radiusForMass(head.mass) * 5 + 13;
         if ((head.x - x) ** 2 + (head.y - y) ** 2 < rr * rr) { taken = true; break; }
       }
       if (taken) continue;
@@ -299,12 +299,15 @@ export class FlowSystem {
     const ahead = 2 + r;
     const wl = wet[s.index(head.x - ahead * dirY - ahead * dirX * 0.4, head.y + ahead * dirX - ahead * dirY * 0.4)];
     const wr = wet[s.index(head.x + ahead * dirY - ahead * dirX * 0.4, head.y - ahead * dirX - ahead * dirY * 0.4)];
-    const steer = (wr - wl) * 26 * gravity.plane;
+    const steer = (wr - wl) * 9 * gravity.plane;
     head.vx += -dirY * steer * dt;
     head.vy += dirX * steer * dt;
     // stable surface texture nudges the path; no random wandering
-    head.vx += (het - 1) * 14 * dt * -dirY;
-    head.vy += (het - 1) * 14 * dt * dirX;
+    // The surface field varies smoothly over many cells, so this bends a path
+    // gently. The per-cell wetness steering above is what used to draw stairs,
+    // which is why that one stays weak and this one carries the wander.
+    head.vx += (het - 1) * 11 * dt * -dirY;
+    head.vy += (het - 1) * 11 * dt * dirX;
 
     // Terminal speed rises with mass^0.4: a full drop runs about half again as
     // fast as one that has only just broken away, which is what you see.
@@ -335,7 +338,7 @@ export class FlowSystem {
     const dist = Math.hypot(head.x - px, head.y - py);
     if (dist < 0.05) return;
     const root = this.find(head.id);
-    const width = Math.max(0.7, r * 0.36);
+    const width = Math.max(1.35, r * 0.42);
     const steps = Math.max(1, Math.ceil(dist));
     const perStep = TRAIL_RATE * width * (dist / steps);
 
@@ -366,7 +369,7 @@ export class FlowSystem {
           const i = y * cols + x;
           water[i] += (1 - d) * scale;
           wet[i] = Math.min(1, Math.max(wet[i], 0.85 - 0.3 * d));
-          fog[i] *= 0.42 + 0.45 * d;
+          fog[i] *= 0.66 + 0.28 * d;
           const owner = flowId[i];
           if (owner > 0 && this.find(owner) !== root) { this.union(root, owner); this.merges += 1; }
           flowId[i] = root;
@@ -389,7 +392,7 @@ export class FlowSystem {
         const B = heads[b];
         const ra = radiusForMass(A.mass);
         const rb = radiusForMass(B.mass);
-        const reach = (ra + rb) * 4.2 + 9;
+        const reach = (ra + rb) * 5 + 13;
         let dx = B.x - A.x;
         let dy = B.y - A.y;
         const d = Math.hypot(dx, dy);

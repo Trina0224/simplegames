@@ -109,7 +109,7 @@ export class Surface {
     // --- re-condensation: slow, so a finger drawing survives a while
     const rate = 0.016 * dt;
     for (let i = 0; i < n; i += 1) {
-      const affinity = 1 + 0.9 * wet[i];
+      const affinity = 1 + 4.5 * wet[i];
       const target = 1;
       fog[i] += (target - fog[i]) * rate * affinity;
       if (fog[i] > 1) fog[i] = 1;
