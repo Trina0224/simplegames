@@ -64,7 +64,7 @@ void main() {
 
   // Liquid water is clear: it removes the mist it displaced, and wet glass
   // scatters a little less than dry fogged glass.
-  float haze = fog * (1.0 - min(1.0, water * 1.7)) * (1.0 - 0.18 * wet);
+  float haze = fog * (1.0 - min(0.92, water * 1.05)) * (1.0 - 0.14 * wet);
 
   vec3 col = vidBlur(uv - grad * uRefract, haze * 0.017 + 0.0012);
   col = mix(col, vec3(0.87, 0.89, 0.91), clamp(haze * 0.94, 0.0, 0.96));
