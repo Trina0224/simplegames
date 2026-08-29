@@ -72,6 +72,7 @@ function layout() {
   impacts.setScale(cellSize);
   rainfall.setPane(cols * rows * surface.cellMm * surface.cellMm);
   renderer.setSurfaceSize(cols, rows);
+  renderer.setCellSize(surface.cellMm);
   // The optics need to know how thick the thickest drop is, in cells.
   renderer.setThicknessScale(0.62 * Math.cbrt(flows.maxMass / (Math.PI * 0.52)), surface.beadFilm);
   // Cap the backing store: refraction is per-pixel, and a retina tablet at full

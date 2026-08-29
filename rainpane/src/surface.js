@@ -31,7 +31,18 @@ const BEAD_MM = 0.030;
 const BOUND_MM = 0.004;
 const POOL_MM = 0.40;
 
-const CREEP = 5.5;                  // how eagerly film above HOLD moves downhill
+// A gravity-driven film on a vertical plate runs at the Nusselt velocity,
+//
+//     v = rho g h^2 / (3 mu)   ->   v[mm/s] = 3270 * h[mm]^2
+//
+// and the square is the whole point: a tenth of a millimetre of water crawls at
+// thirty millimetres a second while four tenths of a millimetre runs at five
+// hundred. Replacing that with a fraction-per-frame nudge, as this did, makes
+// every thickness move at roughly the same slow ooze — which is exactly what
+// reads as gel rather than water. Only the depth above what the contact line
+// pins is free to move, so the film tears away and leaves the pinned layer.
+const FILM_K = 3270;                // mm/s per mm^2 of mobile depth
+const FILM_MAX_CELLS = 26;          // don't let one step jump further than this
 const GATHER = 1.6;                 // dewetting: film moves to its thickest neighbour
 const LEVEL = 1.3;                  // pooled water flattens
 const DRY = 0.006;                  // evaporation, as a fraction per second
@@ -140,7 +151,8 @@ export class Surface {
     const gx = gravity.x;
     const gy = gravity.y;
     scratch.set(h);
-    const rate = CREEP * gravity.plane * dt;
+    // v = 3270 h^2 mm/s, expressed as a distance in cells for this step
+    const k = FILM_K * this.cellMm * this.cellMm * gravity.plane * dt / this.cellMm;
 
     for (let y = 0; y < rows; y += 1) {
       for (let x = 0; x < cols; x += 1) {
@@ -150,12 +162,10 @@ export class Surface {
         const cap = this.holdFilm * pin[i] * (1 - 0.4 * wet[i]);
         const over = hh - cap;
         if (over <= 0) continue;
-        // A thicker film is not just more water, it is faster water.
-        const frac = Math.min(0.75, rate * (1 + Math.min(5, over / cap)));
-        const move = over * frac;
-        if (move <= 0) continue;
-        h[i] -= move;
-        this._scatter(x + gx, y + gy, move, flowId[i]);
+        const dist = Math.min(FILM_MAX_CELLS, k * over * over);
+        if (dist < 1e-3) continue;
+        h[i] -= over;
+        this._scatter(x + gx * dist, y + gy * dist, over, flowId[i]);
       }
     }
   }
