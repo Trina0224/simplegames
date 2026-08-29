@@ -12,7 +12,10 @@ for the rules and the research hierarchy this is held to.
 - **Rainfall as a rate, not a spawn counter.** A Marshall–Palmer exponential
   spectrum, weighted by fall speed so it is the *arrival* spectrum, sampled
   exactly as a gamma variate. The loop is driven by the volume owed, so event
-  count and drop size cannot drift apart from the mass flux.
+  count and drop size cannot drift apart from the mass flux. The scale runs from
+  drizzle at half a millimetre an hour to a tropical downpour at 180, and how
+  much of that a *vertical* pane catches rises with the rate, because hard rain
+  comes with hard wind and what reaches a window is driving rain.
 - **A staged impact.** The drop spreads into a lamella several times its own
   diameter — how far follows the Weber number — then the rim retracts and it
   settles. The water is on the pane from the first frame; only its *shape*
@@ -84,18 +87,20 @@ and it returns zero, not nearly zero. Each stage was checked on its own
 (creep, capillarity, the whole surface tick, the flows) and each is exactly
 conservative.
 
-Measured on a tablet-sized pane, twenty seconds of heavy rain:
+Measured on a tablet-sized pane, twenty seconds of a downpour:
 
 ```text
-landed 288 mm3 = on glass 98 + ran off 183 + dried 7   (unaccounted -0.000%)
+landed 4305 mm3 = on glass 271 + ran off 4007 + dried 28   (unaccounted 0.000%)
 ```
 
 ## What was measured
 
 | | |
 |---|---|
-| drizzle drop size | median 0.44 mm, 90th percentile 0.83 mm |
-| storm drop size | median 0.88 mm, 90th percentile 2.0 mm, largest 4.8 mm |
+| drizzle drop size | median 0.44 mm, 90th percentile 0.82 mm |
+| downpour drop size | median 1.05 mm, 90th percentile 2.5 mm, largest 5.0 mm |
+| water arriving, drizzle → downpour | 0.2 → 215 mm³/s, about 70 drops a second at the top |
+| the pane at 180 mm/h | 99% wetted, a quarter of it running as a sheet rather than beads |
 | impact, 2.2 mm drop | spreads to 4.2 mm radius, retracts to 2.0 mm, over ~12 frames |
 | a 1.0 mm bead | pinned, does not move |
 | a 2.4 mm drop | runs at 164 mm/s — crosses the pane in half a second |
@@ -108,7 +113,7 @@ landed 288 mm3 = on glass 98 + ran off 183 + dried 7   (unaccounted -0.000%)
 | rivulet channels | 83 of them, 0.2 to 6.6 mm wide |
 | after heavy rain | 27% of the pane wetted, 54% still carrying residual film |
 | gravity | upright → down, right edge down → right, left edge down → left, flat → still |
-| cost, storm load | 6.3 ms/step and 1.9 ms/frame on a tablet-sized pane, 2.4 and 1.0 on a phone |
+| cost, downpour | 4.5 ms/step and 1.1 ms/frame on a tablet-sized pane, 1.9 and 0.5 on a phone |
 
 ## Running it
 
