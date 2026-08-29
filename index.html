@@ -33,6 +33,16 @@
   .thumb-fog .board .lines path { stroke-width:3.4; stroke:rgba(20,36,42,.62); }
   .drop { position:absolute; z-index:2; width:10px; height:17px; border-radius:50% 50% 55% 55%; border:1px solid rgba(245,255,255,.65); background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(80,110,116,.18)); }
   .d1 { right:24%; top:17%; } .d2 { right:15%; top:49%; width:7px; height:12px; } .d3 { left:18%; bottom:14%; width:8px; height:15px; }
+  .thumb-rain { position:relative; display:block; min-height:134px; background:linear-gradient(170deg,#12202a 0%,#16323a 45%,#0d181c 100%); }
+  .thumb-rain::before { content:""; position:absolute; inset:0; background:
+      radial-gradient(circle at 22% 62%, rgba(246,196,110,.55), rgba(246,196,110,0) 26%),
+      radial-gradient(circle at 63% 45%, rgba(246,196,110,.38), rgba(246,196,110,0) 18%),
+      radial-gradient(circle at 84% 70%, rgba(246,196,110,.30), rgba(246,196,110,0) 15%),
+      radial-gradient(circle at 45% 22%, rgba(150,190,210,.18), rgba(150,190,210,0) 34%); }
+  .thumb-rain .glass { position:absolute; inset:0; width:100%; height:100%; z-index:1; }
+  .thumb-rain .glass .drop { fill:rgba(226,240,248,.10); stroke:rgba(232,244,252,.72); stroke-width:1.1; }
+  .thumb-rain .glass .glint { fill:rgba(255,255,255,.85); stroke:none; }
+  .thumb-rain .glass .trail { fill:none; stroke:rgba(214,232,242,.34); stroke-linecap:round; }
   .card h2 { margin:0; font-size:21px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
   .card h2 .en { font-size:13px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); }
   .card p { margin:0; color:var(--muted); font-size:15px; }
@@ -64,6 +74,31 @@
       <p>螢幕是一扇關著的百葉窗，後面是相機的即時畫面。手指壓上去，葉片就在指尖附近撥開，露出後面的房間；放開就彈回去。沒有快門，什麼都不會被拍下來。</p>
       <div class="tags"><span>iPhone · Android · iPad</span><span>不拍照不錄影</span><span>沒相機也能玩</span></div>
       <div class="go">戳戳看 <span aria-hidden="true">→</span></div>
+    </a>
+    <a class="card" href="rainpane/">
+      <div class="thumb thumb-rain" aria-hidden="true">
+        <svg class="glass" viewBox="0 0 300 134" preserveAspectRatio="none" role="presentation" focusable="false">
+          <g class="trail" stroke-width="4"><path d="M62 8c-2 22 1 38 0 58"/></g>
+          <g class="trail" stroke-width="2.4"><path d="M175 4c2 26-2 40 0 62"/></g>
+          <g class="trail" stroke-width="1.6"><path d="M248 30c1 16-1 24 0 36"/></g>
+          <ellipse class="drop" cx="62" cy="72" rx="8.5" ry="9.5"/>
+          <ellipse class="drop" cx="175" cy="72" rx="5.5" ry="6.2"/>
+          <ellipse class="drop" cx="248" cy="70" rx="4" ry="4.6"/>
+          <ellipse class="drop" cx="112" cy="40" rx="6.5" ry="7.2"/>
+          <ellipse class="drop" cx="212" cy="104" rx="7.5" ry="8.4"/>
+          <ellipse class="drop" cx="30" cy="106" rx="3.4" ry="3.8"/>
+          <ellipse class="drop" cx="140" cy="112" rx="2.6" ry="2.9"/>
+          <ellipse class="drop" cx="272" cy="16" rx="3" ry="3.4"/>
+          <circle class="glint" cx="59" cy="68" r="1.7"/>
+          <circle class="glint" cx="110" cy="37" r="1.3"/>
+          <circle class="glint" cx="209" cy="100" r="1.5"/>
+          <circle class="glint" cx="173" cy="69" r="1.1"/>
+        </svg>
+      </div>
+      <h2>雨窗 <span class="en">Rainpane</span></h2>
+      <p>下雨的夜裡，隔著一片玻璃看外面的林間小路。雨滴打在玻璃上會先攤開再縮回、小的釘在原地不動、大的往下跑，兩顆靠近時先牽出一條頸再併成一顆。轉動裝置，水就往真正的下方流。</p>
+      <div class="tags"><span>雨滴物理</span><span>從毛毛雨到暴雨</span><span>裝置重力</span><span>原型</span></div>
+      <div class="go">看雨 <span aria-hidden="true">→</span></div>
     </a>
     <a class="card" href="fogmirror/">
       <div class="thumb thumb-fog" aria-hidden="true">
