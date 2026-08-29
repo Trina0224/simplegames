@@ -14,6 +14,7 @@ import { Rainfall, INTENSITIES } from './rain.js';
 import { PaneRenderer } from './render.js';
 import { Scene } from './scene.js';
 import { GravitySensor } from './gravity.js';
+import { AudioEngine } from './audio.js';
 
 // The grid follows a physical cell size, not a fixed count. Fixing the count
 // means a phone quietly simulates at twice the resolution of a tablet and pays
@@ -33,6 +34,7 @@ const el = {
   intensity: document.getElementById('intensity'),
   intensityName: document.getElementById('intensityName'),
   infoBtn: document.getElementById('infoBtn'),
+  soundBtn: document.getElementById('soundBtn'),
 };
 
 const surface = new Surface(64, 64);
@@ -42,6 +44,8 @@ const rainfall = new Rainfall();
 const renderer = new PaneRenderer(el.canvas);
 const scene = new Scene();
 const gravity = new GravitySensor();
+const audio = new AudioEngine();
+impacts.onImpact = (ev) => audio.handleImpact(ev);
 
 let cellSize = 1;
 let started = false;
@@ -53,6 +57,7 @@ let messageTimer = null;
 let frames = 0;
 let fps = 0;
 let fpsAt = 0;
+let metricsAt = 0;
 const drops = [];
 
 // ---------------------------------------------------------------- layout
@@ -70,7 +75,9 @@ function layout() {
   surface.setScale(cellSize);
   flows.setScale(cellSize);
   impacts.setScale(cellSize);
-  rainfall.setPane(cols * rows * surface.cellMm * surface.cellMm);
+  const paneArea = cols * rows * surface.cellMm * surface.cellMm;
+  rainfall.setPane(paneArea);
+  audio.setPane(paneArea);
   renderer.setSurfaceSize(cols, rows);
   renderer.setCellSize(surface.cellMm);
   // The optics need to know how thick the thickest drop is, in cells.
@@ -129,6 +136,13 @@ function frame(now) {
 
   renderer.draw(surface, flows.heads);
 
+  // The audio reads reduced numbers at a control rate, never the grid.
+  if (now - metricsAt > 60) {
+    metricsAt = now;
+    audio.updateMetrics(surface.metrics());
+  }
+  audio.update(now);
+
   frames += 1;
   if (now - fpsAt > 500) {
     fps = Math.round((frames * 1000) / (now - fpsAt));
@@ -151,6 +165,7 @@ function showMessage(text) {
 function setIntensity(index) {
   const step = INTENSITIES[Math.max(0, Math.min(INTENSITIES.length - 1, index | 0))];
   rainfall.setRate(step.rate);
+  audio.setRate(step.rate);
   el.intensityName.textContent = `${step.name}${step.rate ? ` · ${step.rate} mm/h` : ''}`;
 }
 
@@ -171,6 +186,7 @@ function updateDiag(g) {
     `heads    ${flows.heads.length}   merges ${flows.merges}`,
     `on glass ${mm3.toFixed(0)} mm3   ran off ${(surface.drained * surface.cellMm ** 3).toFixed(0)}   dried ${(surface.evaporated * surface.cellMm ** 3).toFixed(0)}`,
     `cell     ${surface.cellMm.toFixed(3)} mm   grid ${surface.cols}x${surface.rows}`,
+    `sound    ${audio.ready ? (audio.muted ? 'muted' : 'on') : 'off'}   ${audio.voices} voices   x${audio.multiplier.toFixed(0)} pane`,
     `renderer ${renderer.ok ? 'webgl' : '2d fallback'}`,
   ].join('\n');
 }
@@ -179,6 +195,18 @@ el.intensity.addEventListener('input', () => {
   setIntensity(Number(el.intensity.value));
   wake();
 });
+
+el.soundBtn.addEventListener('click', async () => {
+  if (!audio.ready) await audio.start();
+  audio.setMuted(!audio.muted);
+  updateSound();
+});
+
+function updateSound() {
+  const on = audio.ready && !audio.muted;
+  el.soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  el.soundBtn.textContent = on ? 'Sound on' : 'Sound off';
+}
 
 el.infoBtn.addEventListener('click', () => {
   showDiag = !showDiag;
@@ -195,12 +223,20 @@ async function begin() {
   el.start.hidden = true;
   layout();
 
+  // Audio first, and before anything is awaited. Safari only unlocks an
+  // AudioContext inside a user gesture, and the gesture is spent by the first
+  // await — asking for motion permission ends it, so an audio start placed
+  // after that prompt silently stays suspended on iOS.
+  const heard = await audio.start();
+  updateSound();
+
   const ok = await scene.load();
   renderer.setScene(scene);
   if (!ok) showMessage('The scene image did not load — the pane still works');
 
   const motion = await gravity.start();
   if (!motion) showMessage('No motion sensor — water runs down the screen');
+  if (!heard) showMessage('This browser would not start the audio — tap Sound');
 
   setIntensity(Number(el.intensity.value));
   wake();
@@ -212,11 +248,11 @@ el.start.addEventListener('pointerdown', (e) => e.preventDefault());
 // ---------------------------------------------------------------- lifecycle
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) running = false;
-  else if (started) wake();
+  if (document.hidden) { running = false; audio.suspend(); }
+  else if (started) { audio.resume(); wake(); }
 });
 
-window.addEventListener('pagehide', () => { gravity.stop(); });
+window.addEventListener('pagehide', () => { gravity.stop(); audio.suspend(); });
 
 // ---------------------------------------------------------------- boot
 
@@ -226,7 +262,7 @@ scene.load().then(() => { renderer.setScene(scene); renderer.draw(surface, flows
 
 // Handy from Safari's inspector on a real device.
 window.rainpane = {
-  surface, flows, impacts, rainfall, renderer, gravity, scene, layout,
+  surface, flows, impacts, rainfall, renderer, gravity, scene, audio, layout,
   cellSize: () => cellSize,
   step: stepOnce,
   mmPerPx: 1 / MM,

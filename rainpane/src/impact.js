@@ -41,6 +41,7 @@ export class ImpactField {
     this.live = [];
     this.pool = [];
     this.landed = 0;                // mass delivered, for the audit
+    this.onImpact = null;           // audio listens here; see AUDIO_SPEC.md
     this.setScale(3);
   }
 
@@ -87,6 +88,24 @@ export class ImpactField {
 
     this.live.push(s);
     this.landed += s.mass;
+
+    // The same event drives the sound. It is the physical impact, not anything
+    // read back off the render: size, speed, energy, and how wet the glass
+    // already was where it landed.
+    if (this.onImpact) {
+      const v = drop.velocity;
+      const kg = drop.volume * 1e-6;               // mm^3 of water -> kg
+      this.onImpact({
+        x: x / this.surface.cols,
+        y: y / this.surface.rows,
+        diameter: drop.diameter,
+        velocity: v,
+        energy: 0.5 * kg * v * v,
+        thickness: this.surface.h[this.surface.index(x, y)] * this.cellMm,
+        wetness: wet,
+        existingBody: this.surface.flowId[this.surface.index(x, y)] !== NONE,
+      });
+    }
     return s;
   }
 
