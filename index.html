@@ -26,9 +26,11 @@
   .thumb-blinds { grid-template-columns:1fr; gap:4px; }
   .thumb-blinds span { height:14px; border-radius:3px; background:linear-gradient(180deg,#ded7c9 0%,#b3ac9e 100%); }
   .thumb-blinds span.gap { height:26px; background:linear-gradient(180deg,#7fb4e8 0%,#cfe0ee 55%,#6f8a6c 100%); box-shadow:inset 0 3px 6px rgba(0,0,0,.45); }
-  .thumb-fog { position:relative; display:block; background:radial-gradient(circle at 50% 35%,#83979c 0%,#52666c 30%,#1c2b30 72%,#10171a 100%); }
+  .thumb-fog { position:relative; display:block; min-height:134px; background:radial-gradient(circle at 50% 35%,#83979c 0%,#52666c 30%,#1c2b30 72%,#10171a 100%); }
   .thumb-fog::before { content:""; position:absolute; inset:0; background:radial-gradient(circle at 34% 42%,rgba(245,250,250,.72),rgba(230,240,242,.45) 22%,rgba(225,237,239,.76) 58%,rgba(220,233,235,.62)); filter:blur(5px); }
-  .thumb-fog::after { content:"☺"; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:rgba(22,39,43,.78); font-size:52px; font-weight:300; text-shadow:0 1px 1px rgba(255,255,255,.35); }
+  .thumb-fog .board { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:126px; height:105px; z-index:1; }
+  .thumb-fog .board path { fill:none; stroke:rgba(20,36,42,.8); stroke-width:4.2; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 1.2px 0 rgba(255,255,255,.42)); }
+  .thumb-fog .board .lines path { stroke-width:3.4; stroke:rgba(20,36,42,.62); }
   .drop { position:absolute; z-index:2; width:10px; height:17px; border-radius:50% 50% 55% 55%; border:1px solid rgba(245,255,255,.65); background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(80,110,116,.18)); }
   .d1 { right:24%; top:17%; } .d2 { right:15%; top:49%; width:7px; height:12px; } .d3 { left:18%; bottom:14%; width:8px; height:15px; }
   .card h2 { margin:0; font-size:21px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
@@ -64,10 +66,30 @@
       <div class="go">戳戳看 <span aria-hidden="true">→</span></div>
     </a>
     <a class="card" href="fogmirror/">
-      <div class="thumb thumb-fog" aria-hidden="true"><i class="drop d1"></i><i class="drop d2"></i><i class="drop d3"></i></div>
+      <div class="thumb thumb-fog" aria-hidden="true">
+        <svg class="board" viewBox="0 0 120 100" role="presentation" focusable="false">
+          <defs>
+            <path id="fm-o" d="M1-11c7 0 10 4 10 11s-3 11-11 11-11-4-11-11 4-11 11-11"/>
+            <g id="fm-x"><path d="M-9-9 9 9"/><path d="M9-9-9 9"/></g>
+          </defs>
+          <g class="lines">
+            <path d="M45 11c-1 26-1 52 0 78"/>
+            <path d="M76 12c1 26 1 52 0 77"/>
+            <path d="M12 38c31-2 63-2 95 0"/>
+            <path d="M13 64c31 2 63 2 94-1"/>
+          </g>
+          <use href="#fm-o" x="29" y="25"/>
+          <use href="#fm-o" x="61" y="51"/>
+          <use href="#fm-o" x="92" y="76"/>
+          <use href="#fm-x" x="60" y="25"/>
+          <use href="#fm-x" x="92" y="26"/>
+          <use href="#fm-x" x="29" y="76"/>
+        </svg>
+        <i class="drop d1"></i><i class="drop d2"></i><i class="drop d3"></i>
+      </div>
       <h2>霧鏡 <span class="en">Fog Mirror</span></h2>
-      <p>把前鏡頭變成一面三溫暖裡起霧的鏡子。用手指擦、畫笑臉，水會聚成珠、沿著舊水痕流；轉動手機，水滴也會跟著真正的重力改變方向。</p>
-      <div class="tags"><span>前鏡頭</span><span>水滴物理</span><span>裝置重力</span><span>實驗版</span></div>
+      <p>把前鏡頭變成一面三溫暖裡起霧的鏡子。手指擦過就是一道乾淨的痕跡 —— 跟旁邊的人畫圈圈叉叉、留張字條都行。水會在你收筆的地方聚成珠、沿著舊水痕流下來；轉動手機，水滴跟著真正的重力改變方向。擦掉的就是擦掉了，想再起霧按 Steam。</p>
+      <div class="tags"><span>前鏡頭</span><span>圈圈叉叉</span><span>水滴物理</span><span>裝置重力</span></div>
       <div class="go">擦擦看 <span aria-hidden="true">→</span></div>
     </a>
   </main>

@@ -48,9 +48,13 @@ Expected tested behavior:
 
 This mapping must not be changed unless a new real-device regression is first demonstrated.
 
-### Water physics — NOT YET ACCEPTED
+### Water physics — REWRITTEN AND ACCEPTED ON DEVICE
 
-The current visible water still behaves too much like independent drops dragging lines. The next implementation must use the connected-flow model in this document and `PHYSICS.md`.
+The connected-flow model in this document and `PHYSICS.md` is implemented. It has been through
+several rounds of real-device review on an iPad mini; every structural finding from those
+rounds is written up in `PHYSICS.md` and listed in `AGENTS.md` under "Rules that are not
+tuning". Read those before changing anything here: most of what looks like a constant to
+adjust turned out to be a physical quantity that had been got wrong.
 
 ---
 
@@ -61,9 +65,10 @@ The current visible water still behaves too much like independent drops dragging
 3. The live front camera appears horizontally mirrored.
 4. The reflection is heavily obscured by nonuniform condensation.
 5. User drags a finger through the fog.
-6. The finger clears the fine mist but also redistributes its water.
-7. Liquid is pushed mainly toward the physical gravity-down edge of the contact footprint.
-8. One or a few local collectors grow from accumulated water.
+6. The finger clears the fine mist and takes its water with it, leaving clear glass behind.
+7. What it cannot carry is shed toward the physical gravity-down edge of the footprint, and
+   the rest is left where the finger lifts off.
+8. Collectors grow from that water — mostly at the lift-off point, a few along a long stroke.
 9. Small heads can remain pinned.
 10. Larger heads collect film, depin, and begin running.
 11. Running flows grow as they sweep up water and nearby small flows.
@@ -177,13 +182,22 @@ A visible drop is the front/head of a connected water body, not an isolated part
 
 The simulation is heuristic, but visible water must approximately conserve mass.
 
+The budget is over three things, because the condensation is where the water comes from:
+
+```text
+water on the glass  +  mass in the flow heads  +  fog x fogYield  ( + what a finger is carrying )
+```
+
 Allowed mass transfers:
 
 ```text
-fog -> water              wiping / condensation
+fog -> finger -> water    wiping: taken, carried along the stroke, laid down
+fog -> active flow        a running head sweeping the glass it crosses
 water -> active flow      collection / pooling
 flow A + flow B -> flow C merge
 active flow -> water      residual trail deposition
+water -> gone             evaporation, and the share the finger carries off
+Steam -> fog              the only way water arrives
 ```
 
 Forbidden behavior:
@@ -192,15 +206,20 @@ Forbidden behavior:
 - Steam directly creates large drops
 - untouched fog randomly produces many visible beads
 - a swipe spawns a large set of particles without available local water mass
+- any ambient process that puts fog, or water, back on the glass by itself
 
 Conceptually:
 
 ```text
 M_next = M_current
        + collectedSurfaceWater
+       + sweptCondensation
        + mergedFlowMass
        - residualTrailDeposit
 ```
+
+This is exact, not approximate: the harness checks that a wipe, and minutes of running water,
+change the total by zero.
 
 Visible footprint must derive from `mass`, not from an independent radius-growth timer.
 
@@ -212,21 +231,25 @@ A finger stroke is a moisture-transport event.
 
 For every stroke sample:
 
-1. lower `fog` under the contact footprint
-2. convert a fraction of removed condensation into `water`
-3. move/redistribute available local `water`
-4. concentrate most mobile liquid toward the physical gravity-down edge of the fingertip footprint
-5. retain a smaller side ridge and wet center film
-6. update `wet`
-7. create or feed only a small number of nearby collector candidates
+1. lower `fog` under the contact footprint, with a definite edge rather than a soft falloff
+2. take the liquid that fog was holding, and every bit of free `water` already there, leaving
+   only what adhesion binds
+3. add it to the stroke's **load** — a finger drags a meniscus along with it
+4. shed only what the finger cannot hold, toward the physical gravity-down edge of the
+   footprint and either side of the *track*; nothing goes back into the middle
+5. plus a trickle from the trailing meniscus, only where the glass grips harder than average
+6. update `wet`, but far less than a running flow does
+7. keep a small share on the finger, off the glass for good
+
+When the finger lifts, the whole remaining load is laid down at the last point.
 
 ### Slow drawing
 
 Should:
 
 - create a readable clear path
-- keep soft, wet edges
-- avoid uniform beads along the stroke
+- keep a definite edge, and clear glass inside it
+- avoid uniform beads along the stroke — a short stroke should bead only where the finger left
 - retain enough moisture memory that later fog/runoff reacts to the same path
 
 ### Fast swipe
@@ -237,7 +260,7 @@ Should:
 - transport more water
 - feed a dominant downhill/leading-edge pool
 - disturb existing heads
-- trigger stronger runoff after the gesture
+- trigger stronger runoff after the gesture, concentrated at the lift-off point
 
 It must not spray hundreds of unrelated droplets.
 
@@ -592,7 +615,7 @@ No recording or upload. No dependence on breath mode for normal operation.
 
 - stronger hand swipe behavior
 - multi-touch tuning
-- Steam/re-condensation tuning
+- Steam / Fresh tuning
 - performance profiling
 
 ---
@@ -624,6 +647,10 @@ v0.1 is not accepted until all of these are true:
 21. Water rendering no longer looks like dots dragging constant-width dark lines.
 22. Interaction remains stable on iPad/iPhone-class hardware.
 23. App remains static-hostable with no backend.
+24. What the user wipes off stays wiped off; nothing re-fogs by itself, and Fresh puts the glass back to an even sheet.
+25. A swipe's water ends up where the finger lifted, not spread evenly along its length.
+26. One wipe sheds its drops once, within a few seconds, and produces none afterwards while left alone.
+27. The budget — water, plus flow-head mass, plus fog times its liquid yield — changes by exactly zero across a wipe and across minutes of running water.
 
 Breath detection is not required for v0.1.
 
