@@ -101,6 +101,7 @@ export class PaneRenderer {
     this.rows = 0;
     this.sceneUploaded = false;
     this.waterScale = 2.4;           // thickness that maps to 1.0 in the texture
+    this.cellMm = 0.22;
     try {
       this.gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, powerPreference: 'high-performance' })
         || canvas.getContext('experimental-webgl', { alpha: false, antialias: false, depth: false });
@@ -174,6 +175,10 @@ export class PaneRenderer {
    * view scale or the grid changes and every drop renders at the same flat
    * value.
    */
+  setCellSize(cellMm) {
+    this.cellMm = cellMm;
+  }
+
   setThicknessScale(maxCapHeightCells, beadFilmCells) {
     this.waterScale = Math.max(0.4, maxCapHeightCells);
     this.filmLevel = Math.min(0.3, Math.max(0.004, (beadFilmCells || 0.1) / this.waterScale));
@@ -237,7 +242,7 @@ export class PaneRenderer {
       // stays round because that is where the water piles up, and the trailing
       // edge is drawn out into the channel it is leaving behind. A symmetric
       // ellipse is what reads as an egg.
-      const tail = 1 + Math.min(2.8, speed / 26);
+      const tail = 1 + Math.min(2.8, speed * this.cellMm / 90);
       const ux = speed > 0.01 ? head.vx / speed : 0;
       const uy = speed > 0.01 ? head.vy / speed : 1;
       // A pair that has just merged rings along the line they came together on

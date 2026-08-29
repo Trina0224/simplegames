@@ -29,7 +29,16 @@ for the rules and the research hierarchy this is held to.
 - **Beads, with hysteresis.** A bead breaks away when gravity beats its contact
   line, and the contact line keeps resisting while it moves — which is where
   "a heavier drop runs faster" actually comes from. Starting and continuing are
-  different thresholds.
+  different thresholds. Glass holds a bead well over two millimetres across, so
+  a standing population of pinned drops builds up; only the ones that grow past
+  that streak away.
+- **Speeds that are actually water's.** The drive is real gravity, the drag is
+  integrated in closed form rather than as `v -= v * drag * dt`, and the film
+  moves at the Nusselt velocity `v = 3270 h²` mm/s. All three matter: a reduced
+  drive cannot tell a bead from a rivulet, the explicit damping settles at a
+  third of the true terminal speed, and a fraction-per-frame film nudge makes
+  every thickness ooze at the same rate. Together they were the difference
+  between water and something gelatinous.
 - **Coalescence through a neck.** Two bodies that come close bridge first: they
   become one hydraulic body while still drawn as two, then combine, and the
   combined drop rings along the line they met on before it settles.
@@ -85,19 +94,21 @@ landed 288 mm3 = on glass 98 + ran off 183 + dried 7   (unaccounted -0.000%)
 
 | | |
 |---|---|
-| drizzle drop size | median 0.43 mm, 90th percentile 0.82 mm |
-| storm drop size | median 0.89 mm, 90th percentile 1.95 mm, largest 4.6 mm |
+| drizzle drop size | median 0.44 mm, 90th percentile 0.83 mm |
+| storm drop size | median 0.88 mm, 90th percentile 2.0 mm, largest 4.8 mm |
 | impact, 2.2 mm drop | spreads to 4.2 mm radius, retracts to 2.0 mm, over ~12 frames |
-| a 0.9 mm bead | pinned, does not move |
-| a 2.8 mm bead | runs 34 mm in 0.6 s |
-| hysteresis | a bead that started moving at 1.6 mm keeps moving at 1.24 mm |
-| growth downstream | 1.8 → 2.3 mm across and 25 → 46 mm/s over 2 s |
-| two beads 5 mm apart | neck at 0.20 s, one body at 0.23 s, then ringing |
-| two beads 14 mm apart | stay separate, which is correct at that range |
-| rivulet channels | 71 of them, 0.2 to 6.0 mm wide |
-| after heavy rain | 33% of the pane wetted, 38% still carrying residual film |
+| a 1.0 mm bead | pinned, does not move |
+| a 2.4 mm drop | runs at 164 mm/s — crosses the pane in half a second |
+| a 3.8 mm drop | runs at 363 mm/s |
+| a 0.4 mm film with no drop leading it | advances 29 mm in a second, and slows as it thins |
+| hysteresis | a bead that started moving at 2.6 mm across keeps moving at 2.0 mm |
+| a lone drop on even glass | falls 73 mm and drifts 0.0 mm sideways |
+| two beads 5 mm apart | neck at 0.07 s, one body at 0.08 s, then ringing |
+| six drops onto a rivulet | 100% of the water they leave becomes part of that rivulet |
+| rivulet channels | 83 of them, 0.2 to 6.6 mm wide |
+| after heavy rain | 27% of the pane wetted, 54% still carrying residual film |
 | gravity | upright → down, right edge down → right, left edge down → left, flat → still |
-| cost, storm load | 4.0 ms/step and 2.2 ms/frame on a tablet-sized pane, 2.0 and 0.9 on a phone |
+| cost, storm load | 6.3 ms/step and 1.9 ms/frame on a tablet-sized pane, 2.4 and 1.0 on a phone |
 
 ## Running it
 

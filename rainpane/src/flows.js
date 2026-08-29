@@ -20,27 +20,46 @@ const CAP = 0.52;                   // cap volume / (pi * r^3) at ~80 degrees
 // past the capillary length, about 2.7 mm, so anything bigger has already
 // become a rivulet; and a bead of about a millimetre across is where gravity
 // starts to beat the contact line.
-const MAX_RADIUS_MM = 1.9;
-const DEPIN_RADIUS_MM = 0.75;
+// The capillary length of water is about 2.7 mm, and contact-angle hysteresis
+// on glass is substantial, so a bead well over two millimetres across still
+// sits where it landed. Set this too low and every drop breaks away the moment
+// it forms and streaks off the pane: the standing population of pinned beads —
+// which is most of what rain on a window actually looks like — never builds up
+// at all, and the glass reads as almost dry in a downpour.
+const MAX_RADIUS_MM = 2.6;
+const DEPIN_RADIUS_MM = 1.15;
 const NUCLEATE_RADIUS_MM = 0.30;
 const MIN_RADIUS_MM = 0.22;
 const COLLECT_MAX_MM = 5.0;
 
-// Accelerations in mm/s^2. Everything sideways is a fraction of gravity and is
-// scaled exactly as gravity is: mixing units here is how a simulation ends up
-// with drops that drift instead of falling.
-const ACC_MM = 900;
-const ATTRACT_MM = 380;             // capillary bridging, short range only
-const STEER_MM = 230;               // preference for running down wet glass
-const WET_SENSE_MM = 9;             // ...felt this far to either side
-const TEXTURE_MM = 60;              // the pane's own stable unevenness
-const DRAG_BASE = 18;               // sets terminal speed: v = acc * vol^0.4 / this
+// The drive is gravity, in mm/s^2, and it is the real number. Writing a smaller
+// one here to stand in for viscosity is what made every drop crawl: the losses
+// belong in the drag and in the contact-line resistance, both of which depend
+// on the drop, and a blanket reduction cannot tell a bead from a rivulet.
+const ACC_MM = 9810;
+// Everything sideways is a *fraction* of that, so the balance between falling
+// and being pulled sideways is fixed however fast the water ends up running.
+const ATTRACT = 0.42;               // capillary bridging, short range only
+const STEER = 0.26;                 // preference for running down wet glass
+const TEXTURE = 0.067;              // the pane's own stable unevenness
+const WET_SENSE_MM = 9;             // wetness felt this far to either side
+// Terminal speed is v = acc * net * vol^0.4 / this, which puts a 2.4 mm drop
+// near 190 mm/s and a 3.8 mm one near 390 — the range a drop on a vertical
+// window actually runs at.
+const DRAG_BASE = 60;
 
 const PIN_HYSTERESIS = 0.55;        // a moving contact line resists less than a stuck one
 const MAX_HEADS = 260;              // a performance budget, never a metering valve
 const COLLECT_RATE = 3.0;           // how fast a head drains the film it sits on
-const TRAIL_RATE = 0.05;            // residual film per cell of travel
-const TRAIL_MAX_SHARE = 0.010;      // ...and never more than this much of the head
+// What a running drop leaves behind, per cell of travel. A trail about a
+// millimetre wide and a fiftieth of a millimetre thick costs roughly one drop's
+// worth of water per hundred millimetres, so this is small — and it has to be,
+// because it is charged per cell and a drop at full speed covers fifteen cells
+// in a frame. Set it by how it looks rather than by that arithmetic and the
+// head bleeds out in a few frames, never reaches its terminal speed, and the
+// whole pane goes back to crawling.
+const TRAIL_RATE = 0.012;           // residual film per cell of travel
+const TRAIL_MAX_SHARE = 0.0022;     // ...and never more than this much of the head
 const TRAIL_WET_MIN = 0.45;
 const BRIDGE_DAMP = 9;              // how fast a merged body stops wobbling
 
@@ -79,9 +98,9 @@ export class FlowSystem {
     // separate threshold that can drift away from the sizes around it.
     this.pinBase = Math.PI * CAP * cells(DEPIN_RADIUS_MM) ** 2;
     this.acc = cells(ACC_MM);
-    this.attract = cells(ATTRACT_MM);
-    this.steer = cells(STEER_MM);
-    this.texture = cells(TEXTURE_MM);
+    this.attract = this.acc * ATTRACT;
+    this.steer = this.acc * STEER;
+    this.texture = this.acc * TEXTURE;
     this.wetSense = cells(WET_SENSE_MM);
     this.volumeUnit = cellMm * cellMm * cellMm;   // mm^3 per unit of mass
   }
@@ -307,9 +326,8 @@ export class FlowSystem {
     // where "terminal speed depends on mass" actually comes from, rather than
     // from a drag curve alone.
     const net = Math.max(0, drive - resist * PIN_HYSTERESIS) / head.mass;
-    const acc = this.acc * net;
-    head.vx += gravity.x * acc * dt;
-    head.vy += gravity.y * acc * dt;
+    let ax = gravity.x * this.acc * net;
+    let ay = gravity.y * this.acc * net;
 
     // Wet glass has a lower contact angle, so a flow meets less resistance on
     // the side that is already wet and veers that way. This is the only thing
@@ -325,18 +343,22 @@ export class FlowSystem {
            - wet[s.index(head.x + bx - lx, head.y + by - ly)];
     };
     const steer = (sense(1.5 + r) + 0.8 * sense(this.wetSense)) * this.steer * gravity.plane;
-    head.vx += -dirY * steer * dt;
-    head.vy += dirX * steer * dt;
-
     // the pane's own unevenness bends the path; no random wandering
     const bend = (pin[i] - 1) * this.texture * gravity.plane;
-    head.vx += -dirY * bend * dt;
-    head.vy += dirX * bend * dt;
+    ax += -dirY * (steer + bend);
+    ay += dirX * (steer + bend);
 
+    // Drag, integrated exactly rather than as v -= v * drag * dt. Water on glass
+    // is heavily damped: drag times a sixtieth of a second is well over a half,
+    // and at that size the explicit step settles at barely a third of the true
+    // terminal speed — which is precisely the difference between water running
+    // down a window and something gelatinous creeping down it. The closed form
+    // of dv/dt = a - drag*v is right at any step size and costs one exp.
     const vol = Math.max(0.02, head.mass * this.volumeUnit);
     const drag = DRAG_BASE / Math.pow(vol, 0.4);
-    head.vx -= head.vx * drag * dt;
-    head.vy -= head.vy * drag * dt;
+    const decay = Math.exp(-drag * dt);
+    head.vx = head.vx * decay + (ax / drag) * (1 - decay);
+    head.vy = head.vy * decay + (ay / drag) * (1 - decay);
 
     const px = head.x;
     const py = head.y;
