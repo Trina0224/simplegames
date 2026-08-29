@@ -1,651 +1,738 @@
-# Rainpane — Initial Product Specification
+# Rainpane — Product & Physics Specification
 
 ## 1. Product summary
 
 Rainpane is a browser-based rain-on-glass ambience simulator.
 
-The user looks through a virtual pane of glass at a chosen scene. Rain strikes the pane, accumulates into beads, merges into larger drops and rivulets, and runs under gravity. The visual simulation is paired with layered rain audio so the experience can range from a quiet drizzle to a heavy storm.
+A selected scene sits behind a virtual pane of glass. Rain exists in two domains:
 
-The core idea is simple:
+1. airborne rain outside the pane,
+2. water physically attached to and flowing across the pane.
+
+The user can move continuously from drizzle to storm. Rain intensity changes incoming drop statistics, impact behavior, surface coverage, runoff topology, airborne streak density, and layered sound.
+
+The experience is successful when a user can simply leave it running and enjoy watching the pane evolve.
+
+---
+
+## 2. Research basis
+
+Rainpane does not use one paper as a complete recipe. The implementation combines the strongest parts of several well-established models.
+
+### 2.1 Continuum sliding and merging — primary physical reference
+
+**C. Ruyer-Quil, D. Bresch, M. Gisclon, G. L. Richard, M. Kessar, N. Cellier (2023), “Sliding and merging of strongly sheared droplets,” Journal of Fluid Mechanics 972, A40. DOI: 10.1017/jfm.2023.726.**
+
+Key concepts to adopt:
+
+- shallow-water/thin-layer evolution rather than independent circular particles,
+- conserved liquid thickness and momentum-like quantities,
+- capillary effects using a formulation that can retain full-curvature behavior,
+- disjoining-pressure/contact-angle hysteresis,
+- continuum coalescence and merger of neighboring droplets,
+- advancing/receding contact-line state influenced by local mass accumulation/reduction.
+
+Important adaptation:
+
+The paper studies droplets driven by gas shear. Rainpane is primarily gravity-driven after impact. Do not copy the shear forcing term. Retain the continuum capillary/hysteresis/merge framework and use Rainpane’s gravity, impact momentum, wetting, and surface forces.
+
+### 2.2 Realtime glass-water architecture — primary engineering reference
+
+**K.-C. Chen, P.-S. Chen, S.-K. Wong (2013), “A heuristic approach to the simulation of water drops and flows on glass panes,” Computers & Graphics 37(8), 963–973. DOI: 10.1016/j.cag.2013.08.004.**
+
+Adoptable concepts:
+
+- height map for glass-surface water,
+- moving particles/fronts only where useful,
+- ID map / connectivity mechanism for merging water drops and flows,
+- residual water left after flow passes,
+- smoothing/erosion-style operations for plausible evolving shape,
+- realtime focus specifically on glass panes.
+
+This paper is especially useful for deciding what can be represented at grid level and what benefits from explicit flow objects.
+
+### 2.3 Multiscale shape representation
+
+**Y. Goto, T. Tanaka, Y. Sagawa (2009), “Real-Time Rendering of Flow of Water Drops on a Windshield,” IEEJ Transactions on Electronics, Information and Systems 129(12), 2152–2158. DOI: 10.1541/ieejeiss.129.2152.**
+
+Adoptable concepts:
+
+- grid-based irregular movement on glass,
+- 2D metaballs/implicit shapes for thick drops,
+- fusion and separation through implicit geometry,
+- separate representation for thin water/streaks,
+- hybrid methods across scales rather than one primitive for all water.
+
+### 2.4 Contact-angle hysteresis and sliding velocity
+
+**G. Ahmed, M. Sellier, M. Jermy, M. Taylor (2014), “Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces,” European Journal of Mechanics B/Fluids 48, 218–230. DOI: 10.1016/j.euromechflu.2014.06.003.**
+
+Adoptable concepts:
+
+- different advancing and receding contact angles,
+- hysteresis resists gravity-driven motion,
+- start/stop behavior is not represented by one radius threshold,
+- hysteresis materially changes predicted terminal velocity,
+- center-of-mass motion is a useful measure of sliding speed.
+
+### 2.5 Impact on inclined glass/surfaces
+
+**Š. Šikalo, C. Tropea, E. N. Ganić (2005), “Impact of droplets onto inclined surfaces,” Journal of Colloid and Interface Science 286, 661–669.**
+
+Relevant observations:
+
+- impact regime depends on normal velocity component, Weber/Reynolds numbers, surface wettability, roughness, and inclination,
+- smooth glass is explicitly represented in the experiments,
+- deposition, rebound and partial rebound occupy different regimes.
+
+**“Droplet Impact and Spreading on Inclined Surfaces,” Langmuir 37(46), 2021, 13737–13745. DOI: 10.1021/acs.langmuir.1c02457.**
+
+Relevant observations:
+
+- post-impact spreading evolves through stages,
+- the earliest spreading is inertia-dominated and approximately radial,
+- later upstream/contact-line behavior becomes controlled by pinning/retraction/surface forces,
+- inclined impact becomes asymmetric.
+
+### 2.6 Rainfall size statistics
+
+**J. S. Marshall, W. McK. Palmer (1948), “The distribution of raindrops with size,” Journal of Meteorology 5, 165–166.**
+
+Use a Marshall–Palmer-style exponential size distribution as the default statistical prior:
 
 ```text
-scene behind glass
-+ physically inspired rain-on-glass water
-+ reactive rain sound
-= relaxing atmospheric simulation
+N(D) = N0 exp(-Lambda D)
+Lambda ≈ 4.1 R^-0.21 mm^-1
 ```
 
-The experience should be enjoyable even when the user does nothing except watch and listen.
+where `R` is rainfall rate in mm/h in the classic form.
+
+Rainpane may tune the range perceptually, but intensity must change both event rate and diameter distribution. Drizzle is not merely “storm with fewer particles.”
+
+### 2.7 Airborne rain appearance
+
+**K. Garg, S. K. Nayar (2006), “Photorealistic Rendering of Rain Streaks,” ACM Transactions on Graphics 25(3), 996–1002 / SIGGRAPH 2006. DOI: 10.1145/1141911.1141985.**
+
+Relevant observations:
+
+- falling drops oscillate in shape,
+- reflection/refraction through oscillating drops produces nonuniform streak brightness,
+- motion-blurred streaks can contain speckles, smeared highlights and curved brightness contours,
+- appearance depends on view and light direction.
+
+Use this only for airborne/distant rain. Do not apply rain-streak rendering rules to water attached to the glass.
 
 ---
 
-## 2. Core use cases
+## 3. Core product modes
 
-### A. Ambient relaxation
+### 3.1 Scene source
 
-The user chooses a scene, sets the rain level, enables sound, and leaves the simulation running.
+Support:
 
-### B. Personal scene
+1. built-in scene,
+2. user-selected local image,
+3. optional live camera.
 
-The user selects a local photo so the rain appears to fall on a personally meaningful view.
+The glass solver must be independent of scene source.
 
-### C. Live view
+### 3.2 Rain control
 
-Optional camera mode places a live device-camera scene behind the virtual wet pane.
+Expose a continuous control with semantic anchors:
 
-### D. Physical toy
+```text
+Dry — Drizzle — Light — Rain — Heavy — Storm
+```
 
-On supported mobile devices, tilting or rotating the device changes the runoff direction according to gravity.
+Internally map this to a rainfall-rate-like parameter `R` controlling mass flux and size spectrum.
 
----
+### 3.3 Sound
 
-## 3. Primary UX
+Sound is optional but first-class:
 
-1. Open Rainpane.
-2. A default built-in scene appears immediately.
-3. The glass already has light rain / a few beads so the product feels alive.
-4. User adjusts rainfall intensity.
-5. New impacts appear at a corresponding rate and size distribution.
-6. Some impacts remain pinned.
-7. Nearby drops merge or are fed by later impacts.
-8. Once sufficiently large, a drop starts to run.
-9. The moving drop collects water and can become larger and faster.
-10. Nearby rivulets can merge into one main flow.
-11. Wet trails remain and influence later runoff.
-12. User may switch scene or sound without resetting the entire atmosphere unless desired.
+- ambient rain bed,
+- glass-impact events,
+- heavy runoff/storm bed,
+- optional thunder/wind later.
 
 ---
 
-## 4. Scene modes
+## 4. Simulation domains
+
+Rainpane separates three coupled but distinct systems.
+
+### Domain A — airborne rain
+
+Purpose:
+
+- distant visual atmosphere,
+- some incoming impacts on the pane,
+- no direct representation of attached runoff.
+
+State may include stochastic streak events with depth/light-dependent appearance.
+
+### Domain B — attached glass film
+
+A 2D continuum state across the pane.
+
+Minimum conceptual fields:
+
+```text
+h(x,y)       water thickness / free liquid
+qx(x,y)      x-directed flux or momentum proxy
+qy(x,y)      y-directed flux or momentum proxy
+wet(x,y)     persistent wetted-surface memory
+pin(x,y)     stable surface/contact-line heterogeneity
+flowId(x,y)  optional topology/connectivity identifier
+```
+
+A solver does not have to use these exact variables, but must represent their physical roles.
+
+### Domain C — thick drops and rivulets
+
+Thick regions may be reconstructed directly from `h`, or represented by auxiliary connected objects/implicit surfaces for efficiency/rendering.
+
+If explicit objects are used, they must remain coupled to the continuum and conserve mass with it.
+
+---
+
+## 5. Rainfall process
+
+### 5.1 Diameter sampling
+
+Use a Marshall–Palmer-style spectrum as baseline.
+
+Qualitative expectations:
+
+- drizzle: high proportion of very small drops, low total mass flux,
+- moderate rain: broader distribution and more medium drops,
+- storm: substantially larger total flux and more large impacts.
+
+Clamp to perceptually useful browser-scale limits rather than simulating invisible aerosol droplets.
+
+### 5.2 Impact rate
+
+Choose event rate so integrated incoming mass approximates the requested rain intensity.
+
+Do not independently choose event count and size without accounting for total mass flux.
+
+### 5.3 Velocity
+
+Incoming velocity may derive from a terminal-velocity approximation or a perceptual mapping from diameter. At minimum, larger incoming drops should generally deliver greater impact momentum.
+
+Wind/oblique rain can later add a tangential component.
+
+---
+
+## 6. Impact lifecycle
+
+Every significant impact follows a short physical lifecycle.
+
+### Stage 1 — contact and rapid spreading
+
+Duration is short but visible at close range.
+
+- deposit mass,
+- convert normal kinetic energy into radial/asymmetric spread,
+- expand footprint rapidly,
+- preserve tangential momentum for oblique impacts.
+
+### Stage 2 — deformation / oscillation / retraction
+
+- inertia decays,
+- capillarity acts on curvature,
+- footprint may retract,
+- upstream/downstream edges may behave differently,
+- local contact line begins to pin.
+
+### Stage 3 — attached state
+
+The impact settles into one of:
+
+- tiny unresolved film deposit,
+- pinned bead,
+- enlarged neighboring bead,
+- connected existing rivulet,
+- less commonly, rebound/splash if implemented.
+
+### Existing-water impact
+
+If a raindrop lands on a wet film or flow, feed that connected liquid body. Do not create a separate bead merely because an impact event occurred.
+
+---
+
+## 7. Thin-film / shallow-water evolution
+
+The preferred long-term direction is a GPU-friendly 2D thin-layer solver influenced by the 2023 JFM augmented shallow-water model rather than a pure particle system.
+
+The exact discretization is an implementation choice. Required physical terms/concepts are:
+
+- conservation of water mass,
+- advection/flux of liquid thickness,
+- gravity projected along the pane,
+- viscous damping/friction,
+- capillary pressure from surface curvature or a stable approximation,
+- disjoining/wetting term near thin contact regions,
+- contact-angle hysteresis / pinning,
+- source term from rain impact,
+- residual film rather than zero-thickness dry cuts behind every flow.
+
+A full 3D Navier–Stokes/VOF solve is not required.
+
+---
+
+## 8. Pinning and contact-angle hysteresis
+
+Rainpane needs two motion thresholds.
+
+Conceptually:
+
+```text
+if pinned:
+    move only if drive > depinThreshold
+else:
+    continue moving until drive < repinThreshold
+
+where depinThreshold > repinThreshold
+```
+
+`drive` may include:
+
+- gravity component along glass,
+- accumulated mass,
+- residual impact momentum.
+
+Threshold/resistance depends on:
+
+- advancing/receding contact-angle model,
+- local pinning heterogeneity,
+- wetness/history,
+- footprint/contact-line length.
+
+This is a qualitative approximation of contact-angle hysteresis, not dry friction pasted onto a particle.
+
+---
+
+## 9. Coalescence
+
+Coalescence is a continuum event.
+
+### 9.1 Initial bridge
+
+When two liquid bodies touch:
+
+- create a narrow connecting neck/bridge,
+- let surface tension rapidly grow the connection,
+- avoid instantaneous teleportation to one perfect circle.
+
+### 9.2 Relaxation
+
+After bridge growth:
+
+- combined body oscillates/deforms briefly,
+- viscosity/damping removes excess motion,
+- mass remains approximately conserved.
+
+### 9.3 Flow topology
+
+Required join cases:
+
+- bead-bead,
+- bead-rivulet,
+- rivulet-rivulet,
+- impact-existing-body.
+
+If explicit connectivity is needed, use a Chen-style flow-ID map or connected-component approach.
+
+Two rivulets whose liquid regions touch must become one connected hydraulic body. They may still have temporary branches, but they are no longer independent lines.
+
+---
+
+## 10. Rivulet dynamics
+
+A rivulet emerges from connected flowing film.
+
+Required behavior:
+
+- width varies with local flux/thickness,
+- lower/downstream areas often become thicker after collection,
+- neighboring impacts feed it,
+- intercepted beads become part of it,
+- branches can form and rejoin,
+- residual film remains behind,
+- wet history lowers future contact-line resistance,
+- path can meander mildly due to surface heterogeneity,
+- gravity remains dominant.
+
+A runoff channel must never be implemented as a constant-width black spline.
+
+---
+
+## 11. Mass accounting
+
+Approximate conservation is mandatory.
+
+For the pane:
+
+```text
+M(t+dt) = M(t)
+        + incoming_rain_mass
+        - water_exiting_pane
+        - optional_evaporation
+```
+
+Within the pane, moving mass between film/bead/rivulet representations must not create or destroy significant water.
+
+Visual radius/width derives from thickness/mass, not arbitrary growth timers.
+
+---
+
+## 12. Gravity
+
+Reuse the field-tested Fog Mirror gravity implementation as a frozen initial reference.
+
+Known-good mobile behavior:
+
+- upright -> down,
+- right edge physically down -> right,
+- left edge physically down -> left,
+- near-flat -> weak in-plane gravity.
+
+Use the proven `DeviceMotionEvent.accelerationIncludingGravity` low-pass mapping. Do not add a second orientation rotation unless a real-device test demonstrates a regression.
+
+The surface solver receives a gravity vector projected along the glass and a magnitude representing in-plane strength.
+
+---
+
+## 13. Water geometry and rendering
+
+### 13.1 Thickness-derived normals
+
+Compute normals/gradients from `h(x,y)` for refraction and highlight response.
+
+### 13.2 Thick drop reconstruction
+
+For thick localized bodies, acceptable options include:
+
+- implicit surface / metaball reconstruction,
+- SDF from thickness components,
+- smooth contour extraction from the height field.
+
+Goto 2009 supports using implicit bulk-drop shapes while representing thin water differently.
+
+### 13.3 Optical effects
+
+Use:
+
+- local refraction/distortion of background,
+- partial Fresnel/specular highlights,
+- darker/stronger meniscus near steep gradients,
+- slight moving-drop elongation,
+- transient coalescence deformation,
+- continuous head-to-rivulet geometry.
+
+Avoid:
+
+- complete gray outlines,
+- identical circular drops,
+- opaque dark lines,
+- render-only trails that have no simulated water.
+
+---
+
+## 14. Airborne rain rendering
+
+Use Garg–Nayar-inspired behavior.
+
+Airborne streaks should vary by:
+
+- apparent length/exposure,
+- brightness pattern,
+- size/depth,
+- lighting direction,
+- drop oscillation phase,
+- optional wind angle.
+
+Do not render all airborne drops as identical straight white lines.
+
+For built-in scenes without depth information, use a coarse layered depth approximation rather than pretending to know exact geometry.
+
+---
+
+## 15. Rain intensity mapping
+
+One user-facing slider controls a coupled state.
+
+For each intensity value determine:
+
+- rainfall-rate proxy `R`,
+- diameter distribution parameter,
+- total incoming mass flux,
+- event rate,
+- velocity/impact-energy distribution,
+- airborne density,
+- probability of wet-film coverage,
+- expected runoff-channel density,
+- audio ambience intensity,
+- glass-impact event density,
+- optional storm/thunder probability.
+
+Heavy rain should emerge naturally from more water, not from artificially spawning more long runoff lines.
+
+---
+
+## 16. Audio
+
+### Layer A — exterior rain bed
+
+Continuous broadband rain atmosphere.
+
+### Layer B — impact audio
+
+Close taps/patters tied statistically to simulated impacts. Larger impacts can bias toward slightly lower/stronger transient sounds.
+
+### Layer C — runoff/storm texture
+
+Appears progressively as surface water and rain intensity rise.
+
+Optional:
+
+- wind,
+- thunder/lightning,
+- interior room ambience.
+
+Avoid obvious repeating short loops. Use multiple samples, granular scheduling, filtering, and crossfades where practical.
+
+---
+
+## 17. Scene modes and privacy
 
 ### Built-in scene
 
-At least one attractive default image or generated scene should ship with the app.
-
-Good candidates:
-
-- warm city lights at night
-- blurred street / cafe lights
-- quiet residential window view
-- neutral dark landscape
-
-The scene should support the glass effect rather than compete with it.
+Ship at least one attractive default scene.
 
 ### Local image
 
-Use a local file picker.
-
-Requirements:
-
-- image stays local in the browser
-- no upload
-- no server processing
-- object URL / in-memory representation may be used
-- clear/revoke the old object URL when replacing it
-
-### Camera mode
-
-Optional for the first playable build.
-
-If implemented:
-
-- explicit user permission
-- selectable front/rear camera if practical
-- no capture
-- no recording
-- no upload
-- stop tracks on exit/hidden state
-
----
-
-## 5. Rain intensity model
-
-The user should perceive a continuous weather progression rather than a single particle-count slider.
-
-Suggested semantic levels:
-
-```text
-0  Dry / pause
-1  Drizzle
-2  Light rain
-3  Rain
-4  Heavy rain
-5  Storm
-```
-
-A continuous slider may interpolate between them.
-
-Each intensity level affects multiple parameters together:
-
-### Impact rate
-
-Higher intensity -> more impacts per second.
-
-### Incoming drop-size distribution
-
-Drizzle favors tiny droplets.
-
-Storm allows a broader distribution with more medium/large impacts.
-
-### Surface-water accumulation
-
-Heavier rain deposits more mass per second.
-
-### Coalescence frequency
-
-More water causes more frequent merges naturally.
-
-### Runoff density
-
-Heavy rain should create several active runoff channels without degenerating into uniform vertical stripes.
-
-### Audio
-
-Ambient density, glass taps, runoff texture, wind/thunder probability may all increase.
-
----
-
-## 6. Water state representation
-
-Rainpane should not represent all water as independent visible particles.
-
-Use a hybrid state model.
-
-### Surface water height map
-
-```text
-water[x,y]
-```
-
-Represents unresolved thin film, small ridges, tiny beads below rendering threshold, and residual trail water.
-
-### Wetness / trail memory
-
-```text
-wet[x,y]
-```
-
-Represents persistent wet glass / reduced pinning. It may decay more slowly than free water.
-
-### Flow connectivity map
-
-```text
-flowId[x,y]
-```
-
-Identifies connected active/recent rivulets and supports body-level merging.
-
-### Active flow heads
-
-A bounded set of macroscopic objects:
-
-```text
-id
-x, y
-mass
-vx, vy
-pinned
-age
-footprintRadius
-trailWidth
-```
-
-The visible drop at the bottom of a streak is the front/head of a connected body.
-
----
-
-## 7. Incoming rain impacts
-
-Rain events originate outside the pane and strike the glass.
-
-Each event has conceptually:
-
-```text
-x, y
-mass
-impact velocity / strength
-```
-
-For v0.1 the event distribution may be heuristic rather than meteorologically exact.
-
-On impact:
-
-1. add mass to local surface water
-2. possibly enlarge a nearby pinned bead / active collector
-3. possibly form a new pinned visible bead if local mass exceeds threshold
-4. disturb local water slightly according to impact energy
-5. update optical water state
-
-Do not instantly convert each impact into a long moving streak.
-
----
-
-## 8. Pinned droplets
-
-Small droplets should commonly stick to the glass.
-
-A bead may remain pinned until one or more of these happens:
-
-- additional impacts feed it
-- nearby thin film drains into it
-- another drop merges with it
-- device orientation increases the in-plane gravity component
-- it encounters a wetter / lower-pinning region
-
-This waiting behavior is important to a convincing rain window.
-
----
-
-## 9. Mass and visual size
-
-Visible size must derive from water mass.
-
-Conceptually:
-
-```text
-radius = visualScale * mass^k
-```
-
-with a sub-linear exponent suitable for the 2D projection.
-
-Exact physical units are not required, but these rules are:
-
-- no unexplained radius growth
-- merge adds mass
-- collecting surface water adds mass
-- leaving residual trail water removes a small amount of mobile mass
-
----
-
-## 10. Coalescence and merge
-
-This is a core acceptance requirement.
-
-### Head-head merge
-
-When two visible heads touch or nearly touch, merge.
-
-### Head-body merge
-
-When a moving head intersects another active rivulet/trail, join the systems.
-
-### Body-body merge
-
-When connected wet regions touch, they may become one flow even if the two visible heads were not directly colliding.
-
-After merge:
-
-- conserve approximately total mass
-- preserve sensible weighted momentum
-- select a dominant downstream head/front
-- unify flow connectivity / ID
-- render a smooth wider transition rather than crossing lines
-
-Expected visual result:
-
-```text
-| |      |\
-| |  ->  | \
-| |      |  O
-```
-
-Two nearby streams should tend toward one main stream when they physically connect.
-
----
-
-## 11. Runoff growth
-
-A descending drop should usually not remain the same size forever.
-
-A moving head collects:
-
-- thin surface water in its swept region
-- pinned beads it intersects
-- active drops/rivulets it merges with
-- new impacts near its body
-
-Therefore a runoff head may visibly become larger as it moves downward through a wet pane.
-
-The effect should be noticeable but not cartoonishly explosive.
-
----
-
-## 12. Speed / mass coupling
-
-Small mobile drops should creep slowly.
-
-Larger drops should generally move more readily and achieve a higher terminal speed because increased gravity drive overcomes contact-line resistance more effectively.
-
-Conceptually:
-
-```text
-drive ~ mass * gravityAlongPane
-resistance ~ pinning + contact-line drag
-```
-
-Use damping to reach a terminal velocity.
-
-Desired observable sequence:
-
-```text
-small bead: pinned
-small drop: slow creep
-medium drop: clear descent
-large merged drop: faster runoff
-```
-
----
-
-## 13. Trail behavior
-
-A moving head leaves a connected rivulet behind it.
-
-Trail properties:
-
-- narrower than the largest head
-- contains residual water
-- remains wet after the head passes
-- lowers future pinning / drag
-- attracts later runoff
-- can be joined by neighboring drops
-- slowly thins and becomes less optically strong
-
-A trail must exist in the simulation state, not only the renderer.
-
----
-
-## 14. Surface heterogeneity
-
-Glass should have subtle persistent microscopic variation.
-
-A stable random/blue-noise map may affect:
-
-- pinning strength
-- slight path meandering
-- preferred nucleation sites
-
-The effect must remain subtle. Gravity and accumulated water dominate.
-
-Do not add frame-to-frame random wobble that makes the glass look alive.
-
----
-
-## 15. Gravity / device orientation
-
-Reuse the proven Fog Mirror DeviceMotion behavior as the initial implementation reference.
-
-Requirements on supported mobile devices:
-
-- upright -> physical down
-- diagonal tilt -> diagonal runoff
-- right edge down -> runoff right
-- left edge down -> runoff left
-- nearly flat -> very weak in-plane runoff
-
-Use low-pass filtering so hand tremor does not shake the water.
-
-Do not duplicate screen orientation transforms if DeviceMotion is already in the current iPad screen coordinate convention.
-
-Desktop fallback:
-
-```text
-gravity = screen-down
-```
-
----
-
-## 16. Rendering architecture
-
-Rendering should be driven by the water state.
-
-### Background pass
-
-Draw selected scene / photo / camera.
-
-### Glass-water distortion pass
-
-Use gradients/normals from the water height field plus active flow geometry to distort/refract the scene.
-
-### Droplet and rivulet shading
-
-Add subtle:
-
-- partial Fresnel highlights
-- contact meniscus contrast
-- local magnification/refraction
-- elongation in the direction of motion
-
-### Avoid
-
-- complete gray outlines
-- opaque black trails
-- identical circular drops
-- uniform line widths
-- disconnected particle sprites that ignore the height field
-
----
-
-## 17. Audio specification
-
-Rainpane audio should feel spatially layered even if v0.1 uses simple stereo assets.
-
-### Layer A — ambient rain
-
-Continuous broad rain texture outside the glass.
-
-Intensity changes:
-
-- loudness
-- density
-- high-frequency detail
-- optional wind presence
-
-### Layer B — glass impacts
-
-Short close taps/patters representing nearby drops hitting the pane.
-
-Use randomized scheduling, variation, or multiple samples so repetition is not obvious.
-
-Impact density should roughly track the simulated rain rate.
-
-### Layer C — heavy runoff / storm bed
-
-Introduced progressively at heavier intensity to avoid making drizzle sound like a waterfall.
-
-### Optional Layer D — thunder
-
-For storm mode later.
-
-Possible behavior:
-
-- rare lightning flash
-- delayed thunder according to randomized virtual distance
-- prevent frequent repetitive thunder
-
-### Audio lifecycle
-
-- audio starts only after user interaction
-- user can mute immediately
-- hide/pause should reduce or suspend audio work
-- no microphone needed for normal Rainpane
-
----
-
-## 18. UI
-
-Keep controls visually quiet.
-
-Suggested controls:
-
-```text
-Rain:  [────●────]
-Scene: [Built-in] [Photo] [Camera]
-Sound: [On/Off]
-```
-
-On small screens controls may collapse into a bottom/top drawer.
-
-After several seconds without interaction, nonessential controls may fade and return on tap.
-
-Do not make the experience resemble a camera app or settings dashboard.
-
----
-
-## 19. Touch interaction
-
-v0.1 does not require direct manipulation of every drop.
-
-Optional interactions later:
-
-- tap glass to shake/dislodge local drops
-- drag finger to wipe a dry path
-- flick to disturb runoff
-
-These should not delay the core ambient experience.
-
----
-
-## 20. Performance targets
-
-Primary hardware target: modern iPhone/iPad Safari.
-
-Target:
-
-- stable realtime animation
-- 60 fps when practical
-- stable 30 fps acceptable under heavy rain
-
-Implementation guidance:
-
-- simulate water maps at lower resolution than display
-- bound flow-head count
-- merge aggressively rather than letting active objects explode in count
-- use spatial/flow-ID data for connectivity
-- decouple render resolution from physics resolution
-- clamp `dt`
-- pause hidden tabs
-
----
-
-## 21. Privacy
-
-Rainpane requires no backend.
-
-### User photo
-
-Never upload or persist remotely.
+- user file stays local,
+- no upload,
+- revoke replaced object URLs.
 
 ### Camera
 
-If supported:
+If implemented:
 
-- permission from explicit action
-- view-only
-- no screenshot
-- no recording
-- no blob/video export
-- no frame upload
-- stop tracks when hidden/disabled/leaving
-
-### Audio
-
-No microphone required.
+- explicit permission,
+- live view only,
+- no still capture,
+- no recording,
+- no upload,
+- stop camera on hide/exit/mode switch.
 
 ---
 
-## 22. Suggested development milestones
+## 18. Interaction
 
-### Milestone 1 — visual rain prototype
+Primary interaction is passive ambience.
 
-- background scene
-- rain intensity control
-- incoming impact events
-- simple pinned beads
-- no advanced optics required
+Required:
 
-### Milestone 2 — real surface water
+- rain slider,
+- scene selector,
+- sound toggle/volume.
 
-- water height map
-- pinned droplet growth
-- local mass conservation
-- residual wetness
+Optional later:
 
-### Milestone 3 — runoff flows
+- tap pane to locally disturb water,
+- wipe a dry path,
+- wind direction,
+- lightning frequency.
 
-- active flow heads
-- gravity
-- pinning/depinning
-- mass-speed coupling
-- trail deposition
-
-### Milestone 4 — merge topology
-
-- head-head merge
-- head-body merge
-- body-body merge
-- dominant downstream flow selection
-
-### Milestone 5 — optics
-
-- height-field normals
-- refraction
-- continuous rivulet shading
-- improved highlights
-
-### Milestone 6 — ambience
-
-- layered audio
-- local scene photo
-- optional camera
-- optional lightning/thunder
+Do not delay core rain physics for novelty gestures.
 
 ---
 
-## 23. v0.1 acceptance tests
+## 19. Solver/performance policy
 
-### Physics
+Do not reject the 2023 continuum model because it sounds computationally heavy. Prototype and profile on current iPhone/iPad first.
 
-1. Light rain produces mostly small pinned beads.
-2. Increasing rain creates more impacts and greater surface-water accumulation.
-3. A bead grows when new water reaches it.
-4. Two contacting beads merge and approximately conserve mass.
-5. A sufficiently large bead depins and starts moving.
-6. A moving drop collects water and becomes larger while descending through a wet region.
-7. A larger flow can move faster than a smaller flow.
-8. Two close connected rivulets can merge into one main runoff path.
-9. Moving water leaves residual wet trails.
-10. Later drops preferentially reuse or join wet trails.
-11. Mobile gravity direction follows physical device orientation.
-12. Nearly flat orientation substantially reduces flow.
+Preferred implementation direction:
+
+- WebGL2/WebGPU ping-pong textures or compute-like fragment passes,
+- 2D thickness/flux grid,
+- active-region updates when useful,
+- stable timestep/CFL-aware stepping or robust semi-implicit approximation,
+- lower solver resolution than display with high-quality optical upscale,
+- optional implicit thick-drop representation layered over continuum state.
+
+Optimization is allowed only after preserving these invariants:
+
+- mass conservation,
+- pinning hysteresis,
+- connected coalescence,
+- downstream collection,
+- residual film.
+
+Target:
+
+- 60 fps when practical,
+- stable 30 fps acceptable in storm mode.
+
+---
+
+## 20. Suggested module structure
+
+```text
+rainpane/
+  index.html
+  styles.css
+  AGENTS.md
+  SPEC.md
+  src/
+    app.js
+    scene.js
+    rain.js
+    impact.js
+    surface.js
+    topology.js
+    gravity.js
+    render.js
+    audio.js
+```
+
+### Responsibilities
+
+- `rain.js` — rainfall-rate mapping, Marshall–Palmer-style sampling, airborne events
+- `impact.js` — contact/spread/retract/deposition initialization
+- `surface.js` — thickness/flux/wetness/pinning solver
+- `topology.js` — connectivity/flow IDs if needed beyond continuum grid adjacency
+- `gravity.js` — known-good Fog Mirror gravity mapping
+- `render.js` — thickness normals, implicit shapes, refraction/highlights, airborne streaks
+- `audio.js` — layered ambience and event-coupled impacts
+- `scene.js` — built-in/local/camera lifecycle
+
+---
+
+## 21. Development milestones
+
+### M1 — rainfall statistics + impact prototype
+
+- rain intensity maps to size distribution and mass flux,
+- impacts have a spread/retract transient,
+- pinned attached water appears.
+
+### M2 — continuum glass solver
+
+- thickness field,
+- gravity,
+- viscous damping,
+- capillary smoothing/curvature,
+- wetness/pinning field.
+
+### M3 — contact-angle hysteresis
+
+- separate depin/repin behavior,
+- stable pinned beads on vertical glass,
+- terminal sliding velocity depends on mass/wetness.
+
+### M4 — continuum coalescence
+
+- bead-bead neck formation,
+- bead-rivulet joining,
+- rivulet-rivulet joining,
+- mass-conserving connected bodies.
+
+### M5 — downstream runoff
+
+- variable-width channels,
+- collection from impacts/beads/film,
+- residual wet trails,
+- path reuse.
+
+### M6 — optical polish
+
+- thickness normals,
+- implicit thick-drop geometry,
+- refraction,
+- highlights,
+- Garg–Nayar-inspired airborne rain.
+
+### M7 — ambience
+
+- layered audio,
+- local scene,
+- optional camera,
+- optional thunder/wind.
+
+---
+
+## 22. v0.1 acceptance tests
+
+### Rain process
+
+1. Drizzle and storm have visibly different diameter distributions, not only different counts.
+2. Total pane wetting rate increases coherently with intensity.
+3. Airborne rain is visually distinct from attached glass water.
+
+### Impact
+
+4. A visible impact rapidly spreads before relaxing.
+5. Oblique/tilted impact can produce an asymmetric footprint.
+6. An impact into existing water feeds that body instead of always creating a new bead.
+
+### Surface physics
+
+7. Small beads can remain pinned on an upright pane.
+8. Depinning and repinning use hysteresis rather than one threshold.
+9. A moving body conserves mass while collecting water and leaving residual film.
+10. Larger/wetter flows generally move more readily and can reach higher speed.
+
+### Coalescence
+
+11. Two beads form a bridge and merge without teleporting into a circle.
+12. A bead joining a rivulet becomes one connected water body.
+13. Two touching rivulets hydraulically merge rather than remaining independent parallel lines.
+14. Merge approximately preserves combined water mass.
+
+### Rivulets
+
+15. Runoff has variable width/thickness.
+16. Downstream flow can grow as it intercepts water.
+17. Trails contain residual simulated water.
+18. Later runoff can reuse wet channels.
+
+### Gravity
+
+19. Upright mobile device runs down.
+20. Right-edge-down runs right.
+21. Left-edge-down runs left.
+22. Near-flat orientation strongly reduces in-plane runoff.
 
 ### Rendering
 
-13. Drops refract/distort the scene rather than looking like outlined stickers.
-14. Moving rivulets visually connect to their heads.
-15. Heavy rain does not become a screen full of identical parallel lines.
+23. Drops/rivulets refract the background using thickness geometry.
+24. Thick drops have partial highlights/meniscus cues without cartoon outlines.
+25. Airborne streaks are not identical straight white lines.
 
-### Experience
+### Experience / privacy
 
-16. User can vary rain from drizzle to heavy/storm.
-17. At least one built-in scene works immediately.
-18. User can choose a local photo without uploading it.
-19. Audio has separate ambience and glass-impact behavior.
-20. Sound can be muted.
-21. App remains usable as a static GitHub Pages site.
+26. Built-in scene works immediately.
+27. Local photo remains local.
+28. Camera mode, if present, is view-only and privacy-safe.
+29. Audio contains separate ambient and impact layers.
+30. App runs as a static GitHub Pages experience.
 
 ---
 
-## 24. Research / implementation references
+## 23. Non-goals for v0.1
 
-The physics design should draw from the same water-on-glass concepts already identified during Fog Mirror research:
+Not required:
 
-- Kai-Chun Chen, Pei-Shan Chen, Sai-Keung Wong. **A heuristic approach to the simulation of water drops and flows on glass panes.** *Computers & Graphics* 37(8), 2013, 963–973. DOI: `10.1016/j.cag.2013.08.004`.
-  - Relevant concepts: surface height map, flow fronts, residual water, flow/drop merging, flow connectivity.
+- full 3D DNS/VOF for every impact,
+- atomistic wetting physics,
+- certified meteorological rainfall reproduction,
+- physically exact splash fragment distributions,
+- weather API integration,
+- multiplayer,
+- media upload/storage.
 
-- **Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.** *European Journal of Mechanics B/Fluids* 48, 2014, 218–230. DOI: `10.1016/j.euromechflu.2014.06.003`.
-  - Relevant concepts: pinning, advancing/receding contact angles, hysteresis resistance, sliding velocity.
-
-- `frmlinn/raindrops-v2`
-  - Useful implementation reference for separating 2D rain/condensation simulation from optical refraction rendering.
-
-These references inform architecture and qualitative behavior. Rainpane does not need to reproduce full CFD or any paper algorithm exactly.
+Rainpane should be more physically coherent than a conventional rain shader while remaining an interactive ambience simulation.
