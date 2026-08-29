@@ -21,21 +21,35 @@ const VELOCITY_POWER = 0.67;
 const D_MIN = 0.25;                 // mm; below this nothing is visible on a pane
 const D_MAX = 5.0;
 
-// A vertical pane does not catch the rain a horizontal metre would. How much it
-// does catch depends on wind, and this is where the perceptual tuning lives:
-// everything above is meteorology, this one number is taste.
-const CATCH = 0.55;
+// A vertical pane does not catch the rain a horizontal metre would — what
+// reaches it is driving rain, and how much that is depends on the wind. The
+// driving-rain factor on a façade is a fraction of the horizontal rate in a
+// light breeze and approaches it in a gale, and hard rain comes with hard wind,
+// so it rises with the rate rather than being one number. This is the only
+// place taste enters; everything above it is meteorology.
+const CATCH_CALM = 0.45;
+const CATCH_DRIVEN = 1.15;
+const CATCH_RATE = 70;              // mm/h at which the wind is doing its worst
+
+function catchFactor(rate) {
+  const t = Math.min(1, rate / CATCH_RATE);
+  return CATCH_CALM + (CATCH_DRIVEN - CATCH_CALM) * t;
+}
 
 const RHO = 1000;                   // kg/m^3
 const SIGMA = 0.0728;               // N/m, water against air
 
+// Rainfall rates in mm/h. The top of the scale is not made up: a violent
+// downpour is around a hundred, and a tropical cloudburst runs well past that
+// for minutes at a time.
 export const INTENSITIES = [
   { name: 'Dry', rate: 0 },
-  { name: 'Drizzle', rate: 0.4 },
-  { name: 'Light', rate: 2.5 },
-  { name: 'Rain', rate: 8 },
-  { name: 'Heavy', rate: 25 },
-  { name: 'Storm', rate: 55 },
+  { name: 'Drizzle', rate: 0.5 },
+  { name: 'Light', rate: 3 },
+  { name: 'Rain', rate: 10 },
+  { name: 'Heavy', rate: 35 },
+  { name: 'Storm', rate: 80 },
+  { name: 'Downpour', rate: 180 },
 ];
 
 export function terminalVelocity(diameterMm) {
@@ -75,7 +89,7 @@ export class Rainfall {
 
   /** Water arriving on the pane per second, in cubic millimetres. */
   massFlux() {
-    return (this.rate / 3600) * this.paneArea * CATCH;
+    return (this.rate / 3600) * this.paneArea * catchFactor(this.rate);
   }
 
   /**
@@ -87,7 +101,7 @@ export class Rainfall {
     out.length = 0;
     if (this.rate <= 0) return out;
     this.carry += this.massFlux() * dt;
-    let guard = 400;
+    let guard = 1200;
     while (this.carry > 0 && guard-- > 0) {
       const d = this.sampleDiameter();
       const v = dropVolume(d);
