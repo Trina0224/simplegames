@@ -42,7 +42,24 @@ const POOL_MM = 0.40;
 // reads as gel rather than water. Only the depth above what the contact line
 // pins is free to move, so the film tears away and leaves the pinned layer.
 const FILM_K = 3270;                // mm/s per mm^2 of mobile depth
-const FILM_MAX_CELLS = 26;          // don't let one step jump further than this
+// ...but the velocity must be computed from the film's *local mean* depth, not
+// from one cell's. Because v goes as h squared, two neighbouring cells whose
+// depth differs by a fifth want to travel 44% different distances: at half a
+// cell a frame that is invisible, and at twenty cells a frame it tears the
+// sheet to pieces every frame — which is exactly why a still frame looked right
+// and the motion did not. Measured at heavy rain, neighbours were being
+// displaced twenty-six cells differently in a single frame.
+//
+// Smoothing the depth *before* taking the velocity is not a numerical dodge, it
+// is the more correct reading of the Nusselt result: the parabolic profile it
+// assumes is set up by viscosity over a lateral distance rather than instantly
+// at each point, so cell-scale noise in the thickness is not a real velocity
+// difference. It also costs one pass instead of eight.
+// A sheet moving faster than this in one frame is not a laminar film any more,
+// and the Nusselt result does not describe it; by then it is a rivulet, and the
+// heads carry that.
+const FILM_MAX_CELLS = 20;
+
 const GATHER = 1.6;                 // dewetting: film moves to its thickest neighbour
 const LEVEL = 1.3;                  // pooled water flattens
 const DRY = 0.006;                  // evaporation, as a fraction per second
@@ -75,6 +92,7 @@ export class Surface {
     this.wet = new Float32Array(n);
     this.flowId = new Int32Array(n);
     this.scratch = new Float32Array(n);
+    this.mobile = new Float32Array(n);
     this.pin = new Float32Array(n);
     this._buildPinning();
     if (old) this._resample(old);
@@ -147,23 +165,44 @@ export class Surface {
    */
   _creep(dt, gravity) {
     if (!gravity || gravity.plane < 0.05) return;
-    const { cols, rows, h, wet, pin, flowId, scratch } = this;
+    const { cols, rows, h, wet, pin, flowId, scratch, mobile } = this;
     const gx = gravity.x;
     const gy = gravity.y;
-    scratch.set(h);
-    // v = 3270 h^2 mm/s, expressed as a distance in cells for this step
-    const k = FILM_K * this.cellMm * this.cellMm * gravity.plane * dt / this.cellMm;
+    const floor = this.holdFilm * 0.45;
 
+    // 1. the depth that is free to move, everywhere
+    for (let i = 0; i < h.length; i += 1) {
+      const hh = h[i];
+      if (hh <= floor) { mobile[i] = 0; continue; }
+      const over = hh - this.holdFilm * pin[i] * (1 - 0.4 * wet[i]);
+      mobile[i] = over > 0 ? over : 0;
+    }
+
+    // 2. smooth it, and take the velocity from that
+    scratch.set(mobile);
+    for (let y = 1; y < rows - 1; y += 1) {
+      for (let x = 1; x < cols - 1; x += 1) {
+        const i = y * cols + x;
+        if (scratch[i] <= 0 && scratch[i - 1] <= 0 && scratch[i + 1] <= 0
+            && scratch[i - cols] <= 0 && scratch[i + cols] <= 0) continue;
+        mobile[i] = scratch[i] * 0.44
+          + (scratch[i - 1] + scratch[i + 1] + scratch[i - cols] + scratch[i + cols]) * 0.14;
+      }
+    }
+
+    // 3. advect: each cell's own excess travels at the smoothed velocity
+    const k = FILM_K * this.cellMm * gravity.plane * dt;
+    scratch.set(h);
     for (let y = 0; y < rows; y += 1) {
       for (let x = 0; x < cols; x += 1) {
         const i = y * cols + x;
         const hh = scratch[i];
-        if (hh <= 0) continue;
-        const cap = this.holdFilm * pin[i] * (1 - 0.4 * wet[i]);
-        const over = hh - cap;
+        if (hh <= floor) continue;
+        const over = hh - this.holdFilm * pin[i] * (1 - 0.4 * wet[i]);
         if (over <= 0) continue;
-        const dist = Math.min(FILM_MAX_CELLS, k * over * over);
-        if (dist < 1e-3) continue;
+        const v = mobile[i];
+        const dist = Math.min(FILM_MAX_CELLS, k * v * v);
+        if (dist < 1e-4) continue;
         h[i] -= over;
         this._scatter(x + gx * dist, y + gy * dist, over, flowId[i]);
       }
@@ -313,11 +352,14 @@ export class Surface {
   }
 
   /**
-   * A ring rather than a cap: the lamella of a fresh impact is thin in the
-   * middle and piled up at the rim, which is why a splash reads as a ring for
-   * the first instant and not as a fat blob.
+   * A cap blended towards a ring. The lamella of a fresh impact is thin in the
+   * middle and piled up at the rim, and it relaxes back into a cap — so
+   * `rimness` runs from one to zero over the splash. Switching between two
+   * profiles part way, as this used to, makes every splash change shape in a
+   * single frame, and with a dozen of them alive at once in heavy rain that
+   * pops.
    */
-  depositRim(px, py, radius, amount, out) {
+  depositRim(px, py, radius, amount, out, rimness = 1) {
     if (amount <= 0) return 0;
     const { cols, h } = this;
     const r = Math.max(0.7, radius);
@@ -326,7 +368,8 @@ export class Surface {
     const y0 = Math.max(0, Math.floor(py - r));
     const y1 = Math.min(this.rows - 1, Math.ceil(py + r));
     let weight = 0;
-    const shape = (d) => (d > 1 ? 0 : 0.22 + 0.78 * Math.pow(d, 2.6));
+    const m = Math.max(0, Math.min(1, rimness));
+    const shape = (d) => (d > 1 ? 0 : (1 - m) * (1 - d * d) + m * (0.22 + 0.78 * Math.pow(d, 2.6)));
     for (let y = y0; y <= y1; y += 1) {
       for (let x = x0; x <= x1; x += 1) {
         const d = Math.hypot(x - px, y - py) / r;

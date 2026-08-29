@@ -230,6 +230,8 @@ export class FlowSystem {
         x, y, mass,
         vx: 0, vy: 0,
         pinned: true,
+        lastX: x,
+        lastY: y,
         wobble: 0,
         wobbleT: 0,
         wobbleX: 1,
@@ -364,6 +366,11 @@ export class FlowSystem {
     const py = head.y;
     head.x += head.vx * dt;
     head.y += head.vy * dt;
+    // Where it was at the start of the frame. A drop at full speed crosses more
+    // than its own width in a sixtieth of a second, so the optics have to draw
+    // the segment it swept rather than a disc at the far end.
+    head.lastX = px;
+    head.lastY = py;
 
     if (head.x < 0 || head.y < 0 || head.x > s.cols - 1 || head.y > s.rows - 1) {
       // off the edge of the pane: this water is gone

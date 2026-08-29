@@ -238,6 +238,19 @@ export class PaneRenderer {
     for (const head of heads) {
       const r = radiusForMass(head.mass);
       const speed = Math.hypot(head.vx, head.vy);
+      // Where it came from this frame. A third of the moving drops in a storm
+      // cross more than their own width in a sixtieth of a second: drawn as a
+      // disc at the end position they do not overlap themselves between frames,
+      // so they strobe instead of moving. A still frame looks perfectly fine,
+      // which is exactly why this is hard to see in a screenshot. The eye
+      // integrates over the frame, so the drop is drawn over the segment it
+      // actually swept.
+      const bx = head.lastX === undefined ? head.x : head.lastX;
+      const by = head.lastY === undefined ? head.y : head.lastY;
+      let sx = head.x - bx;
+      let sy = head.y - by;
+      const sweep = Math.hypot(sx, sy);
+      if (sweep > 0.001) { sx /= sweep; sy /= sweep; }
       // At rest a drop is round. Running, it is a teardrop: the leading edge
       // stays round because that is where the water piles up, and the trailing
       // edge is drawn out into the channel it is leaving behind. A symmetric
@@ -251,23 +264,31 @@ export class PaneRenderer {
         ? head.wobble * 0.34 * Math.cos(head.wobbleT * RING_HZ * 2 * Math.PI)
         : 0;
       const reach = r * tail * (1 + Math.abs(ring)) + 1;
-      const x0 = Math.max(0, Math.floor(head.x - reach));
-      const x1 = Math.min(cols - 1, Math.ceil(head.x + reach));
-      const y0 = Math.max(0, Math.floor(head.y - reach));
-      const y1 = Math.min(rows - 1, Math.ceil(head.y + reach));
+      const x0 = Math.max(0, Math.floor(Math.min(head.x, bx) - reach));
+      const x1 = Math.min(cols - 1, Math.ceil(Math.max(head.x, bx) + reach));
+      const y0 = Math.max(0, Math.floor(Math.min(head.y, by) - reach));
+      const y1 = Math.min(rows - 1, Math.ceil(Math.max(head.y, by) + reach));
       const peak = 255 * Math.min(1, (r * 0.62) / this.waterScale);
       for (let y = y0; y <= y1; y += 1) {
         for (let x = x0; x <= x1; x += 1) {
-          const dx = x - head.x;
-          const dy = y - head.y;
+          // distance to the swept segment rather than to the end point
+          let cx = head.x;
+          let cy = head.y;
+          if (sweep > 0.001) {
+            const t = Math.max(0, Math.min(sweep, (x - bx) * sx + (y - by) * sy));
+            cx = bx + sx * t;
+            cy = by + sy * t;
+          }
+          const dx = x - cx;
+          const dy = y - cy;
           const along = dx * ux + dy * uy;
           const across = dx * -uy + dy * ux;
           const behind = along < 0 ? Math.min(1, -along / (r * tail)) : 0;
           let lengthwise = along >= 0 ? 1 : tail;
           let widthwise = 1 - 0.66 * behind;
           if (ring !== 0) {
-            const wx = dx * head.wobbleX + dy * head.wobbleY;
-            const wy = dx * -head.wobbleY + dy * head.wobbleX;
+            const wx = (x - head.x) * head.wobbleX + (y - head.y) * head.wobbleY;
+            const wy = (x - head.x) * -head.wobbleY + (y - head.y) * head.wobbleX;
             const stretch = 1 + ring;
             const squash = 1 - ring * 0.85;
             const d2 = Math.hypot(wx / stretch, wy / squash) / r;

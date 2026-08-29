@@ -105,15 +105,14 @@ export class ImpactField {
       const cx = sp.x + sp.driftX * ease(Math.min(1, sp.age / SPREAD_S));
       const cy = sp.y + sp.driftY * ease(Math.min(1, sp.age / SPREAD_S));
 
-      if (sp.age < SPREAD_S) {
-        // A spreading lamella is a thin sheet with the liquid piled into its
-        // rim, which is why a fresh splash reads as a ring and not as a blob.
-        s.depositRim(cx, cy, r, sp.mass, sp.cells);
-      } else {
-        const blend = Math.min(1, (sp.age - SPREAD_S) / (LIFE_S - SPREAD_S));
-        if (blend < 0.5) s.depositRim(cx, cy, r, sp.mass, sp.cells);
-        else s.deposit(cx, cy, r, sp.mass, sp.cells);
-      }
+      // A spreading lamella is a thin sheet with the liquid piled into its rim,
+      // which is why a fresh splash reads as a ring and not as a blob; it
+      // relaxes continuously back into a cap rather than switching at some
+      // moment part way through.
+      const rimness = sp.age < SPREAD_S
+        ? 1
+        : 1 - ease(Math.min(1, (sp.age - SPREAD_S) / (LIFE_S - SPREAD_S)));
+      s.depositRim(cx, cy, r, sp.mass, sp.cells, rimness);
       // The glass stays wet out to wherever the lamella actually reached, which
       // is what leaves a halo around a splash long after the water has gone.
       s.markWet(cx, cy, Math.max(sp.rMax * (0.4 + 0.6 * t), 1), 0.55);
