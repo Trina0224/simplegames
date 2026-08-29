@@ -2,8 +2,12 @@
 
 A steamed bathroom mirror on your screen. The front camera is the reflection, the
 glass carries condensation, and a finger through it behaves like a finger through
-real fog: it clears the mist, and it pushes the water it displaced to the
-downhill edge of your fingertip, where it gathers, beads, and eventually runs.
+real fog: it clears the mist and drags the water along with it, leaving clear
+glass behind and a fat blob where you lifted off — which is where the drops
+gather, bead, and run.
+
+Nothing re-fogs by itself. What you wipe off stays wiped off until you press
+Steam, and Fresh puts the glass back to an even sheet.
 
 See [`SPEC.md`](SPEC.md) for the product specification, [`PHYSICS.md`](PHYSICS.md)
 for the simulation model, and [`AGENTS.md`](AGENTS.md) for the rules this
@@ -39,17 +43,17 @@ side — plus a small number of moving water heads.
 | --- | --- |
 | `fog` | Microscopic condensation: the blur and the milkiness |
 | `water` | Liquid height. This is the real, only source of water mass |
-| `wet` | Longer-lived memory of wet glass; it changes pinning and condensation |
+| `wet` | Longer-lived memory of wet glass; it changes pinning, steering, and how a trail reads |
 | `flowId` | Which connected body of water owns a cell |
 
 | File | Role |
 | --- | --- |
-| `src/condensation.js` | The fields: steam, evaporation, levelling, downhill sag, and wiping |
+| `src/condensation.js` | The fields: steam, evaporation, coarsening, downhill sag, and wiping |
 | `src/droplets.js` | Flow heads: collection, pinning, motion, trails, merging |
 | `src/render.js` | Optics: refraction, highlight, haze. Reads the fields, never writes them |
 | `src/orientation.js` | Gravity. Frozen — see below |
 | `src/camera.js` | Camera lifecycle |
-| `src/input.js` | Pointer paths |
+| `src/input.js` | Pointer paths, including lift-off |
 | `src/app.js` | Clock, layout, controls |
 
 ### Water is never invented
@@ -57,11 +61,30 @@ side — plus a small number of moving water heads.
 Every drop you see came from somewhere. Wiping converts part of the fog it
 removes into liquid and gathers the water already there; a head drinks from the
 height field; a moving head gives part of itself back as a trail; merging adds
-two masses together. A drop cannot grow unless mass moved into it, and the tests
-check that a wipe deposits exactly what it picked up.
+two masses together. A drop cannot grow unless mass moved into it.
+
+The books balance over three things, because the condensation is the reservoir:
+the water on the glass, the mass in the moving heads, and the fog times what a
+fully fogged pane is worth in liquid. Across a wipe and across minutes of running
+water that total changes by **zero**, not nearly zero, and the tests check it. The
+only ways out are evaporation and the small share that leaves on your finger; the
+only way in is Steam.
 
 That is why undisturbed fog never beads: fog alone is not liquid, and there is no
-path from it to a visible drop that does not go through a finger.
+path from it to a visible drop that does not go through a finger or through a
+drop already running.
+
+### The finger carries the water
+
+A wet fingertip drags a meniscus along with it, so a stroke has a load. Each step
+adds what it took to that load instead of laying it down; only what the finger
+cannot hold comes off along the way, plus a trickle where the glass grips harder
+than average. Lifting puts the rest down at the last point.
+
+That is the difference between a swipe that leaves a comb of two dozen identical
+drips down its whole length and one that leaves a clean streak with the water
+gathered where your finger came off. A short swipe drops nothing along its length
+at all; a long one starts shedding once the finger is full.
 
 ### A drop is the head of a body, not a sprite
 

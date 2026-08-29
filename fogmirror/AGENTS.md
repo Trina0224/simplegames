@@ -4,7 +4,7 @@
 
 Fog Mirror is a touch-first browser toy that makes a phone or tablet feel like a real steamed bathroom / sauna mirror.
 
-The live front camera is the reflection. The simulated glass carries fine condensation, liquid water, wetness memory, and a small number of connected water flows. The user can wipe the fog, write with a finger, re-fog the surface, and watch displaced water gather, merge, depin, and run under physical gravity.
+The live front camera is the reflection. The simulated glass carries fine condensation, liquid water, wetness memory, and a small number of connected water flows. The user can wipe the fog, write with a finger, re-fog the surface with Steam, start over with Fresh, and watch displaced water gather, merge, depin, and run under physical gravity. Nothing re-fogs on its own: what is wiped off stays wiped off.
 
 The primary design target is **believable physical behavior**, not a generic particle effect.
 
@@ -122,14 +122,23 @@ Each of these was a bug that looked like a tuning problem and was not.
 
 Water may enter or move between representations only through explicit transfers.
 
-Allowed sources / transfers:
+The budget is over **three** things, because the condensation is where the water comes from:
 
-- wiping converts part of local fog into liquid surface water
-- wiping transports surface water toward the gravity-down side of the contact footprint
+```text
+water on the glass  +  mass in the flow heads  +  fog x fogYield  ( +  what a finger is carrying )
+```
+
+Allowed transfers:
+
+- wiping converts local fog into liquid, and carries it along with the stroke
+- a finger lays down what it cannot hold, and the rest where it lifts off
+- a running head sweeps the fog it crosses into itself
 - a flow head consumes water from the height map
 - one flow may consume / merge another flow's mass
 - a moving flow deposits a smaller residual amount into its trail/body
-- slow re-condensation may add small amounts of surface water on already-wet glass
+
+The only ways water leaves: **evaporation**, and the small share a finger carries off the
+glass. The only way water arrives: **Steam**. Nothing else, ever — see rule 14.
 
 Forbidden behavior:
 
@@ -137,8 +146,10 @@ Forbidden behavior:
 - Steam directly spawning macroscopic droplets
 - random whole-screen visible nucleation
 - generating a large drop from a single tiny fog sample
+- any ambient process that puts fog, or water, back on the glass by itself
 
-Approximate conservation is required even though this is a realtime heuristic model.
+This is exact, not approximate, and the harness checks it: a wipe and then minutes of running
+water change the total by zero.
 
 ---
 
@@ -148,16 +159,24 @@ A finger is a displacement event, not an eraser.
 
 For each stroke sample:
 
-1. reduce fine fog under the contact footprint
-2. convert a meaningful fraction of removed condensation to surface water
-3. transport most mobile water toward the **physical gravity-down edge** of the contact patch
-4. leave a smaller side ridge / wet film
-5. update wetness memory
-6. offer only a small number of local pooling/nucleation sites
+1. clear the fine fog under the contact footprint, with a definite edge — a fingertip is
+   pressed flat, not a soft brush
+2. take the liquid that fog was holding, **and** every bit of free water already there, leaving
+   only what adhesion binds. The track behind a finger is clear glass, not a wet band
+3. add it to the stroke's **load** rather than laying it down
+4. shed only what the finger cannot hold, plus a trickle from the trailing meniscus where the
+   glass grips harder than average — toward the gravity-down edge and either side of the
+   *track*, never into the middle of the footprint
+5. raise wetness memory, but far less than a flow does
+6. keep a small share on the finger for good
+
+And when the finger lifts, put the whole remaining load down at the last point.
 
 Expected behavior:
 
 - no uniform row of dots along the entire stroke
+- a short swipe leaves its drops **only where the finger came off**
+- a long swipe leaves a few, unevenly spaced, and still the biggest one where it came off
 - no droplets away from disturbed/wet regions
 - repeated wiping in one basin should preferentially feed an existing dominant collector
 - a fast swipe may create stronger pooling, but must not spray hundreds of unrelated beads
@@ -368,7 +387,9 @@ Do not hide physics in rendering code.
 - target current iPhone/iPad Safari
 - stable 30 fps is acceptable; 60 fps preferred
 - simulation resolution independent from display resolution
-- keep active flow-head count small
+- keep the per-head cost low, but do **not** solve performance by lowering the head cap:
+  below what a wiped ridge needs it becomes a metering valve and the glass appears to
+  generate water for minutes (rule 15)
 - use flow-ID/spatial maps instead of large O(N^2) particle clouds
 - pause expensive work when hidden
 
@@ -386,6 +407,10 @@ Do not hide physics in rendering code.
 8. Merge preserves approximate combined mass.
 9. Trails retain residual water and influence later flow, vary in width and strength with the flow that laid them, and do not shed fresh drops of their own once the flow has passed.
 10. Water rendering does not look like independent dots dragging black lines.
+11. What the user wipes off stays wiped off: a stroke reads zero fog immediately and still reads zero a minute later, and only Steam brings it back.
+12. A swipe's water ends up where the finger lifted, not spread evenly along the stroke.
+13. One wipe sheds its drops once, within a few seconds, and produces none afterwards while left alone.
+14. The budget — water, plus flow-head mass, plus fog times its liquid yield — changes by exactly zero across a wipe and across minutes of running water.
 
 ---
 
