@@ -77,10 +77,15 @@ window.addEventListener('orientationchange', () => setTimeout(layout, 250));
 
 // ---------------------------------------------------------------- input
 
+// What each finger currently on the glass is carrying with it.
+const loads = new Map();
+
 new PointerPaths(el.surface, (stroke) => {
   if (!started) return;
   const g = gravity.vector();
   const r = FINGER_PX / cellSize;
+  let load = loads.get(stroke.id);
+  if (!load) { load = { mass: 0 }; loads.set(stroke.id, load); }
   const x0 = stroke.x0 / cellSize;
   const y0 = stroke.y0 / cellSize;
   const x1 = stroke.x1 / cellSize;
@@ -91,8 +96,16 @@ new PointerPaths(el.surface, (stroke) => {
   const steps = Math.max(1, Math.ceil(dist / (r * 0.55)));
   for (let i = 1; i <= steps; i += 1) {
     const t = i / steps;
-    surface.wipe(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r, g, stroke.speed, dirX, dirY);
+    surface.wipe(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r, g, stroke.speed, dirX, dirY, load);
   }
+  wake();
+}, (lift) => {
+  // The finger comes off the glass and everything it was carrying stays behind.
+  const load = loads.get(lift.id);
+  loads.delete(lift.id);
+  if (!started || !load || load.mass <= 0) return;
+  surface.spill(lift.x / cellSize, lift.y / cellSize, FINGER_PX / cellSize,
+                gravity.vector(), 0, 0, 0, load.mass);
   wake();
 });
 

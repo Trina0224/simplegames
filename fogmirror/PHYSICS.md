@@ -270,6 +270,31 @@ a brush, and both were wrong:
   carry a film, and a squeegeed track has had its film taken away. Both are "wetted glass";
   only one of them has water on it. So a finger leaves far less wetness behind than a flow.
 
+### ...and it takes the water with it
+
+Even a squeegee that leaves nothing behind is wrong if it puts everything down where it picked
+it up. A wet fingertip drags a meniscus along with it. That is why a swipe across a steamed
+mirror leaves a **fat blob where you lifted off** and only a thin ragged edge along the way,
+and it is why a *short* swipe produces no drips along its length at all — the finger simply
+carried the lot to the end.
+
+So a stroke has a load. Each contact sample adds what it mobilises to the load rather than
+laying it down, and only two things come off along the way:
+
+- whatever exceeds what a fingertip can hold — a few cubic millimetres, so this is what "you
+  drew too long" means, and nothing before that;
+- a little from the trailing meniscus, and only where the glass grips harder than average, so
+  the drips along a stroke are few and unevenly spaced rather than a row of identical beads.
+
+Lifting the finger puts the whole remaining load down at the last point. That blob is where the
+real drop comes from.
+
+Measured on a tablet, twelve seconds after the stroke: a 24 mm swipe makes four drops and
+**all four** of them start at the lift-off point; an 87 mm swipe makes ten, six of them at the
+lift-off point and four scattered along the way, the largest close to the biggest drop the
+glass can hold. Laying every sample down where it was taken gave twenty-one, in an even comb,
+none of them large.
+
 Two smaller consequences. The contact patch tapers only at its rim, not smoothly from the
 centre, so a finger's track has a definite edge. And the side ridges go either side of the
 *track*, which is only the same as either side of gravity while you are drawing a horizontal
