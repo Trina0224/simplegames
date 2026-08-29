@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#080c0e">
+<meta name="description" content="Rainpane — rain striking and running down a pane of glass. Physics prototype.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Rainpane</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app" id="app">
+  <canvas id="pane"></canvas>
+
+  <p class="message" id="message" role="status"></p>
+
+  <div class="controls">
+    <label class="rain">
+      <span class="rain-label" id="intensityName">Rain</span>
+      <input id="intensity" type="range" min="0" max="5" step="1" value="3" aria-label="Rain intensity">
+    </label>
+    <button class="pill ghost" id="infoBtn" type="button" aria-pressed="false">i</button>
+  </div>
+
+  <pre class="diag" id="diag" hidden></pre>
+
+  <button class="start" id="start" type="button">
+    <span class="start-card">
+      <strong>Rainpane</strong>
+      <span>Rain on a pane of glass. Tap to start, then tilt the device — the water
+        runs the way gravity actually points.</span>
+      <small>Physics prototype: impacts, pinning, coalescence and runoff only.
+        No sound, no camera, nothing is recorded or sent anywhere.</small>
+    </span>
+  </button>
+</div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
