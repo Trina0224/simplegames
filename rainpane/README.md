@@ -1,8 +1,9 @@
-# Rainpane — first physics prototype
+# Rainpane
 
 Rain striking and running down a pane of glass, with a forest path at night
-behind it. This build is the water only: impacts, pinned droplets, coalescence,
-depinning, runoff and rivulets, on the gravity your device actually reports.
+behind it: impacts, pinned droplets, coalescence, depinning, runoff and
+rivulets, on the gravity your device actually reports — and the sound of the
+same rain, synthesised from the same impacts.
 
 See [`SPEC.md`](SPEC.md) for the product specification, [`AGENTS.md`](AGENTS.md)
 for the rules and the research hierarchy this is held to.
@@ -53,11 +54,11 @@ for the rules and the research hierarchy this is held to.
 
 ## What is deliberately not in it
 
-No camera mode, no local-image mode, no audio, no thunder, no wind, no airborne
-rain streaks, and no interface beyond one intensity slider and a diagnostics
-readout. The point of this build is that the water on the glass can be judged on
-a real device; everything else can be added on top of a solver that is already
-right.
+No camera mode, no local-image mode, no thunder, no wind, no airborne rain
+streaks, and no interface beyond one intensity slider, a mute and a diagnostics
+readout. The audio here is the first two layers only — see **Sound** below. The
+point of this build is that the water on the glass can be judged on a real
+device; everything else can be added on top of a solver that is already right.
 
 (The rain streaks and light specks visible in the picture are in the scene
 photograph itself, not drawn by this code.)
@@ -115,6 +116,78 @@ landed 4305 mm3 = on glass 271 + ran off 4007 + dried 28   (unaccounted 0.000%)
 | gravity | upright → down, right edge down → right, left edge down → left, flat → still |
 | cost, downpour | 4.5 ms/step and 1.1 ms/frame on a tablet-sized pane, 1.9 and 0.5 on a phone |
 
+## Sound
+
+The rain you hear is the rain on the glass. Every tap with its own identity is a
+drop the simulation really landed, carrying that drop's energy and the wetness of
+the spot it hit; `impact.js` emits the event and `audio.js` is the only listener.
+It is all synthesised — no samples, no loops — so the timbre moves continuously
+with drop size, energy and film depth instead of stepping between recordings.
+
+**The pane you hear is not the patch you see.** The screen is a close-up of about
+37 cm², and a patch that size is almost silent: even a downpour lands only about
+a hundred drops a second on it, which reads as a rattle. So the acoustic pane is
+a whole window, 1.2 m², three hundred-odd times the visible area. That larger
+population is never instantiated — a second rain process running beside the one
+on screen is exactly what `AGENTS.md` forbids. It is only a count, and it sets
+how dense the unresolved texture is.
+
+Big and cheap are independent choices, and both are deliberate. Laminated or
+double glazing — a good hotel window — is a constrained damping layer: it is
+built to kill the pane's own modes and to stop the rain field outside, so it
+gives you a dull thud and nothing else. One sheet of 4 mm float glass in a
+poorly sealed frame rings, and lets the outside through.
+
+### Three things that were structural, not tuning
+
+**A tap count taken from the rain slider.** The first version drew how many taps
+to voice from the declared rainfall rate. That meant a drop which demonstrably
+hit the glass made no sound whenever the slider said it shouldn't have — the
+sound had stopped following the simulation and started following a number beside
+it. Voicing is now capped at one tap per drop actually on the glass, choosing
+which drops by energy. The rate drives only the beds, which are a statistical
+wash; an impact is an event, and events are heard.
+
+**A voice budget counted by callbacks.** `onended` only fires when the main
+thread is free. During a long frame or a GC pause the count stayed at its
+ceiling and the engine went silent exactly when the rain was heaviest — measured
+as 6 taps voiced in six seconds of downpour. Voices are now counted by their
+scheduled end times, which the audio scheduler knows without the main thread.
+
+**Beds that decayed towards silence.** `setTargetAtTime` approaches a value
+without ever arriving, so rain that had stopped kept hissing at 0.0016 forever.
+Every bed target that reaches zero is now pinned there, the same fix the mute
+already had. Rain that has stopped is silent, not nearly silent.
+
+A fourth was the test's fault and worth recording anyway: the page's own
+animation loop keeps raining behind any measurement, so the first "bed floor"
+readings were really live impacts. A harness that measures the audio has to stop
+the drops first.
+
+### What the sound was measured at
+
+| | |
+|---|---|
+| before the first tap | no `AudioContext` is created at all |
+| rain stopped | exactly 0.0000 — silence, not a residual hiss |
+| bed level, drizzle → downpour | 0.015 → 0.059 |
+| one 2 mm drop on dry glass | bright: peak 0.0030, centroid 6.6 kHz |
+| the same drop into a 0.25 mm film | dull: 26% quieter and 42% darker |
+| impact energy ×1/10 → ×1 → ×8 | 0.0007 → 0.0030 → 0.0090, tracking `e^0.55` |
+| a downpour, six seconds | 111 drops/s on the visible patch, 62/s voiced as taps, ~36 000/s folded into the texture |
+| voices at a downpour | peaked at 10 of a budget of 26 |
+| mute | silent, and it stays silent |
+| hidden then returned | 200 impacts had queued, 0 were replayed |
+
+### What is not in it yet
+
+Layers D and E of `AUDIO_SPEC.md` — runoff/sheet texture and boundary drainage.
+Both must be driven by measured solver flux rather than by the rain slider, so
+`surface.metrics()` reports moving-water fraction and depth already; the
+thresholds get set from those numbers, not guessed. There is also no sample
+layer: `AGENTS.md` prefers a procedural/sample hybrid, and this build is pure
+synthesis by request.
+
 ## Running it
 
 It is a static page. Serve the repository and open `/rainpane/`:
@@ -140,6 +213,7 @@ judged on a device rather than in a screenshot.
 | `src/render.js` | optics: refraction, Fresnel rim, highlight, meniscus |
 | `src/scene.js` | what is behind the pane |
 | `src/gravity.js` | copied verbatim from Fog Mirror. Frozen |
+| `src/audio.js` | the beds, the impact voices, the acoustic pane |
 | `src/app.js` | clock, layout, the one control |
 
 ## Next

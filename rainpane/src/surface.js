@@ -70,6 +70,8 @@ export class Surface {
     this.setScale(3);
     this.drained = 0;               // water that has run off the pane, for the audit
     this.evaporated = 0;            // ...and the little that dried, likewise
+    this.movingFraction = 0;        // reduced metrics for the audio engine
+    this.movingDepth = 0;
     this.resize(cols, rows);
   }
 
@@ -170,13 +172,20 @@ export class Surface {
     const gy = gravity.y;
     const floor = this.holdFilm * 0.45;
 
-    // 1. the depth that is free to move, everywhere
+    // 1. the depth that is free to move, everywhere. The audio's metrics are
+    //    accumulated here rather than in a pass of their own: this loop already
+    //    visits every cell and already knows the mobile depth.
+    let movingCells = 0;
+    let movingDepth = 0;
     for (let i = 0; i < h.length; i += 1) {
       const hh = h[i];
       if (hh <= floor) { mobile[i] = 0; continue; }
       const over = hh - this.holdFilm * pin[i] * (1 - 0.4 * wet[i]);
       mobile[i] = over > 0 ? over : 0;
+      if (over > 0) { movingCells += 1; movingDepth += over; }
     }
+    this.movingFraction = movingCells / h.length;
+    this.movingDepth = movingDepth;
 
     // 2. smooth it, and take the velocity from that
     scratch.set(mobile);
@@ -423,6 +432,26 @@ export class Surface {
         if (wet[i] < v) wet[i] = v;
       }
     }
+  }
+
+  /**
+   * The handful of numbers the audio engine needs. Never the grid itself: it is
+   * read at a control rate, not per audio quantum.
+   */
+  metrics() {
+    const { h, wet } = this;
+    let wetCells = 0;
+    let total = 0;
+    for (let i = 0; i < h.length; i += 1) {
+      if (wet[i] > 0.25) wetCells += 1;
+      total += h[i];
+    }
+    return {
+      wetFraction: wetCells / h.length,
+      meanThickness: (total / h.length) * this.cellMm,
+      movingWaterFraction: this.movingFraction,
+      movingDepth: this.movingDepth * this.cellMm,
+    };
   }
 
   /** Total water lying on the pane. */
