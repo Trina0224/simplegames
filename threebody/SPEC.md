@@ -12,7 +12,7 @@ The experience should make these phenomena intuitive:
 - L1/L2/L3 are unstable.
 - L4/L5 support stable tadpole motion in the ideal Earth–Moon CR3BP.
 - A horseshoe orbit can wrap around the L3/L4/L5 region in the rotating frame without simply orbiting the Moon.
-- The same trajectory looks radically different in rotating and inertial frames.
+- The same trajectory looks radically different in rotating, Earth-following and inertial views.
 - Jacobi constant and zero-velocity curves determine which regions are dynamically accessible.
 - A small Δv can produce a qualitatively different path days or weeks later.
 
@@ -86,7 +86,7 @@ Display:
 
 - Earth
 - Moon
-- barycenter marker
+- barycenter marker where meaningful
 - L1, L2, L3, L4, L5
 - spacecraft
 - current integrated trail
@@ -105,6 +105,7 @@ Burn / Δv
 Play / Pause
 Time speed
 Reset
+Fit
 ```
 
 The design should feel like an interactive physical instrument, not a mission-control dashboard.
@@ -113,7 +114,19 @@ The design should feel like an interactive physical instrument, not a mission-co
 
 ## 5. Reference frames
 
-### Rotating frame
+The app shall expose three ways of looking at the same physical state history.
+
+Suggested UI labels:
+
+```text
+Rotating — horseshoe view
+Earth-following — intuitive view
+Barycentric inertial — space view
+```
+
+Frame switching is a display transform only. It must preserve the same integrated trajectory, playback time, current maneuver state and numerical diagnostics.
+
+### 5.1 Rotating / synodic frame
 
 Earth and Moon are stationary.
 
@@ -125,15 +138,80 @@ This is the primary educational/visual frame for:
 - zero-velocity curves
 - transfer geometry
 
-### Inertial barycentric frame
+A user should be able to see why the horseshoe is naturally defined in the co-rotating Earth–Moon geometry.
 
-Transform the same state history into a non-rotating frame.
+### 5.2 Earth-following view
+
+This is the most familiar presentation for a general audience.
+
+Earth is visually held at the origin while the Moon revolves around it. This does **not** mean the physical model assumes a stationary Earth. The Earth-following view is an accelerated/non-inertial display frame derived from the same barycentric inertial solution.
+
+Required construction:
+
+1. transform the current rotating CR3BP state to barycentric inertial coordinates,
+2. compute Earth's barycentric inertial position and velocity at the same time,
+3. translate the displayed origin to Earth.
+
+For position and velocity:
+
+```text
+r_EF = r_inertial - r_earth,inertial
+v_EF = v_inertial - v_earth,inertial
+```
+
+The same transformation rule must be applied consistently to every displayed physical object/history that belongs to the state geometry:
+
+- spacecraft current state,
+- travelled spacecraft trail,
+- planned trajectory,
+- Moon,
+- L1–L5,
+- velocity vector,
+- burn vector,
+- zero-velocity geometry when enabled.
+
+Expected visual result:
+
+- Earth remains at the screen-space/model-space origin of this display frame,
+- Moon revolves around Earth,
+- L1–L5 revolve with the Earth–Moon line,
+- spacecraft motion is shown relative to Earth.
+
+This view must not:
+
+- freeze Earth in the physical CR3BP equations,
+- invent a separate circular Moon animation,
+- re-integrate the spacecraft,
+- change Jacobi constant or solver state,
+- be labeled as an inertial frame.
+
+The purpose is pedagogical: it gives users an intuitive bridge between ordinary “Moon orbits Earth” thinking and the less intuitive rotating/barycentric views.
+
+### 5.3 Inertial barycentric frame
+
+Transform the same state history into the non-rotating frame centered on the Earth–Moon barycenter.
+
+Earth and Moon both move around their common barycenter.
 
 Required user effect:
 
-A user should be able to watch a horseshoe in the rotating frame, switch frame, and realize that the strange “horseshoe” is a consequence of relative/co-orbital motion rather than a spacecraft literally flying a horseshoe-shaped path through fixed space.
+A user should be able to watch a horseshoe in the rotating frame, switch to Earth-following to recognize the familiar Earth–Moon geometry, then switch to barycentric inertial and realize that the strange “horseshoe” is a consequence of relative/co-orbital motion rather than a spacecraft literally flying a horseshoe-shaped path through fixed space.
 
-Frame switching must not restart or re-integrate a different trajectory.
+### 5.4 Display-frame validation
+
+At any playback time, transforming rotating → barycentric inertial → rotating should recover the original state within floating-point tolerance.
+
+Earth-following should additionally satisfy:
+
+```text
+Earth display position ≈ (0, 0)
+Moon display position = Moon_inertial - Earth_inertial
+Spacecraft display position = spacecraft_inertial - Earth_inertial
+```
+
+For vectors, use the corresponding velocity subtraction where required.
+
+No frame switch may cause re-integration.
 
 ---
 
@@ -239,14 +317,20 @@ When the Horseshoe preset is selected:
 - optionally fade older trail segments but preserve enough history to reveal the full horseshoe,
 - provide a “show full trail” option.
 
-### Explanation overlay
+### Cross-frame explanation
+
+The three frames should teach different things:
+
+- **Rotating:** shows the horseshoe geometry clearly.
+- **Earth-following:** shows the motion in the familiar Earth-at-center mental model.
+- **Barycentric inertial:** shows the non-rotating physical-space representation around the Earth–Moon barycenter.
 
 Keep explanation concise:
 
 ```text
 The spacecraft is not bouncing from a wall.
 Its orbital energy and angular rate change during the distant interaction with the Moon.
-In the rotating frame this produces a slow reversal and a horseshoe-shaped libration.
+The horseshoe shape appears in the rotating frame because it is a relative 1:1 co-orbital motion.
 ```
 
 No canned reversal animation.
@@ -259,14 +343,21 @@ No canned reversal animation.
 
 Show `C` in an information panel.
 
-Optional advanced diagnostics:
+Keep the full diagnostics available:
 
 ```text
 C0
 Cnow
 ΔC
 relative drift
+integrator steps
+rejected steps
+current frame
+status
+build
 ```
+
+Do not remove diagnostics merely to simplify the consumer-facing view.
 
 ### Zero-velocity curves
 
@@ -289,6 +380,8 @@ F < 0
 ```
 
 Rendering must reflect the actual current C.
+
+When rendered in Earth-following or barycentric inertial views, transform the same geometry for display; do not recompute a different physical invariant.
 
 ---
 
@@ -316,6 +409,8 @@ Position is unchanged.
 Then recompute future trajectory from that new state.
 
 The app should make small burns interesting; do not default the control scale so high that every gesture is hundreds of m/s.
+
+Burn interaction must remain correct in all three display frames. A user gesture may be interpreted in the current display frame, but the resulting Δv must be transformed back into the canonical rotating state before propagation.
 
 ---
 
@@ -451,11 +546,41 @@ Suggested visual treatment:
 - L points clearly labeled
 - trajectory line is the visual focus
 
-No need for photorealistic planet rendering in v0.1.
+The Earth and Moon may have visual surface motion and lighting, but those effects must not change their physical centers or orbital dynamics.
+
+In Earth-following view, Earth remains visually centered while Moon orbital motion remains derived from the transformed physical state. The Moon's tidal-lock appearance should remain consistent with the Earth–Moon line.
+
+For now, retain the existing enlarged render-radius behavior under zoom. Do not clamp apparent body size until it has been evaluated on-device.
 
 ---
 
-## 15. Collision / escape
+## 15. Camera interaction
+
+The camera is presentation only.
+
+Required interactions:
+
+- pinch zoom on touch devices,
+- mouse/trackpad wheel zoom,
+- pan by dragging empty space,
+- spacecraft drag reserved for burn interaction,
+- Fit restores the preset's intended framing without re-integration.
+
+Current interaction rule:
+
+```text
+pointer near spacecraft -> burn
+pointer on empty space  -> pan
+two fingers / wheel     -> zoom
+```
+
+Changing zoom, pan or Fit must not alter trajectory samples, C0, solver steps or playback state.
+
+Earth-following should remain fully compatible with the same camera controls.
+
+---
+
+## 16. Collision / escape
 
 ### Collision
 
@@ -473,7 +598,7 @@ Define a generous domain boundary for visualization/integration safety. Crossing
 
 ---
 
-## 16. Numerical validation suite
+## 17. Numerical validation suite
 
 Before calling v0.1 physically trustworthy, test:
 
@@ -483,31 +608,38 @@ Before calling v0.1 physically trustworthy, test:
 4. L4/L5 small perturbations produce bounded/tadpole behavior.
 5. Jacobi constant drift remains within target tolerance on ordinary trajectories.
 6. Horseshoe remains the same family when tolerances are tightened.
-7. Rotating→inertial→rotating round-trip returns the same state within floating-point tolerance.
-8. Zero-velocity contour changes consistently after Δv.
-9. Collision detection uses physical, not rendered, body radius.
-10. If JPL periodic-orbit reference states are used, propagated family behavior agrees with the reference.
+7. Rotating→barycentric inertial→rotating round-trip returns the same state within floating-point tolerance.
+8. Earth-following position equals barycentric inertial position minus Earth's simultaneous barycentric inertial position.
+9. Earth-following velocity equals barycentric inertial velocity minus Earth's simultaneous barycentric inertial velocity.
+10. Earth is at the Earth-following origin while Moon/L points move consistently with the Earth–Moon line.
+11. Switching among all three frames does not change the integrated trajectory or trigger re-integration.
+12. Zero-velocity contour changes consistently after Δv.
+13. Collision detection uses physical, not rendered, body radius.
+14. If JPL periodic-orbit reference states are used, propagated family behavior agrees with the reference.
 
 ---
 
-## 17. v0.1 acceptance tests
+## 18. v0.1 acceptance tests
 
 A user can:
 
 1. open the app and immediately see Earth, Moon and L1–L5,
 2. select L4 tadpole and watch a true integrated trajectory,
 3. select Horseshoe and eventually see the characteristic rotating-frame horseshoe,
-4. switch to inertial view without changing the physical solution,
-5. toggle zero-velocity curves,
-6. inspect Jacobi constant,
-7. apply a Δv and watch the future path change,
-8. request an L-point target and receive a numerically solved candidate burn,
-9. execute the burn without position snapping,
-10. intentionally perturb L1 and watch instability develop.
+4. switch to Earth-following and see Earth fixed while Moon, L points and spacecraft move relative to it,
+5. switch to barycentric inertial without changing the physical solution,
+6. switch repeatedly among all three frames without re-integrating,
+7. toggle zero-velocity curves,
+8. inspect the full Jacobi/solver diagnostics,
+9. apply a Δv and watch the future path change,
+10. request an L-point target and receive a numerically solved candidate burn,
+11. execute the burn without position snapping,
+12. intentionally perturb L1 and watch instability develop,
+13. zoom, pan and Fit without affecting physics.
 
 ---
 
-## 18. Non-goals for v0.1
+## 19. Non-goals for v0.1
 
 Not yet:
 
@@ -526,8 +658,10 @@ Those are future layers. v0.1 first proves that the planar CR3BP itself is corre
 
 ---
 
-## 19. Success criterion
+## 20. Success criterion
 
-The user should repeatedly discover paths that look impossible, switch on the explanatory overlays, and realize:
+The user should repeatedly discover paths that look impossible, switch among the three frames, and realize both of these things:
 
 **the weird path was not animated by us — the equations produced it.**
+
+**the shape of an orbit depends on the reference frame from which you choose to look at the same physical motion.**
