@@ -57,8 +57,17 @@
     <button id="viewSide" class="pill ghost">Side</button>
     <button id="viewEnd" class="pill ghost">End</button>
     <button id="viewObl" class="pill ghost">Oblique</button>
+    <button id="free3" class="pill ghost" aria-pressed="false">Free launch</button>
+    <button id="burn3" class="pill ghost" aria-pressed="false">Burn</button>
     <label class="check"><input id="plane" type="checkbox" checked> z = 0 plane</label>
     <label class="check"><input id="track" type="checkbox" checked> ground track</label>
+  </div>
+  <div class="row" id="launch3bar" hidden>
+    <button id="launch3" class="pill">Launch</button>
+    <button id="cancel3" class="pill ghost">Cancel</button>
+    <label>z <input id="zSlider" type="range" min="-400" max="400" step="1" value="0"></label>
+    <label>v<sub>z</sub> <input id="vzSlider" type="range" min="-1500" max="1500" step="5" value="0"></label>
+    <span id="aim3" class="aim"></span>
   </div>
   <div class="row" id="familybar" hidden>
     <label>Member <input id="famSlider" type="range" min="0" max="33" step="1" value="0"></label>

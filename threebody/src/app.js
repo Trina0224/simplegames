@@ -22,6 +22,7 @@ import { propagate3 } from './trajectory3d.js?v=20260830j';
 import { jacobi3 } from './cr3bp3d.js?v=20260830j';
 import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830j';
 import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830j';
+import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830j';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -49,6 +50,8 @@ const ui = {
   viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
   plane: el('plane'), track: el('track'),
   familybar: el('familybar'), famSlider: el('famSlider'), famRead: el('famRead'),
+  free3: el('free3'), burn3: el('burn3'), launch3: el('launch3'), cancel3: el('cancel3'),
+  launch3bar: el('launch3bar'), zSlider: el('zSlider'), vzSlider: el('vzSlider'), aim3: el('aim3'),
   readout: el('readout'), note: el('note'), title: el('title'), blurb: el('blurb'),
   panel: document.querySelector('.controls'),
   diag: el('diag'),
@@ -104,6 +107,14 @@ let spatial = false;
 let run3 = null;          // { xs, ys, zs, vxs, vys, vzs, ts, n, ... }
 let clock3 = 0;
 let preset3 = null;
+
+// The 3D editor, shared by free launch and impulsive burns. See freelaunch3d.js
+// for why they are one object.
+const ed3 = new Editor3D();
+// Metres per second per screen pixel, as in 2D and for the same reason: the same
+// gesture must mean the same speed at every zoom. Larger here because a spatial
+// sandbox wants lunar-orbit speeds within a comfortable drag.
+const LAUNCH3_MS_PER_PX = 8;
 
 // ---------------------------------------------------------------- solving
 
@@ -526,6 +537,74 @@ function state3At(t) {
     s: [at(run3.xs), at(run3.ys), at(run3.zs), at(run3.vxs), at(run3.vys), at(run3.vzs)] };
 }
 
+let preview3Token = 0;
+function refreshPreview3() {
+  if (!ed3.active || !ed3.dirty || !ed3.valid() || ed3.pending) return;
+  ed3.dirty = false;
+  ed3.pending = true;
+  const token = ++preview3Token;
+  const state = ed3.state.slice();
+  // Synchronous, like the family slider: a 12 TU 3D preview is a few thousand
+  // steps and lands in a handful of milliseconds. The worker is still 4-state
+  // and giving it a six-state job is a bigger change than this needs.
+  setTimeout(() => {
+    if (token !== preview3Token) return;
+    const r = propagate3(state, PREVIEW3_TU, { sample: PREVIEW3_TU / 3000, absTol: 1e-12, relTol: 1e-12 });
+    ed3.pending = false;
+    ed3.preview = { ...r, n: r.xs.length };
+  }, 0);
+}
+
+function arrow3Scale() {
+  return vuToMs(1) / LAUNCH3_MS_PER_PX / scene3d.scale;
+}
+
+const KM = (v) => (v * DU_KM).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+/** Ten lines again, every value labelled as a candidate. */
+function updateEditor3Readout() {
+  const s = ed3.state;
+  const why = ed3.invalidReason();
+  const pv = ed3.preview;
+  const c = ed3.valid() ? ed3.jacobi() : null;
+  const speed = vuToMs(Math.hypot(s[3], s[4], s[5]));
+  const dv = ed3.deltaV();
+  const dvMs = vuToMs(Math.hypot(dv[0], dv[1], dv[2]));
+  const near = pv ? closest3(pv) : null;
+
+  ui.aim3.textContent = why
+    ? why
+    : (ed3.mode === 'burn'
+        ? `Δv ${dvMs < 1000 ? dvMs.toFixed(1) + ' m/s' : (dvMs / 1000).toFixed(3) + ' km/s'}`
+        : `${speed < 1000 ? speed.toFixed(1) + ' m/s' : (speed / 1000).toFixed(3) + ' km/s'}`)
+      + `   z ${KM(s[2])} km   vz ${vuToMs(s[5]).toFixed(0)} m/s`;
+
+  ui.readout.textContent = [
+    `t        candidate at ${(ed3.epoch * TU_DAYS).toFixed(2)} days   (${ed3.epoch.toFixed(3)} TU)`,
+    `position ${s[0].toFixed(5)}, ${s[1].toFixed(5)}, ${s[2].toFixed(5)} DU   candidate`,
+    `speed    ${speed.toFixed(1)} m/s   vz ${vuToMs(s[5]).toFixed(1)}   candidate`,
+    `closest  ${near ? `${near.moonAltKm.toFixed(0)} km over the Moon` : '—'}`
+      + `${near && near.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : ''}`,
+    `C0       ${c === null ? '   —' : c.toFixed(9)}   candidate`,
+    `C now    ${c === null ? '   —' : c.toFixed(9)}   candidate`,
+    ed3.mode === 'burn'
+      ? `Δv       ${dvMs.toFixed(1)} m/s   ${dv.map((v) => vuToMs(v).toFixed(1)).join(', ')}`
+      : `drift    —   not launched yet`,
+    `solver   ${pv ? `${pv.accepted} steps, ${pv.rejected} rejected   preview ${pv.relDrift.toExponential(1)}` : 'preview pending'}`,
+    `status   ${why ? 'INVALID: ' + why : (pv ? `preview over ${PREVIEW3_TU} TU: ${pv.status}` : 'previewing…')}`,
+    `build    ${BUILD}`,
+  ].join('\n');
+  if (near) {
+    const low = near.moonAltKm < LOW_LUNAR_KM;
+    ui.caution.hidden = !low;
+    if (low) {
+      ui.caution.textContent = `This candidate passes ${near.moonAltKm.toFixed(0)} km above the Moon. `
+        + `Idealized CR3BP: the Moon is a point mass here, and lunar mascons, nonspherical `
+        + `gravity and terrain are not modeled.`;
+    }
+  }
+}
+
 function render3() {
   scene3d.resize();
   const st = state3At(clock3);
@@ -540,8 +619,13 @@ function render3() {
     head: st ? st.s : null,
     showPlane: ui.plane.checked, showTrack: ui.track.checked,
     sprite: spriteHandle(),
+    edit: ed3.active
+      ? { state: ed3.state, preview: ed3.preview, valid: ed3.valid(),
+          aim: ed3.aim, arrowScale: arrow3Scale() }
+      : null,
   });
 
+  if (ed3.active) { refreshPreview3(); updateEditor3Readout(); return; }
   if (!run3 || !st) return;
   const near3 = run3.closest || { moonAltKm: Infinity };
   const C = jacobi3(st.s, MU);
@@ -571,7 +655,9 @@ function render3() {
     // is given neither. Quoting a "period" for the in-plane frequency would be
     // exactly the mislabelling THREE_D_SPEC.md 9 forbids.
     preset3.quasi
-      ? `status   quasi-periodic, ${(preset3.inPlane / preset3.outOfPlane).toFixed(4)}:1, holds ${preset3.lifetime.toFixed(0)} TU`
+      ? (preset3.id === 'free3'
+          ? `status   ${run3.status}, over ${preset3.duration} TU`
+          : `status   quasi-periodic, ${(preset3.inPlane / preset3.outOfPlane).toFixed(4)}:1, holds ${preset3.lifetime.toFixed(0)} TU`)
       : `status   period ${preset3.period.toFixed(6)} TU, residual ${preset3.residual.toExponential(1)}`,
     `build    ${BUILD}`,
   ].join('\n');
@@ -678,19 +764,21 @@ function cancelFreeLaunch() {
 
 // --- 3D mode ----------------------------------------------------------------
 
+const SPATIAL_HINT = 'Drag to orbit the camera; pinch or scroll to zoom; two fingers to pan. '
+  + 'Top is the planar projection, End looks down the Earth–Moon line where the out-of-plane '
+  + 'loop opens out. The dashed line under the spacecraft is its height above z = 0.';
+
 function setSpatial(on) {
   spatial = on;
   ui.spatialbar.hidden = !on;
-  if (!on) { ui.familybar.hidden = true; ui.caution.hidden = true; }
+  if (!on) { ui.familybar.hidden = true; ui.caution.hidden = true; ed3.end(); setEditing3(false); }
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
   // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
   // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so
   // they are switched off rather than left to do something undefined.
   for (const b of [ui.preset, ui.plan, ui.target, ui.free, ui.zvc, ui.vel, ui.fit]) b.disabled = on;
   ui.execute.disabled = on || !pending;
-  ui.hint.textContent = on
-    ? 'Drag to orbit the camera; pinch or scroll to zoom; two fingers to pan. Top is the planar projection, End looks down the Earth–Moon line where the out-of-plane loop opens out. The dashed line under the spacecraft is its height above z = 0.'
-    : NORMAL_HINT;
+  ui.hint.textContent = on ? SPATIAL_HINT : NORMAL_HINT;
   if (on) {
     if (editor.active) cancelFreeLaunch();
     load3(orbit3(ui.preset3d.value) || PRESETS3D[0]);
@@ -713,6 +801,125 @@ ui.preset3d.addEventListener('change', () => {
 ui.viewTop.addEventListener('click', () => scene3d.setView(VIEWS.top));
 ui.viewSide.addEventListener('click', () => scene3d.setView(VIEWS.side));
 ui.viewEnd.addEventListener('click', () => scene3d.setView(VIEWS.end));
+
+// --- 3D free launch and impulsive burns -------------------------------------
+
+const Z_RANGE = 400;          // slider extent for z, in thousands of km
+const VZ_RANGE = 1500;        // and for vz, in m/s
+
+function setEditing3(on) {
+  ui.launch3bar.hidden = !on;
+  ui.free3.setAttribute('aria-pressed', on && ed3.mode === 'launch' ? 'true' : 'false');
+  ui.burn3.setAttribute('aria-pressed', on && ed3.mode === 'burn' ? 'true' : 'false');
+  // Browsing an orbit and authoring one are different activities; the orbit
+  // menu, the family slider and playback all step aside while editing.
+  for (const b of [ui.preset3d, ui.famSlider, ui.play, ui.reset]) b.disabled = on;
+  ui.launch3.textContent = ed3.mode === 'burn' ? 'Apply burn' : 'Launch';
+  // Position is only editable for a launch. A burn happens where the spacecraft
+  // is; moving it would not be an impulse.
+  ui.zSlider.disabled = on && ed3.mode === 'burn';
+  ui.hint.textContent = on
+    ? (ed3.mode === 'burn'
+        ? 'Drag the yellow handle to aim the burn in the plane, and the vz slider for the vertical part. The spacecraft does not move — only its velocity does.'
+        : 'Drag the spacecraft to place it in the plane and the z slider for its height; drag the yellow handle to aim, and the vz slider for the vertical part. Every component is a control; none is guessed.')
+    : SPATIAL_HINT;
+  if (!on) ui.caution.hidden = true;
+}
+
+function syncSliders3() {
+  ui.zSlider.value = String(Math.round(Math.max(-Z_RANGE, Math.min(Z_RANGE, ed3.state[2] * DU_KM / 1000))));
+  ui.vzSlider.value = String(Math.round(Math.max(-VZ_RANGE, Math.min(VZ_RANGE, vuToMs(ed3.state[5])))));
+}
+
+/** Frame the candidate and the Moon together, so the edit starts somewhere. */
+function fitEditor3() {
+  const s = ed3.state;
+  const lo = [Math.min(s[0], MOON_X) - 0.08, Math.min(s[1], 0) - 0.08, Math.min(s[2], 0) - 0.05];
+  const hi = [Math.max(s[0], MOON_X) + 0.08, Math.max(s[1], 0) + 0.08, Math.max(s[2], 0) + 0.05];
+  const centre = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  scene3d.setView({ span: extent * 1.8 * (vr.height / usable), centre });
+  scene3d.resize();
+  scene3d.panByPixels(0, -(vr.height / 2 - usable / 2));
+}
+
+function beginFree3() {
+  playing = false; ui.play.textContent = 'Play';
+  if (!scene3d.canPlace()) scene3d.setView(VIEWS.oblique);
+  // Somewhere with room, above the plane, at rest. Deliberately not an orbit:
+  // FREE_LAUNCH_SPEC.md says not to choose a safe velocity for the user.
+  ed3.begin([0.95, 0.10, 0.06, 0, 0, 0], { mode: 'launch', epoch: 0 });
+  ui.title.textContent = 'Free launch, in three dimensions';
+  ui.blurb.textContent = 'Place it anywhere, at any height, and throw it in any direction. '
+    + 'The z and vz sliders are real controls, not defaults — a drag can only ever set two '
+    + 'of three components, so the third is on screen where you can see and change it.';
+  ui.note.textContent = '';
+  syncSliders3();
+  setEditing3(true);
+  fitEditor3();
+}
+
+function beginBurn3() {
+  const st = state3At(clock3);
+  if (!st) return;
+  playing = false; ui.play.textContent = 'Play';
+  ed3.begin(st.s, { mode: 'burn', epoch: clock3 });
+  ui.title.textContent = 'Impulsive burn';
+  ui.blurb.textContent = 'The position does not change; the velocity does, once. '
+    + 'Everything after it is ballistic.';
+  ui.note.textContent = '';
+  syncSliders3();
+  setEditing3(true);
+  fitEditor3();
+}
+
+function cancelEdit3() {
+  const was = preset3;
+  ed3.end();
+  setEditing3(false);
+  if (was) load3(was); else load3(PRESETS3D[0]);
+}
+
+ui.free3.addEventListener('click', () => {
+  if (ed3.active && ed3.mode === 'launch') cancelEdit3(); else beginFree3();
+});
+ui.burn3.addEventListener('click', () => {
+  if (ed3.active && ed3.mode === 'burn') cancelEdit3(); else beginBurn3();
+});
+ui.cancel3.addEventListener('click', cancelEdit3);
+
+ui.zSlider.addEventListener('input', () => {
+  ed3.height(Number(ui.zSlider.value) * 1000 / DU_KM);
+  // The height slider spans 800 000 km, which is most of the scene; without a
+  // re-fit the craft simply leaves the picture and the control looks broken.
+  fitEditor3();
+});
+ui.vzSlider.addEventListener('input', () => {
+  ed3.setVz(msToVu(Number(ui.vzSlider.value)));
+});
+
+ui.launch3.addEventListener('click', () => {
+  if (!ed3.active || !ed3.valid()) return;
+  // Exactly the state the preview was drawn from.
+  const state = ed3.state.slice();
+  const wasBurn = ed3.mode === 'burn';
+  const dv = vuToMs(Math.hypot(...ed3.deltaV()));
+  ed3.end();
+  setEditing3(false);
+  preset3 = {
+    id: 'free3', name: wasBurn ? 'After the burn' : 'Free launch',
+    blurb: wasBurn
+      ? 'Your impulse, integrated. Nothing steers it from here.'
+      : 'Your initial condition, integrated. Nothing steers it from here.',
+    state, period: null, duration: 40, quasi: true,
+    inPlane: 1, outOfPlane: 1, lifetime: 40,
+    expect: wasBurn ? `Δv ${dv.toFixed(1)} m/s applied at ${(clock3 * TU_DAYS).toFixed(2)} d` : '',
+  };
+  load3(preset3);
+});
 ui.viewObl.addEventListener('click', () => scene3d.setView(VIEWS.oblique));
 
 ui.free.addEventListener('click', () => {
@@ -819,9 +1026,18 @@ ui.canvas.addEventListener('pointerdown', (e) => {
   }
   if (pointers.size > 2) return;
 
-  // In 3D one finger orbits the camera. There is nothing to burn or place yet --
-  // Phase 1 is deliberately look-only -- so the gesture is unambiguous.
-  if (spatial) { gesture = 'orbit'; pinch = { last: p }; return; }
+  if (spatial) {
+    // While editing, the two handles take priority; everything else orbits the
+    // camera. The handles are hit in screen space, so they stay grabbable
+    // however the scene is turned.
+    if (ed3.active) {
+      const h = scene3d.handles3({ state: ed3.state, arrowScale: arrow3Scale() });
+      if (Math.hypot(p[0] - h.tip[0], p[1] - h.tip[1]) <= 26) { gesture = 'aim3'; return; }
+      if (ed3.mode === 'launch'
+          && Math.hypot(p[0] - h.craft[0], p[1] - h.craft[1]) <= 24) { gesture = 'place3'; return; }
+    }
+    gesture = 'orbit'; pinch = { last: p }; return;
+  }
 
   // While editing, the spacecraft and the aim handle take priority over
   // everything except zoom -- and the in-flight drag-to-burn gesture is off,
@@ -850,6 +1066,30 @@ ui.canvas.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId)) return;
   const p = canvasPoint(e);
   pointers.set(e.pointerId, p);
+
+  if (gesture === 'place3') {
+    // On the horizontal plane at the craft's CURRENT height, so a drag moves it
+    // sideways and the z slider moves it up. Two controls, two meanings.
+    const w = scene3d.toPlane(p[0], p[1], ed3.state[2]);
+    if (w) ed3.place(w[0], w[1]);
+    else ui.aim3.textContent = 'tilt the camera to place';
+    return;
+  }
+
+  if (gesture === 'aim3') {
+    // The arrow tip is dragged on the horizontal plane through its own current
+    // height, which is set by the vz slider. So the drag sets vx and vy and
+    // cannot silently disturb vz.
+    const k = arrow3Scale();
+    const tipZ = ed3.state[2] + ed3.state[5] * k;
+    const w = scene3d.toPlane(p[0], p[1], tipZ);
+    if (!w) { ui.aim3.textContent = 'tilt the camera to aim'; return; }
+    ed3.setVelocity((w[0] - ed3.state[0]) / k, (w[1] - ed3.state[1]) / k);
+    const h = scene3d.handles3({ state: ed3.state, arrowScale: k });
+    const dx = h.tip[0] - h.craft[0], dy = h.tip[1] - h.craft[1];
+    if (Math.hypot(dx, dy) > 2) ed3.aim = Math.atan2(dy, dx);
+    return;
+  }
 
   if (gesture === 'orbit' && spatial) {
     scene3d.orbitBy(p[0] - pinch.last[0], p[1] - pinch.last[1]);
@@ -926,7 +1166,9 @@ ui.canvas.addEventListener('pointermove', (e) => {
 
 function endPointer(e) {
   const had = gesture;
-  if (had === 'orbit') { pointers.delete(e.pointerId); gesture = null; pinch = null; return; }
+  if (had === 'orbit' || had === 'place3' || had === 'aim3') {
+    pointers.delete(e.pointerId); gesture = null; pinch = null; return;
+  }
   if (had === 'place' || had === 'aim') {
     pointers.delete(e.pointerId);
     gesture = null;
@@ -1065,5 +1307,6 @@ window.threebody = {
   editor, editorHandles,
   // 3D, for the acceptance checks
   scene3d, get run3() { return run3; }, get clock3() { return clock3; }, fitSpatial,
+  ed3, arrow3Scale,
   get intendedView() { return currentView; },
 };

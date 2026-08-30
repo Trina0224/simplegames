@@ -22,6 +22,7 @@
 
 import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830j';
 import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830j';
+import { spriteHandle } from './render.js?v=20260830j';
 
 // Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
 // screen pixels. The planar view inflates them because the whole Earth-Moon
@@ -98,6 +99,32 @@ export class Scene3D {
     const d = dx * b.fwd[0] + dy * b.fwd[1] + dz * b.fwd[2];
     return [this.w / 2 + sx * this.scale, this.h / 2 - sy * this.scale, d];
   }
+
+  /**
+   * The world point on the horizontal plane z = h that projects to this pixel.
+   *
+   * The whole difficulty of editing in 3D with a 2D pointer, in one function: a
+   * screen point is a LINE through the scene, not a point, so something has to
+   * pick the depth. Choosing a horizontal plane is the choice that stays
+   * understandable -- the user is placing a thing at a height they set
+   * separately, which is why z and vz get their own controls rather than being
+   * inferred from a drag.
+   *
+   * Returns null when the camera is edge-on to that plane, because then the line
+   * never meets it and any answer would be invented.
+   */
+  toPlane(px, py, h, minTilt = 0.2) {
+    const b = this.basis();
+    if (Math.abs(b.fwd[2]) < minTilt) return null;      // camera too close to level
+    const u = (px - this.w / 2) / this.scale;
+    const v = -(py - this.h / 2) / this.scale;
+    const a = [0, 1, 2].map((i) => this.centre[i] + b.right[i] * u + b.up[i] * v);
+    const d = (h - a[2]) / b.fwd[2];
+    return [a[0] + b.fwd[0] * d, a[1] + b.fwd[1] * d, h];
+  }
+
+  /** Is the camera tilted enough for in-plane dragging to mean anything? */
+  canPlace(minTilt = 0.2) { return Math.abs(this.basis().fwd[2]) >= minTilt; }
 
   setView({ az, el, span, centre }) {
     if (Number.isFinite(az)) this.az = az;
@@ -261,21 +288,118 @@ export class Scene3D {
       // the sprite points along the screen projection of the velocity
       const vq = P(x + vx * 0.02, y + vy * 0.02, z + vz * 0.02);
       const ang = Math.atan2(vq[1] - q[1], vq[0] - q[0]);
-      if (sprite && sprite.ok) {
-        ctx.save();
-        ctx.translate(q[0], q[1]);
-        ctx.rotate(ang + Math.PI / 2);
-        const box = 13 / (181 / 256);
-        ctx.drawImage(sprite.img, -box / 2, -box / 2, box, box);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#f2fbff';
-        ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
-      }
+      this._craft(q[0], q[1], ang, 13);
     }
+
+    if (view.edit) this._editor3(view.edit, P, b);
 
     this._scaleBar(view.avoid);
     ctx.restore();
+  }
+
+  /**
+   * The 3D editor: a preview, a craft on a dropline, and a velocity arrow that
+   * also has one.
+   *
+   * Both droplines are the point. A loose arrow in an orthographic 3D scene is
+   * unreadable -- you cannot tell whether it is pointing up and away or down and
+   * toward you -- so every handle is tied to the z = 0 plane by a vertical line
+   * and a foot marker. The foot says where it is; the line says how high.
+   */
+  _editor3(edit, P, b) {
+    const { ctx } = this;
+    const s = edit.state;
+    const craft = P(s[0], s[1], s[2]);
+    const foot = P(s[0], s[1], 0);
+
+    if (edit.preview && edit.preview.n > 1) {
+      ctx.save();
+      ctx.setLineDash([7, 6]);
+      ctx.strokeStyle = edit.valid ? 'rgba(126, 240, 190, 0.75)' : 'rgba(255, 128, 110, 0.7)';
+      ctx.lineWidth = 1.6;
+      this._path(P, edit.preview, 'rotating', (i) => edit.preview.zs[i]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const drop = (a, f, colour) => {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(f[0], f[1]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = colour;
+      ctx.beginPath(); ctx.arc(f[0], f[1], 2.5, 0, Math.PI * 2); ctx.fill();
+    };
+    drop(craft, foot, 'rgba(150, 222, 255, 0.5)');
+
+    // the velocity arrow, and its own dropline
+    const k = edit.arrowScale;
+    const tipW = [s[0] + s[3] * k, s[1] + s[4] * k, s[2] + s[5] * k];
+    const tip = P(...tipW);
+    const tipFoot = P(tipW[0], tipW[1], 0);
+    const moving = Math.hypot(s[3], s[4], s[5]) > 1e-9;
+    ctx.strokeStyle = 'rgba(255, 214, 92, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash(moving ? [] : [3, 4]);
+    ctx.beginPath(); ctx.moveTo(craft[0], craft[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
+    ctx.setLineDash([]);
+    if (moving) drop(tip, tipFoot, 'rgba(255, 214, 92, 0.4)');
+    ctx.beginPath(); ctx.arc(tip[0], tip[1], 9, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 214, 92, 0.18)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 214, 92, 0.85)'; ctx.lineWidth = 1.2; ctx.stroke();
+
+    const halo = ctx.createRadialGradient(craft[0], craft[1], 0, craft[0], craft[1], 26);
+    halo.addColorStop(0, edit.valid ? 'rgba(150, 220, 255, 0.26)' : 'rgba(255, 120, 100, 0.3)');
+    halo.addColorStop(1, 'rgba(150, 220, 255, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(craft[0], craft[1], 26, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = edit.valid ? 'rgba(150, 220, 255, 0.5)' : 'rgba(255, 120, 100, 0.85)';
+    ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.arc(craft[0], craft[1], 20, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    const ang = moving ? Math.atan2(tip[1] - craft[1], tip[0] - craft[0]) : edit.aim;
+    this._craft(craft[0], craft[1], ang, 30);
+  }
+
+  /**
+   * The spacecraft at a screen-pixel size, sprite or fallback.
+   *
+   * The same artwork the planar scene uses, loaded once and shared -- the sprite
+   * is a UI marker and there is no reason for two copies of it, or for the two
+   * scenes to disagree about which way its nose points.
+   */
+  _craft(px, py, ang, size) {
+    const { ctx } = this;
+    const sprite = spriteHandle();
+    ctx.save();
+    ctx.translate(px, py);
+    if (sprite.ok) {
+      ctx.rotate(ang + Math.PI / 2);          // source nose points up
+      const box = size / (181 / 256);         // the artwork's share of its canvas
+      ctx.drawImage(sprite.img, -box / 2, -box / 2, box, box);
+    } else {
+      const k = size / 14;
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(6.2 * k, 0); ctx.lineTo(-3.6 * k, 3.4 * k);
+      ctx.lineTo(-1.8 * k, 0); ctx.lineTo(-3.6 * k, -3.4 * k);
+      ctx.closePath();
+      ctx.fillStyle = '#f2fbff'; ctx.fill();
+      ctx.strokeStyle = 'rgba(120, 196, 236, 0.9)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Where the editor's two handles are on screen, for hit testing. */
+  handles3(edit) {
+    const b = this.basis();
+    const s = edit.state, k = edit.arrowScale;
+    return {
+      craft: this.project(s[0], s[1], s[2], b),
+      tip: this.project(s[0] + s[3] * k, s[1] + s[4] * k, s[2] + s[5] * k, b),
+    };
   }
 
   /** One polyline through the trail, with z chosen by the caller. */

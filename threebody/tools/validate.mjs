@@ -27,6 +27,7 @@ import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3
 import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830j';
 import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830j';
 import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830j';
+import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830j';
 import { toInertial } from '../src/frames.js?v=20260830j';
 import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830j';
 
@@ -732,6 +733,66 @@ console.log('\n16. The families are one continuation, not a shortlist');
     FAMILY3D.L1.every((m) => m.closure < 1e-8 && m.residual < 1e-9),
     `worst L1 closure ${Math.max(...FAMILY3D.L1.map((m) => m.closure)).toExponential(1)} -- ` +
     `the branch used to run on past here with residuals of 1e-12 and closure of 2.4 DU`);
+}
+
+console.log('\n17. The 3D editor sets all three components, and hides none');
+{
+  // THREE_D_SPEC.md 10: "Do not hide vz behind an arbitrary default and call the
+  // control fully 3D." A drag can only ever set two of three components, so the
+  // test is that the other one has its own control and that the two do not
+  // interfere -- which is the property a hidden default would break.
+  const e = new Editor3D();
+  e.begin([0.95, 0.10, 0.06, 0, 0, 0], { mode: 'launch' });
+
+  const a = e.state.slice();
+  e.height(-0.2);
+  check('the height control moves z and only z',
+    e.state[2] === -0.2 && e.state[0] === a[0] && e.state[1] === a[1] &&
+      e.state[3] === a[3] && e.state[4] === a[4] && e.state[5] === a[5],
+    'x, y, vx, vy and vz all untouched');
+
+  const b = e.state.slice();
+  e.setVz(0.4);
+  check('the vz control moves vz and only vz',
+    e.state[5] === 0.4 && e.state[3] === b[3] && e.state[4] === b[4] && e.state[2] === b[2],
+    'z, vx and vy all untouched');
+
+  const c = e.state.slice();
+  e.setVelocity(0.25, -0.55);
+  check('a horizontal drag never disturbs vz',
+    e.state[5] === c[5] && e.state[2] === c[2],
+    `vz stayed ${e.state[5]} while vx and vy became ${e.state[3]}, ${e.state[4]}`);
+
+  const d = e.state.slice();
+  e.place(0.8, 0.2);
+  check('placing moves position and never velocity',
+    e.state[0] === 0.8 && e.state[1] === 0.2 && e.state[2] === d[2] &&
+      e.state[3] === d[3] && e.state[4] === d[4] && e.state[5] === d[5],
+    'all three velocity components untouched');
+
+  // a burn is the same editor with the position locked
+  const burn = new Editor3D();
+  const from = [1.05, 0.02, -0.03, 0.1, -0.2, 0.05];
+  burn.begin(from, { mode: 'burn', epoch: 3.2 });
+  burn.place(0.5, 0.5); burn.height(0.9);
+  check('a burn cannot move the spacecraft',
+    burn.state[0] === from[0] && burn.state[1] === from[1] && burn.state[2] === from[2],
+    'place and height are refused in burn mode -- an impulse changes velocity, not position');
+  burn.setVelocity(0.14, -0.2); burn.setVz(0.08);
+  const dv = burn.deltaV();
+  check('and it reports the impulse it applied',
+    Math.abs(dv[0] - 0.04) < 1e-15 && dv[1] === 0 && Math.abs(dv[2] - 0.03) < 1e-15,
+    `dv = ${dv.map((v) => v.toFixed(6)).join(', ')} against a start of ${from.slice(3).join(', ')}`);
+
+  // validity uses the 3D distance and the physical radius, as collision does
+  const inside = new Editor3D();
+  inside.begin([MOON_X, 0, MOON_RADIUS * 0.5, 0, 0, 0], { mode: 'launch' });
+  check('a placement above the Moon\'s centre is still inside the Moon',
+    inside.invalidReason() === 'inside the Moon',
+    `${(MOON_RADIUS * 0.5 * DU_KM).toFixed(0)} km up, on the axis -- a projected test would allow it`);
+  inside.height(MOON_RADIUS * 1.5);
+  check('and just outside it is allowed', inside.valid(),
+    `${(MOON_RADIUS * 1.5 * DU_KM).toFixed(0)} km up`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

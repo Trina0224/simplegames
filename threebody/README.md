@@ -110,6 +110,7 @@ re-integrating anything.
 | `src/frames.js` | rotating ↔ inertial, the transform the validation suite checks |
 | `src/display.js` | the three display frames, and the inverse Free Launch needs |
 | `src/freelaunch.js` | the candidate being edited, and what makes it invalid |
+| `src/freelaunch3d.js` | the 3D editor: free launch and impulsive burns, one object |
 | `src/cr3bp3d.js` | the six-state equations. The planar problem is a subspace of them |
 | `src/trajectory3d.js` | spatial propagation, and the `y = 0` section the corrector shoots to |
 | `src/frames3d.js` | the same three frames, extended to six states |
@@ -264,6 +265,49 @@ accidentally always true (`… === false || true`) and hid it completely.
 L1   perilune 51 120 → 1 788 km    |z| 2 049 → 95 266 km    slenderness 0.17 → 4.53
 L2   perilune 50 922 → 7 412 km    |z| 2 323 → 77 778 → 74 611 km    0.10 → 3.40
 ```
+
+### 3D free launch and burns: the third component is a control, not a default
+
+Phase 3's first two items. `THREE_D_SPEC.md` 10 is blunt about the trap: *"Do
+not hide `vz` behind an arbitrary default and call the control fully 3D."*
+
+The difficulty in one sentence: **a screen point is a line through a 3D scene,
+not a point**, so a drag can only ever set two of three components. Something has
+to choose the third, and the honest answer is that you do:
+
+| | |
+|---|---|
+| drag the spacecraft | x and y, on the horizontal plane at its current height |
+| the **z** slider | height, in thousands of km |
+| drag the yellow handle | vx and vy, on the plane through the arrow's own tip |
+| the **v<sub>z</sub>** slider | the vertical component, in m/s |
+
+Nothing is inferred and nothing interferes: the suite checks that the height
+control moves `z` **and only** `z`, that a horizontal drag never disturbs `vz`,
+and that placing never touches velocity.
+
+Both handles are tied to `z = 0` by a dashed dropline with a foot marker. That is
+not decoration — a loose arrow in an orthographic 3D scene is genuinely
+unreadable, because you cannot tell whether it points up and away or down and
+toward you. The foot says where; the line says how high.
+
+`toPlane()` returns **null** when the camera is within about 12° of level,
+because then the pick-ray never meets the plane and any answer would be invented.
+The editor says "tilt the camera to place" rather than guessing.
+
+**A burn is the same editor with the position locked.** Not tidiness: it is how
+the burn inherits the preview, the validity rules and the frame handling without
+a second copy that could disagree. Place and height are simply refused in burn
+mode — an impulse changes velocity, not position — and the readout reports the Δv
+by component. Verified end to end: the position does not move, and Launch uses
+exactly the state the preview was drawn from (`C0` identical to the candidate's
+`C`).
+
+Validity is the three-dimensional distance to a body centre against the
+**physical** radius, the same test collision uses. A projected 2D test would
+happily allow a spacecraft placed 869 km directly above the Moon's centre.
+
+Still out of scope, as asked: 3D targeting and zero-velocity surfaces.
 
 ### Saying what the model does not contain
 
@@ -628,6 +672,10 @@ how it looks, and it drives nothing.
 | the browsable families | 68 members; all close when re-flown, worst 3.3e-10; none inside the Moon |
 | the end of the L2 branch | identical to the NRHO preset, component for component |
 | the closure gate | caught members with residual 1e-12 whose orbits missed themselves by 2.4 DU |
+| the L1 family's deepest member | 51 km above the lunar surface — kept, and flagged as idealized |
+| the 3D height control | moves z and only z; a horizontal drag never disturbs vz |
+| a 3D burn | cannot move the spacecraft; reports Δv by component |
+| 3D Launch | uses exactly the previewed state — C0 identical to the candidate's C |
 | entering and leaving 3D | the 2D run is identical |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
