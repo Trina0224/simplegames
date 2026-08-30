@@ -174,7 +174,46 @@ Separately, a `e < 0.02` audibility gate had been silencing *every* drop drizzle
 produces, so light rain had no individual drops in it at all — only the hiss.
 That gate is now three hundred times lower.
 
-### It has to sound like rain, not like static
+### It has to sound like rain, not like an instrument
+
+Two device reports, in sequence, and the second one was caused by the fix for
+the first. At a bandpass Q of 3.4 the taps came back as "a lot of little
+explosions". Raising Q to 11 fixed the harshness — by turning the click into a
+*note*, which is not the same thing, and it came back as "like castanets,
+honestly nowhere near".
+
+The mistake underneath both was modelling the wrong event. A Q of 11 at 2.5 kHz
+is a fingernail on glass: hard, point-like, elastic. A raindrop is soft, spread
+over a millimetre or two, and most of what you hear is not the plate at all —
+it is the splash, the lamella thrown outward and the film slapping back. That is
+broadband, low, and over in a few milliseconds. The pane's resonance is a colour
+on a noise burst, not a note. So: 1150 Hz at a Q of 2.2, decays of 6–22 ms
+rather than 20–75, and the splash promoted from a whisper at 0.22 under a
+ringing plate to the part that carries the tap.
+
+Two things beyond the resonance mattered as much:
+
+**The taps were being chosen weighted by energy**, which makes almost every
+voiced drop a big one, so they all arrived at much the same prominence — and a
+stream of impacts at one level, however irregularly spaced, is a percussion
+instrument. It also double-counts, since how loud a drop *sounds* is already
+decided by its energy. Weighted by the square root instead, the voiced taps now
+span 13× in level between the 10th and 90th percentile.
+
+**The pitch spread was ±18%**, so a stream of taps read as one repeated sound.
+It is ±35% now, which is nearer what landing at different places on a pane does.
+
+And two measurement traps worth recording:
+
+- The splash runs through a *lowpass* while the ring runs through a narrow
+  bandpass, so the same gain is not the same loudness — measured, the lowpass
+  passes 2.16× as much. Mixing the splash up to where it belonged also made
+  every tap two and a half times louder until that was trimmed out.
+- Spectral flatness measured over the full 0–22 kHz reports how **dark** a sound
+  is, not how tonal. Making the taps duller looked like making them noisier. It
+  is measured over 200 Hz–6 kHz now, the band the sound actually occupies.
+
+### It also has to not sound like static
 
 Reported from the device as "a lot of little explosions, rather unpleasant" —
 and the first thing to check was clipping, which it was not: peaks reached 0.27
@@ -240,12 +279,16 @@ Level and timbre are rendered offline, one tap at a time, in `rp-timbre.mjs` and
 and the page's own rain were running gave answers wrong by more than the effect
 being measured — twice.
 
-| a 2 mm drop landing on | level | brightness |
-|---|---|---|
-| dry glass | 0.00107 | 2 860 Hz |
-| damp glass, no film | 24% quieter | 6% darker |
-| a 0.25 mm film | 36% quieter | 16% darker |
-| a 0.6 mm film | 64% quieter | 40% darker |
+| a 2 mm drop landing on | level | brightness | noisiness | peak/median |
+|---|---|---|---|---|
+| dry glass | 0.00134 | 1 789 Hz | 0.21 | 13 |
+| damp glass, no film | 10% quieter | 11% darker | 0.15 | 15 |
+| a 0.25 mm film | 22% quieter | 17% darker | 0.14 | 20 |
+| a 0.6 mm film | 55% quieter | 24% darker | 0.11 | 25 |
+
+A drop into standing water is the one thing here that makes the splash *louder*
+rather than quieter, which is why wet glass should read as duller and thicker
+rather than simply fainter.
 
 | | |
 |---|---|
