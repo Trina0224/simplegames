@@ -114,6 +114,7 @@ landed 4305 mm3 = on glass 271 + ran off 4007 + dried 28   (unaccounted 0.000%)
 | rivulet channels | 83 of them, 0.2 to 6.6 mm wide |
 | after heavy rain | 27% of the pane wetted, 54% still carrying residual film |
 | gravity | upright → down, right edge down → right, left edge down → left, flat → still |
+| gravity, display rotated 0/90/180/270° | runs down in all four (before the fix: down, right, **up**, left) |
 | cost, downpour | 4.5 ms/step and 1.1 ms/frame on a tablet-sized pane, 1.9 and 0.5 on a phone |
 
 ## Sound
@@ -138,44 +139,87 @@ built to kill the pane's own modes and to stop the rain field outside, so it
 gives you a dull thud and nothing else. One sheet of 4 mm float glass in a
 poorly sealed frame rings, and lets the outside through.
 
-### Three things that were structural, not tuning
+### What a listener hears is energy, not drops
 
-**A tap count taken from the rain slider.** The first version drew how many taps
-to voice from the declared rainfall rate. That meant a drop which demonstrably
-hit the glass made no sound whenever the slider said it shouldn't have — the
-sound had stopped following the simulation and started following a number beside
-it. Voicing is now capped at one tap per drop actually on the glass, choosing
-which drops by energy. The rate drives only the beds, which are a statistical
-wash; an impact is an event, and events are heard.
+This is the correction that mattered most, and it came from a real device: in
+light rain the pane was a continuous sheet of hiss, when light rain on a window
+is distinct ticks. A sheet of sound has to be *made of* drops, not laid
+underneath them.
+
+Both beds had been keyed to the rainfall rate through fitted curves. But
+loudness does not follow how many drops fall, it follows how much energy they
+bring, and on a Marshall–Palmer spectrum those are very different curves.
+Drizzle puts 562 drops a second on the acoustic window and a downpour puts
+24 000 — only forty times more — while the energy ratio is nearer four thousand,
+because impact energy goes as roughly the fourth power of diameter and drizzle's
+drops are 0.46 mm against a downpour's 1.28 mm.
+
+So everything now follows one measured quantity: the acoustic power actually
+landing on the window, summed from the impacts the solver already emits.
+Incoherent sources add in power, so the amplitude is its square root — which is
+also the entire justification for using filtered noise as the texture. It is not
+standing in for the taps; it *is* what several hundred random taps a second sum
+to. Below that density the drops are voiced individually and the texture is
+correspondingly silent. It comes out like this:
+
+| | drops/s on the window | taps voiced | texture |
+|---|---|---|---|
+| Drizzle, 0.5 mm/h | 562 | 11/s | **exactly zero** |
+| Light, 3 mm/h | 1 446 | 92/s | **exactly zero** |
+| Rain, 10 mm/h | 2 289 | 142/s | barely there |
+| Heavy, 35 mm/h | 7 791 | 145/s | present |
+| Downpour, 180 mm/h | 24 054 | 147/s | a sheet |
+
+Separately, a `e < 0.02` audibility gate had been silencing *every* drop drizzle
+produces, so light rain had no individual drops in it at all — only the hiss.
+That gate is now three hundred times lower.
+
+### Four more that were structural, not tuning
+
+**A tap count taken from the rain slider.** A drop that demonstrably hit the
+glass made no sound whenever the slider said it shouldn't have. The sound had
+stopped following the simulation and started following a number beside it.
+Nothing in the engine consults the rate any more.
 
 **A voice budget counted by callbacks.** `onended` only fires when the main
-thread is free. During a long frame or a GC pause the count stayed at its
-ceiling and the engine went silent exactly when the rain was heaviest — measured
-as 6 taps voiced in six seconds of downpour. Voices are now counted by their
-scheduled end times, which the audio scheduler knows without the main thread.
+thread is free, so during a long frame the count stuck at its ceiling and the
+engine went silent exactly when the rain was heaviest — 6 taps voiced in six
+seconds of downpour. Voices are counted by their scheduled end times now.
 
 **Beds that decayed towards silence.** `setTargetAtTime` approaches a value
-without ever arriving, so rain that had stopped kept hissing at 0.0016 forever.
-Every bed target that reaches zero is now pinned there, the same fix the mute
-already had. Rain that has stopped is silent, not nearly silent.
+without arriving, so stopped rain hissed forever at 0.0016. Zero targets are
+pinned, as mute already was.
 
-A fourth was the test's fault and worth recording anyway: the page's own
-animation loop keeps raining behind any measurement, so the first "bed floor"
-readings were really live impacts. A harness that measures the audio has to stop
-the drops first.
+**A bandpass whose level moved with its frequency.** Wet glass measured *louder*
+than dry glass while every deliberate term said the opposite: the ring filter
+passes more the lower and wider it is set, so making a tap duller quietly made
+it louder. The correction exponents are measured on the actual noise buffer
+(level goes as `f^-0.26 · Q^-0.45`) — deriving them from an idealised bandpass
+on white noise gives `-0.5, -0.5` and overshoots enough to leave the bug in
+place.
 
 ### What the sound was measured at
+
+Level and timbre are rendered offline, one tap at a time, in `rp-timbre.mjs` and
+`rp-loud.mjs`. Measuring a single tap through the live context while the beds
+and the page's own rain were running gave answers wrong by more than the effect
+being measured — twice.
+
+| a 2 mm drop landing on | level | brightness |
+|---|---|---|
+| dry glass | 0.00182 | 6 899 Hz |
+| damp glass, no film | 31% quieter | 25% darker |
+| a 0.25 mm film | 40% quieter | 44% darker |
+| a 0.6 mm film | 68% quieter | 75% darker |
 
 | | |
 |---|---|
 | before the first tap | no `AudioContext` is created at all |
-| rain stopped | exactly 0.0000 — silence, not a residual hiss |
-| bed level, drizzle → downpour | 0.015 → 0.059 |
-| one 2 mm drop on dry glass | bright: peak 0.0030, centroid 6.6 kHz |
-| the same drop into a 0.25 mm film | dull: 26% quieter and 42% darker |
-| impact energy ×1/10 → ×1 → ×8 | 0.0007 → 0.0030 → 0.0090, tracking `e^0.55` |
-| a downpour, six seconds | 111 drops/s on the visible patch, 62/s voiced as taps, ~36 000/s folded into the texture |
-| voices at a downpour | peaked at 10 of a budget of 26 |
+| rain stopped | falls to exactly zero, within a second of a downpour ending |
+| loudness against impact energy, ×0.01 → ×16 | 0.06, 0.32, 1.00, 2.78, 3.08 — tracking `e^0.55` |
+| a downpour | 113 drops/s on the visible patch, 147/s voiced, ~46 000/s folded into the texture |
+| voices at a downpour | 26 of a budget of 26 |
+| cost | 0.22 ms/frame at a downpour, against 5.1 ms for the water |
 | mute | silent, and it stays silent |
 | hidden then returned | 200 impacts had queued, 0 were replayed |
 
@@ -187,6 +231,30 @@ Both must be driven by measured solver flux rather than by the rain slider, so
 thresholds get set from those numbers, not guessed. There is also no sample
 layer: `AGENTS.md` prefers a procedural/sample hybrid, and this build is pure
 synthesis by request.
+
+## Which way is down
+
+The Fog Mirror DeviceMotion mapping was copied verbatim and is still frozen, but
+it was only ever verified in portrait, and it was missing one thing. DeviceMotion
+reports in the device's *fixed* frame, which is the screen's frame only while the
+display is in its natural orientation. Rainpane relayouts when you turn the
+device, so past that point the two disagree by exactly `screen.orientation.angle`:
+a quarter turn sends the water sideways, and a tablet held upside-down sends it
+straight **up**. That is how it was found, on a device.
+
+The correction is a rotation of the answer in `vector()`, not a change to how the
+sensor is read, and it is the identity at angle 0 — so every case the original
+mapping was verified against is bit-for-bit what it was. `rp-orient.mjs` holds
+the screen upright in each of the four display orientations and asks where the
+water runs:
+
+```text
+before:  0° down    90° right   180° UP     270° left
+after:   0° down    90° down    180° down   270° down
+```
+
+Fog Mirror's `src/orientation.js` has the same defect and the same relayout, and
+has not been changed.
 
 ## Running it
 

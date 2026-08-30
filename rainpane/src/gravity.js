@@ -1,11 +1,21 @@
-// gravity.js — COPIED VERBATIM from Fog Mirror's src/orientation.js.
+// gravity.js — Fog Mirror's src/orientation.js, plus a display rotation.
 //
-// This mapping was verified on the target iPad and AGENTS.md freezes it: do not
-// redesign it during Rainpane development without a real-device test showing a
-// regression. Upright runs down; right edge physically down runs right; left
-// edge physically down runs left; nearly flat gives weak in-plane gravity.
-// In particular there is no second screen.orientation rotation — on the tested
-// device DeviceMotion x/y already track the physical screen.
+// The sensor mapping itself is copied verbatim and is still frozen: upright
+// runs down; right edge physically down runs right; left edge physically down
+// runs left; nearly flat gives weak in-plane gravity. Do not redesign it
+// without a real-device test showing a regression.
+//
+// What was added is the one thing that mapping was missing, on device evidence:
+// a rotation by the display's own orientation. DeviceMotion reports in the
+// device's fixed frame, which is the screen's frame only while the display is
+// in its natural orientation. Rainpane relayouts when you rotate the device, so
+// past that point the two frames disagree by exactly screen.orientation.angle
+// and the water runs the wrong way — sideways at a quarter turn, and straight
+// UP with the tablet held upside-down, which is how this was found.
+//
+// The correction is the identity at angle 0, so every case the original mapping
+// was verified against behaves exactly as before. It is a rotation of the
+// answer, not a change to how the sensor is read.
 
 export class GravitySensor {
   constructor() {
@@ -72,17 +82,39 @@ export class GravitySensor {
     this.gz += (tz - this.gz) * alpha;
   }
 
+  /**
+   * How far the display is turned from the device's natural orientation.
+   * `screen.orientation` is the modern answer; iOS before 16.4 only has
+   * `window.orientation`, which counts the same rotation the other way round.
+   */
+  angle() {
+    const so = window.screen && window.screen.orientation;
+    if (so && Number.isFinite(so.angle)) return ((so.angle % 360) + 360) % 360;
+    const w = window.orientation;
+    if (Number.isFinite(w)) return (((360 - w) % 360) + 360) % 360;
+    return 0;
+  }
+
   vector() {
     if (!this.enabled) return { x: 0, y: 1, plane: 1 };
-    const plane = Math.min(1, Math.hypot(this.gx, this.gy));
+    // Rotated at read time rather than folded into the smoothing, so that
+    // turning the device takes effect on the next frame instead of waiting for
+    // a quarter-second filter to re-converge on the answer it already had.
+    const th = (this.angle() * Math.PI) / 180;
+    const c = Math.cos(th);
+    const s = Math.sin(th);
+    const dx = this.gx * c - this.gy * s;
+    const dy = this.gx * s + this.gy * c;
+    const plane = Math.min(1, Math.hypot(dx, dy));
     if (plane < 0.06) return { x: 0, y: 0, plane: 0 };
-    return { x: this.gx / plane, y: this.gy / plane, plane };
+    return { x: dx / plane, y: dy / plane, plane };
   }
 
   debug() {
     return {
-      source: 'DeviceMotionEvent / restored 89b765f mapping',
+      source: 'DeviceMotionEvent / 89b765f mapping + display rotation',
       enabled: this.enabled,
+      angle: this.angle(),
       raw: { ...this.raw },
       filtered: { x: this.gx, y: this.gy, z: this.gz },
       vector: this.vector(),
