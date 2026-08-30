@@ -7,19 +7,30 @@
 // audio, no thunder, no airborne rain and no decoration: the point is that the
 // water on the glass can be judged on a real device.
 
-import { Surface, MM } from './surface.js';
-import { FlowSystem } from './flows.js';
-import { ImpactField } from './impact.js';
-import { Rainfall, INTENSITIES } from './rain.js';
-import { PaneRenderer } from './render.js';
-import { Scene } from './scene.js';
-import { GravitySensor } from './gravity.js';
-import { AudioEngine } from './audio.js';
+import { Surface, MM } from './surface.js?v=20260830a';
+import { FlowSystem } from './flows.js?v=20260830a';
+import { ImpactField } from './impact.js?v=20260830a';
+import { Rainfall, INTENSITIES } from './rain.js?v=20260830a';
+import { PaneRenderer } from './render.js?v=20260830a';
+import { Scene } from './scene.js?v=20260830a';
+import { GravitySensor } from './gravity.js?v=20260830a';
+import { AudioEngine } from './audio.js?v=20260830a';
 
 // The grid follows a physical cell size, not a fixed count. Fixing the count
 // means a phone quietly simulates at twice the resolution of a tablet and pays
 // for it, while a millimetre of glass covers a different number of cells on
 // each — the one thing this project keeps insisting must never happen.
+// Bump this on every ship, and keep it identical to the ?v= on every import
+// and on the script tag in index.html.
+//
+// GitHub Pages serves modules with a cache lifetime, and Safari holds on to
+// them hard: a fix can be live on the server while the device quietly runs the
+// previous build, which cost two rounds of debugging a bug that was already
+// fixed. A query string makes each version a different URL, so there is nothing
+// to invalidate. The diagnostics show it, which is the point — "which build am
+// I actually looking at" should never again be something to reason about.
+const BUILD = '20260830a';
+
 const CELL_MM = 0.22;        // about a fifth of a millimetre of glass per cell
 const MAX_CELLS = 130000;    // ...unless that would cost too much
 const STEP = 1 / 60;
@@ -189,7 +200,7 @@ function updateDiag(g) {
     `on glass ${mm3.toFixed(0)} mm3   ran off ${(surface.drained * surface.cellMm ** 3).toFixed(0)}   dried ${(surface.evaporated * surface.cellMm ** 3).toFixed(0)}`,
     `cell     ${surface.cellMm.toFixed(3)} mm   grid ${surface.cols}x${surface.rows}`,
     `sound    ${audio.ready ? (audio.muted ? 'muted' : 'on') : 'off'}   ${audio.voices} voices   x${audio.multiplier.toFixed(0)} pane`,
-    `renderer ${renderer.ok ? 'webgl' : '2d fallback'}`,
+    `renderer ${renderer.ok ? 'webgl' : '2d fallback'}   build ${BUILD}`,
   ].join('\n');
 }
 

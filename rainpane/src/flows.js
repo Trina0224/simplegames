@@ -9,7 +9,7 @@
 // object than as a grid. They exchange mass in both directions and the total is
 // conserved.
 
-import { MM, NONE } from './surface.js';
+import { MM, NONE } from './surface.js?v=20260830a';
 
 // A sessile drop on glass is a spherical cap, so its volume goes as the cube of
 // its base radius, not the square. Getting that wrong makes every mass-derived
