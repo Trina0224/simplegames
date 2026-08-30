@@ -34,7 +34,13 @@ export function propagate(y0, T, opts = {}) {
 
   const y = Float64Array.from(y0);
   const C0 = jacobi(y, mu);
-  const xs = [y[0]], ys = [y[1]], ts = [0];
+  // Velocities are sampled too, not reconstructed later by differencing the
+  // positions. A differenced velocity is wrong by the sample spacing, and the
+  // Jacobi constant computed from it drifts by 1e-5 while the integration is
+  // holding 1e-11 — the readout would then be reporting its own arithmetic
+  // rather than the solver's, which is exactly the thing RESEARCH.md says not
+  // to hide. The interpolant already carries them.
+  const xs = [y[0]], ys = [y[1]], vxs = [y[2]], vys = [y[3]], ts = [0];
   const out = new Float64Array(4);
   let t = 0, h = 1e-4, next = sample, drift = 0, status = 'ok';
 
@@ -48,7 +54,7 @@ export function propagate(y0, T, opts = {}) {
     // sample the interpolant, not the step ends
     while (next <= t && next >= tPrev) {
       it.interpolate((next - tPrev) / r.h, out);
-      xs.push(out[0]); ys.push(out[1]); ts.push(next);
+      xs.push(out[0]); ys.push(out[1]); vxs.push(out[2]); vys.push(out[3]); ts.push(next);
       next += sample;
     }
 
@@ -64,7 +70,7 @@ export function propagate(y0, T, opts = {}) {
     void y0x; void y0y;
   }
   return {
-    xs, ys, ts, t, state: Array.from(y), status,
+    xs, ys, vxs, vys, ts, t, state: Array.from(y), status,
     C0, C: jacobi(y, mu), drift, relDrift: drift / Math.max(1, Math.abs(C0)),
     accepted: it.accepted, rejected: it.rejected,
   };

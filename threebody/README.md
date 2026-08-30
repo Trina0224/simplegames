@@ -1,18 +1,40 @@
 # Threebody — Earth–Moon CR3BP
 
-An interactive Earth–Moon three-body sandbox. This is the numerical core: the
-equations, the equilibria, the integrator and the propagator, with the
-validation suite that the specification makes a condition of claiming physical
-fidelity. **There is no application yet** — the specs are emphatic that the 2D
-solver must be trustworthy before anything is built on it, and this is that
-part.
+An interactive Earth–Moon three-body sandbox. A spacecraft with no engine, in the
+gravity of two bodies, doing things that look impossible — and every path on
+screen is numerically integrated from the CR3BP equations rather than drawn.
+
+That rule is the product. `AGENTS.md` forbids Bézier curves as orbits, splines
+imitating horseshoes, steering the spacecraft's position toward a destination,
+and hand-authored behaviour near the Moon. What is left is harder to build and is
+the only version worth having: **the weird path was not animated by us, the
+equations produced it.**
 
 The design requirements are external and are not authored here:
 [`SPEC.md`](SPEC.md), [`AGENTS.md`](AGENTS.md), [`RESEARCH.md`](RESEARCH.md).
 
 ```sh
+python3 -m http.server 8000      # then open /threebody/
 node --experimental-default-type=module threebody/tools/validate.mjs
 ```
+
+## Using it
+
+Pick a preset and watch. The **horseshoe** is the one to start with: leave it in
+the rotating frame until it has gone round once — a little over six months at
+eight days a second — then switch to **inertial**. The strange U-shape turns into
+an ordinary near-circular orbit around the Earth, because it never was a shape in
+space. It was a shape *relative to the Moon*.
+
+- **Drag the spacecraft** to burn. Its position does not change, its velocity
+  does, and the Jacobi constant changes with it. Everything after is ballistic.
+- **Zero-velocity** draws the boundary of where the spacecraft can be at all at
+  its current energy. Burn, and watch the necks around L1 and L2 open or close.
+- **Target** solves for a burn that arrives, by shooting — not by steering. It
+  reports Δv, flight time, miss distance and the Jacobi constant either side, and
+  when it cannot find one it says so instead of snapping to the destination.
+- L1, L2 and L3 are drawn as crosses because nothing rests there; L4 and L5 as
+  rings because things can.
 
 ## What is here
 
@@ -22,8 +44,34 @@ node --experimental-default-type=module threebody/tools/validate.mjs
 | `src/cr3bp.js` | the equations of motion, the effective potential, the Jacobi constant |
 | `src/lagrange.js` | the five equilibria, solved, with their linear character |
 | `src/integrator.js` | adaptive Dormand–Prince 5(4) with dense output |
-| `src/trajectory.js` | propagation, event detection, symmetric-orbit correction |
+| `src/trajectory.js` | propagation, event detection, family correction, classification |
+| `src/frames.js` | rotating ↔ inertial, one trajectory seen from two places |
+| `src/zvc.js` | zero-velocity curves from the live Jacobi constant |
+| `src/targeting.js` | shooting for a burn that arrives |
+| `src/presets.js` | reproducible initial states with their provenance |
+| `src/worker.js` | the solver, off the main thread |
+| `src/render.js` | drawing, and only drawing |
+| `src/app.js` | the clock and the controls |
 | `tools/validate.mjs` | the suite below |
+| `tools/horseshoe.mjs` | regenerates the horseshoe family from nothing |
+
+### How the app is put together
+
+Three separate jobs, because they want different things. The **worker** computes
+physical states as fast as it can. The **clock** plays back what has been
+computed, at whatever rate the user asked for. The **renderer** draws. Playback
+speed therefore changes how quickly cached states are shown and never touches the
+integration, so a horseshoe watched at eight days a second is the same trajectory
+as one watched at one.
+
+Switching frames transforms the stored trajectory; it never re-integrates. There
+is one physical solution and two ways of looking at it, which is the entire point
+of having the switch.
+
+Body radii are drawn larger than life — Earth is three pixels at true scale and
+the Moon is under one — but the enlarged radius exists only in `render.js`.
+Collision is tested against the physical radius in `trajectory.js`, which cannot
+see the renderer.
 
 ## What was measured
 
@@ -121,10 +169,30 @@ at 1e-10 and no tighter. The period is stored to twelve figures for the same
 reason: rounded to six, the orbit does not come back to where it started, and
 that is a real 2e-4 error rather than a display choice.
 
+## What the app measures at runtime
+
+| | |
+|---|---|
+| one full horseshoe period played through | returns to x = −1.26710 against a start of −1.267104822 |
+| Jacobi drift over that period | 2.8e-11 absolute, 9.4e-12 relative, 1456 steps, 0 rejected |
+| frame switch | transforms the stored trajectory; round trip 2.2e-16 |
+| targeting, L4 tadpole → L2 | Δv 94.0 m/s, 17.4 days, miss 0.4 km, C 2.988073 → 2.984761 |
+| targeting, near L4 → L4 | Δv 9 m/s |
+| targeting, near L1 → L5 | Δv 1057 m/s — expensive, and it says so |
+| the `free` preset | ends in `impact: Moon`, detected on the physical radius |
+
+One thing worth recording. The readout first showed a Jacobi drift of 1.5e-5
+while the solver was holding 1e-11, because the displayed velocity was
+reconstructed by differencing sampled positions. The diagnostics were reporting
+their own arithmetic rather than the integration — precisely what `RESEARCH.md`
+says not to hide. Velocities are sampled from the interpolant now and the
+readout shows 1.2e-8, which is the interpolation between samples and nothing
+else.
+
 ## Next
 
-1. Frames, zero-velocity curves, burns and targeting. `correctAtEnergy` is
-   already the shooting machinery targeting needs.
-2. The application: renderer, worker, controls.
-3. Family continuation in C, so the horseshoe becomes a slider rather than two
-   fixed members.
+1. Family continuation in C, so the horseshoe becomes a slider across the family
+   rather than two fixed members.
+2. Planar Lyapunov orbits and DRO; then 3D — halo, Lissajous, NRHO.
+3. Invariant-manifold transfers, which is what the targeting wants to grow into:
+   the tubes are real conduits and cheaper than shooting at a point.
