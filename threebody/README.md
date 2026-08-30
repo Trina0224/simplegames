@@ -56,62 +56,75 @@ tightest value the integrator will accept.
 
 ## The horseshoe
 
-`AGENTS.md` makes an Earth–Moon horseshoe a first-class acceptance target, and
-forbids drawing one that did not come out of the equations. **Searching for one
-did not find it, and the reason appears to be physical.**
+`AGENTS.md` makes an Earth–Moon horseshoe a first-class acceptance target and
+forbids drawing one that did not come out of the equations. **It is found, and it
+is a converged member of the natural family.**
 
-About three thousand initial conditions were tried across two families —
-perpendicular x-axis crossings at fixed Jacobi constant, and co-orbital guiding
-centres released at the far side — spanning the whole energy window between
-C(L4) = 2.98800 and C(L3) = 3.01215. Every one either reached the Moon's
-longitude and circulated, impacted, or left the domain. Not one librated about
-180°.
+```text
+C       = 3.000
+x0      = -1.267104822143678      (perpendicular crossing on the far side)
+vy0     =  0.436635825362         (fixed by C, not stored separately)
+period  = 43.937540294751 TU  =  190.8 days
+```
 
-The decisive test was to run the same code at mass ratios where horseshoes are
-known to exist:
+| | |
+|---|---|
+| crossing residual, vx | 4.1e-13 — the shooting function's own noise floor |
+| closes on itself after one period | 1.1e-8 |
+| libration | ±158° about the far side; L4 and L5 sit at ±120 |
+| mean semi-major axis | 0.9997 — a genuine 1:1 co-orbital, not merely a U-shape |
+| closest approach to the Moon | 145 000 km |
+| same family at tolerance 1e-9 / 1e-11 / 1e-13 | libration span 315.2° all three |
 
-| system | mass ratio | result | Jacobi drift |
-|---|---|---|---|
-| Saturn–Janus-ish | 1e-8 | horseshoe, 327° libration | 1.3e-15 |
-| Sun–Earth-ish | 3e-6 | horseshoe, 327° | 3.6e-15 |
-| Sun–Jupiter-ish | 9.5e-4 | horseshoe, 315° | 8.7e-12 |
-| — | 2.0e-3 | horseshoe, 323° | |
-| — | 3.0e-3 | **none** | |
-| **Earth–Moon** | **1.215e-2** | **none**, full circulation | 5.0e-4 |
+`tools/horseshoe.mjs` regenerates the whole family from nothing — no seed, no
+table — by sweeping perpendicular far-side crossings at fixed C, bracketing every
+sign change of vx at the next crossing, and correcting each bracket. It finds
+eleven horseshoes across C = 3.00, 3.05 and 3.10.
 
-The family disappears between mass ratios of 2e-3 and 3e-3. Earth–Moon sits five
-times above that boundary. The mechanism is visible in the numbers: the
-co-orbital energy window admits radial excursions of at most 0.127 DU, and a
-horseshoe at this mass ratio would have to turn round further from the Moon than
-that window allows, so instead of reversing it runs into the Moon's vicinity and
-is scattered — which is what the 5e-4 Jacobi drift in the last row is, a close
-encounter the integrator had to work through.
+### Why searching for it first failed
 
-### How strong this claim is
+Three thousand initial conditions found nothing, and the reason was two
+compounding mistakes, neither of them physics.
 
-Not a proof of non-existence. It is an exhaustive search of two initial-condition
-families, and the guiding-centre guess those families rest on gets worse as the
-mass ratio grows — precisely where the answer changed. A horseshoe at this mass
-ratio, if one exists, would be strongly unstable, and an unstable family is a
-measure-zero set that no grid ever lands on. It has to be *corrected* into
-existence, not stumbled upon.
+**The energy window was wrong.** The co-orbital literature gives the Earth–Moon
+horseshoe range as C(L4) < C < **C(L2)** = 3.172. The search was capped at C(L3)
+= 3.012 — the bottom sixth of it — on an assumption about zero-velocity geometry
+that was never checked against the source.
 
-So the next step is not more searching. It is continuation: take the horseshoe
-that does exist at 2e-3, correct it to a genuinely periodic orbit, then walk the
-mass ratio up in small steps, re-correcting at each one, and watch either the
-family arrive at Earth–Moon or terminate somewhere on the way. `correctSymmetric`
-in `trajectory.js` is the corrector that does this; what it still needs is the
-continuation loop and a reliable way to identify which axis crossing closes the
-orbit.
+**The search band was far too narrow.** The initial conditions came from a
+guiding-centre approximation, which put the co-orbital band at |Δr| < 0.127 DU.
+The real family runs from r = 0.605 to 1.367 — a radial half-width of 0.32, two
+and a half times wider. That approximation is excellent at small mass ratios and
+poor at the Moon's, which is exactly where the answer changed.
 
-Either outcome is a good result. If the family survives, there is a real
-Earth–Moon horseshoe to ship. If it terminates, the app has something better than
-a preset: a demonstration of *why* the Moon is too heavy for one, which is a more
-interesting thing to learn than that the path is U-shaped.
+**And no grid would have worked anyway.** These orbits amplify a perturbation by
+1.8e5 per period. An unstable family is a measure-zero set: the states that stay
+on it have to be *corrected* into existence, never stumbled upon. That is why
+`correctAtEnergy` exists, and it is the machinery the targeting feature needs
+too.
+
+The earlier reading — that the family disappears above a mass ratio of about
+2e-3 — was wrong. What disappears above that ratio is the *initial-condition
+sweep's* ability to land on it, because the guiding-centre guess it rests on
+degrades. The family itself is there.
+
+### Two numerical points worth keeping
+
+**The corrector's target cannot be tighter than its own noise.** vx at the
+crossing is the end of a 20-TU integration at tolerance 1e-13, so it is only
+knowable to about 1e-12. Asking Newton for 1e-13 has it chasing integration noise
+instead of the root, and it never converges.
+
+**An unstable orbit cannot close better than its instability allows.** With a
+residual of 4e-13 in the initial condition and 1.8e5 amplification, closure lands
+at 1e-10 and no tighter. The period is stored to twelve figures for the same
+reason: rounded to six, the orbit does not come back to where it started, and
+that is a real 2e-4 error rather than a display choice.
 
 ## Next
 
-1. Continuation in mass ratio to settle the horseshoe.
-2. Frames, zero-velocity curves, burns and targeting — the corrector above is
-   already the machinery targeting needs.
-3. The application: renderer, worker, presets, controls.
+1. Frames, zero-velocity curves, burns and targeting. `correctAtEnergy` is
+   already the shooting machinery targeting needs.
+2. The application: renderer, worker, controls.
+3. Family continuation in C, so the horseshoe becomes a slider rather than two
+   fixed members.
