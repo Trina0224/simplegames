@@ -26,6 +26,7 @@ import { propagate3 } from '../src/trajectory3d.js?v=20260830i';
 import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830i';
 import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830i';
 import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830i';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830i';
 import { toInertial } from '../src/frames.js?v=20260830i';
 import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830i';
 
@@ -659,6 +660,68 @@ console.log('\n15. NRHO is a region of the halo family, reached by continuation'
     })(),
     `${(lunarGeometry(branch[0]).perilune * DU_KM).toFixed(0)} km at the top of the branch, ` +
     `${(deepest.perilune * DU_KM).toFixed(0)} km at the bottom`);
+}
+
+console.log('\n16. The families are one continuation, not a shortlist');
+{
+  // THREE_D_SPEC.md 9 asks for a family parameter rather than "a collection of
+  // unrelated hand-picked presets". These checks are what makes that claim
+  // testable: every stored member is re-flown and has to be periodic, the family
+  // has to vary monotonically along it, and the end of the L2 branch has to BE
+  // the NRHO preset rather than merely resemble it.
+  for (const point of FAMILY_POINTS) {
+    const fam = FAMILY3D[point];
+    let worstClose = 0, worstDrift = 0, worstC = 0, inside = 0;
+    for (const m of fam) {
+      const c = closure({ state: m.state, period: m.period });
+      worstClose = Math.max(worstClose, c.error);
+      worstDrift = Math.max(worstDrift, c.run.relDrift);
+      worstC = Math.max(worstC, Math.abs(jacobi3(m.state, MU) - m.C));
+      if (m.periluneKm / DU_KM < MOON_RADIUS) inside += 1;
+    }
+    check(`every ${point} member closes when re-flown`, worstClose < 1e-8,
+      `${fam.length} members, worst closure ${worstClose.toExponential(2)}, ` +
+      `worst Jacobi drift ${worstDrift.toExponential(2)}`);
+    check(`every ${point} member reports the C it stores`, worstC < 1e-9,
+      `worst ${worstC.toExponential(1)}`);
+    check(`no ${point} member passes inside the Moon`, inside === 0,
+      `closest perilune ${Math.min(...fam.map((m) => m.periluneKm)).toLocaleString('en-US')} km ` +
+      `against a lunar radius of ${(MOON_RADIUS * DU_KM).toFixed(0)} km`);
+
+    const peri = fam.map((m) => m.periluneKm);
+    const zs = fam.map((m) => m.zMaxKm);
+    // Perilune falls all the way down; |z| does NOT. It rises, peaks, and falls
+    // again, and the turning point is where the orbit stops growing taller and
+    // starts growing thin -- which is the near-rectilinear transition itself.
+    // A check that demanded both be monotonic would be asserting something the
+    // family does not do; the first draft of it was accidentally always true and
+    // hid this entirely.
+    const periFalls = peri.every((v, i) => i === 0 || v <= peri[i - 1] + 1);
+    let peak = 0;
+    for (let i = 1; i < zs.length; i += 1) if (zs[i] > zs[peak]) peak = i;
+    const unimodal = zs.every((v, i) => (i <= peak ? i === 0 || v >= zs[i - 1] - 1
+                                                   : v <= zs[i - 1] + 1));
+    check(`the ${point} branch falls steadily toward the Moon`, periFalls,
+      `perilune ${peri[0].toLocaleString('en-US')} -> ${peri[peri.length - 1].toLocaleString('en-US')} km, ` +
+      `slenderness ${fam[0].slenderness} -> ${fam[fam.length - 1].slenderness}`);
+    check(`its height rises then falls, once, as it goes near-rectilinear`, unimodal,
+      `|z| ${zs[0].toLocaleString('en-US')} -> peaks at ${zs[peak].toLocaleString('en-US')} km ` +
+      `(member ${peak + 1} of ${zs.length}) -> ${zs[zs.length - 1].toLocaleString('en-US')} km`);
+  }
+
+  // The NRHO is not a separate discovery: it is where the L2 branch ends.
+  const last = FAMILY3D.L2[FAMILY3D.L2.length - 1];
+  let same = 0;
+  for (let i = 0; i < 6; i += 1) same = Math.max(same, Math.abs(last.state[i] - NRHO3D.state[i]));
+  check('the end of the L2 branch IS the NRHO preset',
+    same === 0 && last.period === NRHO3D.period,
+    `every component identical, period ${last.period}`);
+
+  // And the thing that a small residual alone would have missed.
+  check('a member is accepted on closure, not on residual alone',
+    FAMILY3D.L1.every((m) => m.closure < 1e-8 && m.residual < 1e-9),
+    `worst L1 closure ${Math.max(...FAMILY3D.L1.map((m) => m.closure)).toExponential(1)} -- ` +
+    `the branch used to run on past here with residuals of 1e-12 and closure of 2.4 DU`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

@@ -21,6 +21,7 @@ import { Scene3D, VIEWS } from './render3d.js?v=20260830i';
 import { propagate3 } from './trajectory3d.js?v=20260830i';
 import { jacobi3 } from './cr3bp3d.js?v=20260830i';
 import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830i';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830i';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -46,6 +47,7 @@ const ui = {
   spatial: el('spatial'), spatialbar: el('spatialbar'), preset3d: el('preset3d'),
   viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
   plane: el('plane'), track: el('track'),
+  familybar: el('familybar'), famSlider: el('famSlider'), famRead: el('famRead'),
   readout: el('readout'), note: el('note'), title: el('title'), blurb: el('blurb'),
   panel: document.querySelector('.controls'),
   diag: el('diag'),
@@ -376,7 +378,39 @@ function updateEditorReadout() {
 
 // ---------------------------------------------------------------- 3D playback
 
+// The family entries are not orbits, they are the whole continuation with a
+// handle on it -- THREE_D_SPEC.md 9 asks for a family parameter rather than a
+// collection of unrelated hand-picked presets, and these are that handle.
+const FAMILY_ENTRIES = FAMILY_POINTS.map((p) => ({
+  id: `family-${p}`, name: `${p} family — browse`, point: p, family: p,
+}));
+
+/** One member of a continued family, dressed as something load3 can play. */
+function familyMember(point, i) {
+  const list = FAMILY3D[point];
+  const m = list[Math.max(0, Math.min(list.length - 1, i))];
+  return {
+    ...m,
+    id: `family-${point}`, name: `${point} family, member ${i + 1} of ${list.length}`,
+    family: point, index: i,
+    duration: m.period * 3,
+    blurb: 'One continuation, not a shortlist. Every member here was corrected from '
+      + 'the one before it, and the slider walks the family from a small halo down to '
+      + 'a near-rectilinear orbit that all but grazes the Moon.',
+    expect: `|z| ${m.zMaxKm.toLocaleString('en-US')} km, perilune ${m.periluneKm.toLocaleString('en-US')} km, `
+      + `slenderness ${m.slenderness.toFixed(2)}`,
+  };
+}
+
 function load3(p) {
+  if (p && p.family && p.index === undefined) {
+    // an entry from the menu: start at whatever the slider is showing
+    ui.familybar.hidden = false;
+    ui.famSlider.max = String(FAMILY3D[p.family].length - 1);
+    load3(familyMember(p.family, Number(ui.famSlider.value)));
+    return;
+  }
+  ui.familybar.hidden = !(p && p.family);
   preset3 = p;
   ui.title.textContent = p.name;
   ui.blurb.textContent = p.blurb;
@@ -389,8 +423,17 @@ function load3(p) {
   playing = true;
   ui.play.textContent = 'Pause';
   ui.note.textContent = p.expect ? 'expect: ' + p.expect : '';
+  if (p.family) {
+    ui.famRead.textContent = `|z| ${p.zMaxKm.toLocaleString('en-US')} km   perilune `
+      + `${p.periluneKm.toLocaleString('en-US')} km   ${(p.period * TU_DAYS).toFixed(2)} d`;
+  }
   fitSpatial();
 }
+
+ui.famSlider.addEventListener('input', () => {
+  if (!preset3 || !preset3.family) return;
+  load3(familyMember(preset3.family, Number(ui.famSlider.value)));
+});
 
 /** Frame the orbit from its own extent, so a bigger halo is not cropped. */
 function fitSpatial() {
@@ -480,7 +523,7 @@ function render3() {
 
 // ---------------------------------------------------------------- controls
 
-for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Periodic — near-rectilinear', [NRHO3D]], ['Quasi-periodic — Lissajous', LISSAJOUS3D]]) {
+for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Periodic — near-rectilinear', [NRHO3D]], ['Quasi-periodic — Lissajous', LISSAJOUS3D], ['The whole family', FAMILY_ENTRIES]]) {
   // Grouped, and labelled by what they ARE. A Lissajous sitting in the same flat
   // list as a halo would be read as another orbit; it is not an orbit at all.
   const g = document.createElement('optgroup');
@@ -582,6 +625,7 @@ function cancelFreeLaunch() {
 function setSpatial(on) {
   spatial = on;
   ui.spatialbar.hidden = !on;
+  if (!on) ui.familybar.hidden = true;
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
   // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
   // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so
@@ -593,7 +637,7 @@ function setSpatial(on) {
     : NORMAL_HINT;
   if (on) {
     if (editor.active) cancelFreeLaunch();
-    load3(byId3d(ui.preset3d.value) || PRESETS3D[0]);
+    load3(orbit3(ui.preset3d.value) || PRESETS3D[0]);
   } else {
     run3 = null;
     choosePreset(ui.preset.value);
@@ -601,7 +645,15 @@ function setSpatial(on) {
 }
 
 ui.spatial.addEventListener('click', () => setSpatial(!spatial));
-ui.preset3d.addEventListener('change', () => load3(byId3d(ui.preset3d.value)));
+/** The Orbit menu holds two kinds of thing: single orbits, and whole families. */
+function orbit3(id) {
+  return byId3d(id) || FAMILY_ENTRIES.find((f) => f.id === id) || null;
+}
+
+ui.preset3d.addEventListener('change', () => {
+  const p = orbit3(ui.preset3d.value);
+  if (p) load3(p);
+});
 ui.viewTop.addEventListener('click', () => scene3d.setView(VIEWS.top));
 ui.viewSide.addEventListener('click', () => scene3d.setView(VIEWS.side));
 ui.viewEnd.addEventListener('click', () => scene3d.setView(VIEWS.end));

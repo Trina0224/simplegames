@@ -518,6 +518,17 @@ export function haloBranch(point, opts = {}) {
       prev = { ...prev, param: prev.state[0] };
     }
 
+    // A small residual is NOT enough, and this is the one place it matters.
+    // The corrector drives (vx, vz) to zero at the next y = 0 crossing, which is
+    // the half-period crossing only while the orbit still has exactly two such
+    // crossings per revolution. Deep in the L1 branch that stops being true --
+    // the orbit grazes the Moon and the topology changes -- and the corrector
+    // then happily reports a residual of 1e-12 for a state whose orbit misses
+    // itself by 2.4 DU after "one period". Measured, that is where the L1 branch
+    // stops being a halo family, and the only thing that catches it is asking
+    // whether the orbit actually CLOSES.
+    if (o && o.converged && closure(o).error > 1e-6) o = null;
+
     if (!o) break;
     step = Math.sign(step) * Math.min(Math.abs(hold === 'x' ? dx : dz), h * 1.6);
     const m = { ...o, param: target, hold };
