@@ -24,8 +24,8 @@ import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830i';
 import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830i';
 import { propagate3 } from '../src/trajectory3d.js?v=20260830i';
 import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830i';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights } from '../src/halo.js?v=20260830i';
-import { PRESETS3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830i';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830i';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830i';
 import { toInertial } from '../src/frames.js?v=20260830i';
 import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830i';
 
@@ -619,6 +619,46 @@ console.log('\n14. A Lissajous is not a halo, and is not called one');
     refined.lifetime > 20 && Math.abs(refined.correction) < 0.05,
     `${raw.point} seed holds 4.4 TU raw, ${refined.lifetime.toFixed(1)} TU after ` +
     `a correction of ${refined.correction.toExponential(2)} in vy`);
+}
+
+console.log('\n15. NRHO is a region of the halo family, reached by continuation');
+{
+  const n = NRHO3D;
+  const c = closure({ state: n.state, period: n.period });
+  const g = lunarGeometry({ state: n.state, period: n.period });
+  check('the NRHO closes after one period', c.error < 1e-8,
+    `closure ${c.error.toExponential(2)}, Jacobi drift ${c.run.relDrift.toExponential(2)}, ` +
+    `${c.run.accepted} steps, ${c.run.rejected} rejected, status "${c.run.status}"`);
+  check('it is near-rectilinear by measurement, not by shape',
+    g.slenderness > 3 && g.xSpan * DU_KM < 30000,
+    `|z| ${(g.zMax * DU_KM).toFixed(0)} km against ${(g.xSpan * DU_KM).toFixed(0)} km of x ` +
+    `-- slenderness ${g.slenderness.toFixed(2)}`);
+  check('it makes a genuine lunar close approach, and clears the surface',
+    g.perilune * DU_KM < 12000 && g.perilune > MOON_RADIUS,
+    `perilune ${(g.perilune * DU_KM).toFixed(0)} km from centre = ` +
+    `${((g.perilune - MOON_RADIUS) * DU_KM).toFixed(0)} km altitude; apolune ${(g.apolune * DU_KM).toFixed(0)} km`);
+  check('its topology survives a looser tolerance',
+    Math.abs(closure({ state: n.state, period: n.period }, { absTol: 1e-11, relTol: 1e-11 }).zMax - c.zMax) * DU_KM < 1,
+    `max |z| moves under a kilometre between 1e-11 and 1e-13`);
+  check('it reports the C it stores', Math.abs(jacobi3(n.state, MU) - n.C) < 1e-9,
+    `stored ${n.C.toFixed(9)}, measured ${jacobi3(n.state, MU).toFixed(9)}`);
+
+  // and it must have been REACHED, not typed in
+  const branch = haloBranch('L2', { steps: 400 });
+  const deepest = lunarGeometry(branch[branch.length - 1]);
+  const zHeld = branch.filter((m) => m.hold === 'z').length;
+  check('the branch walks there from a Richardson seed, through the fold',
+    branch.length > 40 && zHeld > 10 && zHeld < branch.length &&
+      Math.abs(deepest.perilune - g.perilune) * DU_KM < 1,
+    `${branch.length} members, ${zHeld} holding z0 then ${branch.length - zHeld} holding x0; ` +
+    `the last one is the preset, to ${(Math.abs(deepest.perilune - g.perilune) * DU_KM * 1000).toFixed(0)} m`);
+  check('perilune falls monotonically down the branch',
+    (() => {
+      const p = branch.filter((_, i) => i % 6 === 0).map((m) => lunarGeometry(m).perilune);
+      return p.every((v, i) => i === 0 || v <= p[i - 1] + 1e-6);
+    })(),
+    `${(lunarGeometry(branch[0]).perilune * DU_KM).toFixed(0)} km at the top of the branch, ` +
+    `${(deepest.perilune * DU_KM).toFixed(0)} km at the bottom`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

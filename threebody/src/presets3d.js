@@ -55,6 +55,50 @@ export const PRESETS3D = [
 ];
 
 /**
+ * A near-rectilinear halo orbit.
+ *
+ * Not a separate object and not a canned shape: THREE_D_SPEC.md 9 insists NRHO
+ * is a REGION of the halo family's own landscape, and this is the same corrector
+ * that produced the small halos above, walked 64 members down the L2 branch.
+ *
+ * Two things the walk needed. The family stops being a function of z0 partway
+ * down -- that is the fold where NRHO territory begins -- so the held component
+ * switches from z0 to x0 there, 33 steps in one and 31 in the other. And the
+ * stride halves rather than stopping when the corrector cannot recover, because
+ * a failure almost never means the family has ended.
+ *
+ * It is near-rectilinear by MEASUREMENT, not by the shape it draws: 74 611 km of
+ * out-of-plane excursion against a 21 971 km span in x, a perilune 5 675 km above
+ * the Moon's surface, and an apolune of 77 696 km.
+ *
+ * This is ideal Earth-Moon CR3BP. It is not Gateway: Gateway's NRHO has a
+ * perilune near 3 200 km and a period of 6.56 days in a 9:2 lunar resonance, and
+ * reproducing that would need an ephemeris model this project does not have.
+ * The spec says not to claim operational fidelity, so this claims none.
+ */
+export const NRHO3D = {
+  id: 'nrho-l2',
+  name: 'L2 NRHO',
+  point: 'L2',
+  blurb: 'The same halo family, continued until it becomes long and thin. It '
+    + 'swings 77 000 km out and then falls to within 5 675 km of the Moon’s '
+    + 'surface, every 7.9 days. The whole orbit is one narrow loop standing on end.',
+  state: [0.9870857208063908, 0, 0.019267509954168757, 0, 1.087606474285779, 0],
+  period: 1.8109336821422881,
+  duration: 1.8109336821422881 * 3,
+  C: 3.0285534103016762,
+  residual: 1.559e-12,
+  closure: 3.255e-10,
+  periluneKm: 7412,
+  apoluneKm: 77696,
+  slenderness: 3.396,
+  origin: 'the L2 halo branch, continued from a Richardson seed at Az = 0.005 DU: '
+    + '33 steps holding z0, then 31 holding x0 past the fold, with the stride halved '
+    + 'on any step the corrector could not recover from',
+  expect: 'perilune 5 675 km above the Moon; |z| 74 611 km against 21 972 km of x; closes in 7.86 days',
+};
+
+/**
  * Lissajous trajectories.
  *
  * Deliberately a SEPARATE list with no `period` field. THREE_D_SPEC.md 9: a
@@ -113,6 +157,6 @@ export const LISSAJOUS3D = [
   },
 ];
 
-export const ALL3D = [...PRESETS3D, ...LISSAJOUS3D];
+export const ALL3D = [...PRESETS3D, NRHO3D, ...LISSAJOUS3D];
 export const byId3d = (id) => ALL3D.find((p) => p.id === id) || null;
 export { MU };

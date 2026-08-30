@@ -20,7 +20,7 @@ import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830i';
 import { Scene3D, VIEWS } from './render3d.js?v=20260830i';
 import { propagate3 } from './trajectory3d.js?v=20260830i';
 import { jacobi3 } from './cr3bp3d.js?v=20260830i';
-import { PRESETS3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830i';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830i';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -480,7 +480,7 @@ function render3() {
 
 // ---------------------------------------------------------------- controls
 
-for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Quasi-periodic — Lissajous', LISSAJOUS3D]]) {
+for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Periodic — near-rectilinear', [NRHO3D]], ['Quasi-periodic — Lissajous', LISSAJOUS3D]]) {
   // Grouped, and labelled by what they ARE. A Lissajous sitting in the same flat
   // list as a halo would be read as another orbit; it is not an orbit at all.
   const g = document.createElement('optgroup');

@@ -23,7 +23,7 @@
 // Richardson (1980), Celestial Mechanics 22(3), 241-253, DOI 10.1007/BF01229511.
 // Howell (1984), Celestial Mechanics 32, 53-71, DOI 10.1007/BF01358403.
 
-import { MU } from './constants.js?v=20260830i';
+import { MU, MOON_X } from './constants.js?v=20260830i';
 import { lagrangePoints } from './lagrange.js?v=20260830i';
 import { jacobi3 } from './cr3bp3d.js?v=20260830i';
 import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830i';
@@ -393,6 +393,155 @@ export function closure(orbit, { mu = MU, absTol = 1e-13, relTol = 1e-13 } = {})
   let zMax = 0;
   for (const z of r.zs) zMax = Math.max(zMax, Math.abs(z));
   return { error: d, run: r, zMax };
+}
+
+/**
+ * Correct a halo with any ONE of the three initial components held fixed.
+ *
+ * Continuation in z0 walks the family beautifully until the family stops being a
+ * function of z0 -- and at L2 it does, which is where NRHO territory begins.
+ * Past the fold two members share a z0 and the corrector cannot choose between
+ * them; it stops converging while the family itself carries on quite happily.
+ * Holding a different component keeps going where z0 cannot.
+ */
+function correctWith(seed, hold, { mu = MU, tol = 1e-11, maxIter = 40, tMax = 12,
+                                   absTol = 1e-13, relTol = 1e-13 } = {}) {
+  // 'z' fixes z0 and corrects (x0, vy0); 'x' fixes x0 and corrects (z0, vy0)
+  const free = hold === 'x' ? [2, 4] : [0, 4];
+  const y = seed.slice();
+  const shoot = (a, b) => {
+    const st = y.slice();
+    st[free[0]] = a; st[free[1]] = b;
+    const c = toPlaneCrossing3(st, { mu, tMax, absTol, relTol });
+    return c ? { vx: c.state[3], vz: c.state[5], half: c.t } : null;
+  };
+  let p = y[free[0]], q = y[free[1]], best = null;
+  for (let i = 0; i < maxIter; i += 1) {
+    const m = shoot(p, q);
+    if (!m) break;
+    const err = Math.hypot(m.vx, m.vz);
+    if (!best || err < best.err) best = { p, q, err, half: m.half, iterations: i };
+    if (err < tol) break;
+    const h = 1e-8;
+    const a = shoot(p + h, q), b = shoot(p, q + h);
+    if (!a || !b) break;
+    const j11 = (a.vx - m.vx) / h, j12 = (b.vx - m.vx) / h;
+    const j21 = (a.vz - m.vz) / h, j22 = (b.vz - m.vz) / h;
+    const det = j11 * j22 - j12 * j21;
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-14) break;
+    let sp = (m.vx * j22 - m.vz * j12) / det;
+    let sq = (m.vz * j11 - m.vx * j21) / det;
+    const step = Math.hypot(sp, sq), cap = 0.02;
+    if (step > cap) { sp *= cap / step; sq *= cap / step; }
+    p -= sp; q -= sq;
+    if (!Number.isFinite(p) || !Number.isFinite(q)) break;
+  }
+  if (!best) return null;
+  const state = y.slice();
+  state[free[0]] = best.p; state[free[1]] = best.q;
+  return {
+    state, period: 2 * best.half, residual: best.err,
+    converged: best.err < tol, iterations: best.iterations, hold,
+    C: jacobi3(state, mu),
+  };
+}
+
+/**
+ * The halo family walked down toward near-rectilinear geometry.
+ *
+ * NRHO is not a separate object. THREE_D_AGENT.md and THREE_D_SPEC.md 9 both
+ * insist it is a region of the halo family's own landscape, reached by
+ * continuation, so this is the same corrector walked further -- with the held
+ * component switched from z0 to x0 at the fold, because past it the family is
+ * no longer a function of z0, and a secant prediction in whichever parameter is
+ * being held.
+ *
+ * What comes out is then checked for the thing that makes an NRHO an NRHO -- a
+ * close lunar perilune and a long thin orbit -- rather than being labelled by
+ * the shape it happens to draw.
+ */
+export function haloBranch(point, opts = {}) {
+  const { steps = 400, dz = 0.0025, dx = -0.002, minStep = 2e-5 } = opts;
+  const out = [];
+  let prev = null, prev2 = null, hold = 'z', swapped = false;
+  let step = dz;
+
+  const take = (from, h, target) => {
+    const idx = h === 'x' ? 0 : 2;
+    const free = h === 'x' ? [2, 4] : [0, 4];
+    const seed = from.state.slice();
+    seed[idx] = target;
+    if (prev2 && prev2.hold === h && from.param !== prev2.param) {
+      const d = (target - from.param) / (from.param - prev2.param);
+      for (const f of free) seed[f] = from.state[f] + d * (from.state[f] - prev2.state[f]);
+    }
+    return correctWith(seed, h, opts);
+  };
+
+  for (let i = 0; i < steps; i += 1) {
+    if (!prev) {
+      const r = richardsonSeed(point, 0.005, opts);
+      if (!r) break;
+      const o = correctWith(r.state, 'z', opts);
+      if (!o || !o.converged) break;
+      prev = { ...o, param: r.state[2], hold: 'z' };
+      out.push(prev);
+      continue;
+    }
+
+    // Halve the step rather than stopping. A failure here almost never means the
+    // family has ended -- it means the predictor overshot into a region the
+    // corrector cannot recover from, and the family goes on perfectly well at
+    // half the stride. Measured: a fixed stride reaches a perilune of 13 931 km
+    // and adaptive stepping keeps going from there.
+    let o = null, target = null, tries = 0;
+    let h = Math.abs(step);
+    while (tries < 12 && h >= minStep) {
+      target = prev.param + Math.sign(step) * h;
+      o = take(prev, hold, target);
+      if (o && o.converged) break;
+      h /= 2; tries += 1; o = null;
+    }
+
+    if (!o && hold === 'z' && !swapped) {
+      // The fold: past it the family is no longer a function of z0. Hold x0
+      // instead and set off again.
+      hold = 'x'; swapped = true; prev2 = null;
+      step = dx;
+      h = Math.abs(dx); tries = 0;
+      while (tries < 12 && h >= minStep) {
+        target = prev.state[0] + Math.sign(dx) * h;
+        o = take({ ...prev, param: prev.state[0] }, hold, target);
+        if (o && o.converged) break;
+        h /= 2; tries += 1; o = null;
+      }
+      prev = { ...prev, param: prev.state[0] };
+    }
+
+    if (!o) break;
+    step = Math.sign(step) * Math.min(Math.abs(hold === 'x' ? dx : dz), h * 1.6);
+    const m = { ...o, param: target, hold };
+    prev2 = prev; prev = m;
+    out.push(m);
+  }
+  return out;
+}
+
+/** Perilune distance and the orbit's proportions -- what makes an NRHO one. */
+export function lunarGeometry(orbit, { mu = MU } = {}) {
+  const r = propagate3(orbit.state, orbit.period,
+    { mu, sample: orbit.period / 4000, absTol: 1e-13, relTol: 1e-13 });
+  let peri = Infinity, apo = 0, zMax = 0, xLo = Infinity, xHi = -Infinity;
+  for (let i = 0; i < r.xs.length; i += 1) {
+    const d = Math.hypot(r.xs[i] - MOON_X, r.ys[i], r.zs[i]);
+    if (d < peri) peri = d;
+    if (d > apo) apo = d;
+    zMax = Math.max(zMax, Math.abs(r.zs[i]));
+    xLo = Math.min(xLo, r.xs[i]); xHi = Math.max(xHi, r.xs[i]);
+  }
+  return { perilune: peri, apolune: apo, zMax, xSpan: xHi - xLo,
+    // near-rectilinear means long and thin: tall in z against its width in x
+    slenderness: zMax / Math.max(1e-12, xHi - xLo), run: r };
 }
 
 /**

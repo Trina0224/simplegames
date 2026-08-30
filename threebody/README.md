@@ -230,6 +230,39 @@ halo, `x` and `z` co-vary, so the x–z view collapses to nearly a straight line
 useless. Hence **End**, looking down the Earth–Moon line, where the loop opens
 out and the z excursion is the thing you are looking at.
 
+### NRHO: the same family, walked until it goes thin
+
+`THREE_D_SPEC.md` 9 and `THREE_D_AGENT.md` both insist NRHO is a **region of the
+halo family's own landscape**, not a decorative special orbit. So it is the same
+corrector that produced the small halos, walked 64 members down the L2 branch.
+
+Two things the walk needed, and both were discovered rather than designed:
+
+**The family stops being a function of z₀.** Partway down, two members share a
+z₀ and the corrector cannot choose between them — that fold is exactly where
+NRHO territory begins. Holding x₀ instead keeps going: 33 steps in z₀, then 31
+in x₀.
+
+**The stride halves rather than stopping.** A failed step almost never means the
+family has ended; it means the predictor overshot into somewhere the corrector
+cannot recover from, and the family continues perfectly well at half the stride.
+Measured: a fixed stride reaches a perilune of 13 931 km, adaptive stepping
+reaches 7 412 km.
+
+It is near-rectilinear **by measurement**, not by the shape it draws:
+
+```text
+|z| max      74 611 km        perilune   7 412 km from centre
+x span       21 971 km                   5 675 km altitude
+slenderness       3.40        apolune   77 696 km
+period          7.86 days     closes     3.3e-10
+```
+
+**It is not Gateway.** Gateway's NRHO has a perilune near 3 200 km and a period
+of 6.56 days in a 9:2 lunar resonance; reproducing that needs an ephemeris model
+this project does not have. The spec says not to claim operational fidelity, so
+none is claimed — this is ideal CR3BP and says so.
+
 ### A Lissajous is not a halo, and is not called one
 
 Phase 2's first item. A Lissajous is the **same third-order expansion** as a
@@ -529,6 +562,10 @@ how it looks, and it drives nothing.
 | L2 Lissajous | `[1.1373725408640845, 0, 0.028017446905756273, 0, 0.08496866288616428, 0]`, no period |
 | | C = 3.164342354612123, 1.866213 : 1.786176, holds 34.4 TU, 8 crossings spread 15 623 km |
 | halo vs Lissajous, same test | 21 m against 3 944 km — a factor of 191 709 |
+| L2 NRHO | `[0.9870857208063908, 0, 0.019267509954168757, 0, 1.087606474285779, 0]`, T = 1.8109336821422881 TU |
+| | C = 3.0285534103016762, residual 1.6e-12, closes 3.3e-10, drift 6.1e-14, 731 steps / 0 rejected |
+| | perilune 7 412 km from centre (5 675 km altitude), apolune 77 696 km, slenderness 3.40 |
+| the L2 branch | 64 members from a Richardson seed; perilune falls 50 922 → 7 412 km monotonically |
 | entering and leaving 3D | the 2D run is identical |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
