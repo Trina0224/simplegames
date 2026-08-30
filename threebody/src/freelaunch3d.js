@@ -18,8 +18,8 @@
 // Nothing is inferred. The third component is always somewhere you can see it
 // and always somewhere you can change it.
 
-import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830n';
-import { jacobi3 } from './cr3bp3d.js?v=20260830n';
+import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830p';
+import { jacobi3 } from './cr3bp3d.js?v=20260830p';
 
 /** How far ahead a 3D preview looks. */
 export const PREVIEW3_TU = 12;

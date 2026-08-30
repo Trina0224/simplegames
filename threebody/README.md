@@ -74,6 +74,10 @@ wobbles about it.
   twice the flight time long, so what happens afterwards is often more
   interesting than the arrival — including hitting something. The note names both
   events with their times, because it used to name only the first.
+- **zero-velocity** works in 3D now, as a stack of level-set slices at the
+  heights the trajectory reaches. Turn it on and the camera goes and frames it.
+  The readout gains a `surface` line with the lid over the Moon at that energy,
+  beside how high the orbit actually climbs.
 - L1, L2 and L3 are drawn as crosses because nothing rests there; L4 and L5 as
   rings because things can.
 
@@ -140,6 +144,7 @@ re-integrating anything.
 | `src/family3d.js` | generated: 30 members per branch, every number measured |
 | `assets/spacecraft-v1.png` | the sprite. Presentation only; the version is in the name |
 | `src/zvc.js` | zero-velocity curves from the live Jacobi constant |
+| `src/zvs.js` | the same boundary in space, as level-set slices — and the lid over a body |
 | `src/targeting.js` | shooting for a burn that arrives |
 | `src/presets.js` | reproducible initial states with their provenance |
 | `src/worker.js` | the solver, off the main thread |
@@ -540,6 +545,73 @@ total, and a real Gateway insertion is nearer 450. That gap is not a defect in t
 solver — it is what a two-impulse direct transfer from a state chosen by grid
 search costs, against a mission trajectory shaped by low-energy dynamics and
 months of optimisation. The demo does not optimise, and does not claim to.
+
+### The zero-velocity surface, sliced rather than meshed
+
+The **zero-velocity** box was greyed out in 3D. Not inert — *disabled*, with a
+comment saying surfaces were outside Phase 1, so a reader who wanted the boundary
+got a dead control and no explanation. That is the worse half of the bug: the
+missing feature was at least written down somewhere, and the greyed box was not.
+
+`THREE_D_SPEC.md` 11 asks for the surface and warns in the same breath that *"a
+volumetric/isosurface visualization can easily obscure the orbit"*, which is the
+honest objection to the obvious implementation. So there is no surface here to
+obscure anything with. What is drawn is the surface's **level sets**: at each of
+seven heights, the exact contour of `2Ω(x, y, z) = C`, by the same marching
+squares the planar curves use. Every ring on screen is a genuine solution of the
+boundary equation at a real height, not a triangulation of one — which satisfies
+*"do not use a decorative mesh"* by having no mesh, and *"allow
+transparency/slicing"* by being slices.
+
+The check that the method is sound is that at `z = 0` the slice must be **the
+same curve** as the planar one — not similar, the same. Measured: identical
+segment counts and a worst coordinate difference of 2.2e-15.
+
+What it shows that the planar curve cannot:
+
+```text
+z =   0 km    the Earth–Moon line is wide open; the forbidden lobes stand off it
+z =  40 000   the lobes have grown toward y = 0
+z =  72 000   a narrow channel is left, right at the Moon
+z =  94 000   the lobes have merged — nothing near the Moon is reachable up here
+```
+
+Far from both primaries `2Ω` is nearly `x² + y²` and barely depends on `z`, so the
+outer boundary hardly moves; near a primary it is the `1/r` terms, and both radii
+grow with height, so the allowed pockets shrink as you climb. A halo lives
+exactly there. Put the L1 halo on screen with the surface on and it sits in the
+neck between two lobes, which is a picture the 2D view has no way to draw.
+
+**The number worth having, and the test worth running.** Directly above a body
+`2Ω` falls monotonically with height, so it crosses `C` at exactly one altitude —
+the lid on that energy. Measured:
+
+| | orbit reaches | its lid | headroom |
+|---|---|---|---|
+| L1 halo | 25 000 km | 45 900 km | plenty |
+| L2 NRHO | 74 600 km | 79 300 km | 4 700 km |
+| Gateway-like NRHO | 69 700 km | 72 000 km | **2 300 km** |
+
+The NRHOs spend 94% and 97% of their ceiling. They are not near-rectilinear by
+choice of shape; they are near-rectilinear because they have run out of room. And
+because an orbit above its own lid would violate the Jacobi integral, this is the
+one place the surface can *falsify* a trajectory — so the suite checks every 3D
+preset against its own ceiling.
+
+Two things had to be got right to make it readable. **The heights are the
+trajectory's own**, and a third again above them: at these energies there is
+usually no boundary where the orbit is, and the feature is it closing over just
+above — slicing only to the orbit's height stopped 2300 km short of the one thing
+worth drawing. And **the window is sized to the orbit and centred on the Moon**:
+the default whole-system window spent its resolution on a boundary two DU away,
+while a window sized to an NRHO's own thin bounding box cut straight through the
+lobes and left the curves running off the edge as loose arcs.
+
+The first version of the lid measurement asked whether the point above the body
+was *forbidden* and bisected on that. It returned zero at every energy — correct
+and useless, because the region around a primary is the allowed pocket, not the
+forbidden ring, so the point directly above one is never forbidden at `z = 0`.
+The question had to be turned round.
 
 ### Halo → NRHO, as one continuous thing
 
@@ -1126,8 +1198,8 @@ so nothing has to be inferred from the code.
 | `SPEC.md` — planar sandbox | built: frames, presets, zero-velocity curves, free launch, targeting |
 | `FREE_LAUNCH_SPEC.md` | built, planar and spatial |
 | `THREE_D_SPEC.md` 1–9 — six-state core, halo, NRHO, Lissajous, family browser | built and validated |
-| `THREE_D_SPEC.md` 10 — Phase 3 sandbox | 3D free launch ✓, 3D impulsive burns ✓, 3D targeting ✓; **spatial invariant manifolds not built** |
-| `THREE_D_SPEC.md` 11 — zero-velocity surfaces | **not built.** Marked optional there, and a volumetric surface is the one thing most likely to hide the orbit it is drawn around |
+| `THREE_D_SPEC.md` 10 — Phase 3 sandbox | 3D free launch ✓, 3D impulsive burns ✓, 3D targeting ✓, zero-velocity surfaces ✓; **spatial invariant manifolds not built** |
+| `THREE_D_SPEC.md` 11 — zero-velocity surfaces | built as level-set slices, which is how its "do not use a decorative mesh" and "keep the trajectory readable" are both kept |
 | `ARTEMIS_DEMO_SPEC.md` A–D and E–F | built: Gateway-like NRHO, CAPSTONE, the low-lunar comparison, the Orion approach, "not parked at L2", near/far pass |
 | `ARTEMIS_DEMO_SPEC.md` — south-pole cue | **not built, deliberately.** The CR3BP has no model of the Moon's rotation; the spec asks for it only "if it can be represented honestly", and it cannot |
 

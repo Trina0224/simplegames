@@ -15,7 +15,7 @@
 // an extremum can be checked against one and a function inside a click handler
 // cannot.
 
-import { MOON_X, EARTH_X, DU_KM } from './constants.js?v=20260830n';
+import { MOON_X, EARTH_X, DU_KM } from './constants.js?v=20260830p';
 
 /**
  * Refine a sampled extremum by the parabola through it and its neighbours.

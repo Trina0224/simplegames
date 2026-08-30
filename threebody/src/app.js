@@ -6,28 +6,29 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830n';
-import { jacobi } from './cr3bp.js?v=20260830n';
-import { lagrangePoints } from './lagrange.js?v=20260830n';
-import { propagate } from './trajectory.js?v=20260830n';
-import { zeroVelocityCurves } from './zvc.js?v=20260830n';
-import { planTransfer } from './targeting.js?v=20260830n';
-import { PRESETS, byId } from './presets.js?v=20260830n';
-import { Scene } from './render.js?v=20260830n';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830n';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830n';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830n';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830n';
-import { propagate3 } from './trajectory3d.js?v=20260830n';
-import { jacobi3 } from './cr3bp3d.js?v=20260830n';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830n';
-import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830n';
-import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830n';
-import { advance, resumeFrom } from './playback.js?v=20260830n';
-import { extrema3 } from './events3.js?v=20260830n';
+import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830p';
+import { jacobi } from './cr3bp.js?v=20260830p';
+import { lagrangePoints } from './lagrange.js?v=20260830p';
+import { propagate } from './trajectory.js?v=20260830p';
+import { zeroVelocityCurves } from './zvc.js?v=20260830p';
+import { planTransfer } from './targeting.js?v=20260830p';
+import { PRESETS, byId } from './presets.js?v=20260830p';
+import { Scene } from './render.js?v=20260830p';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830p';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830p';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830p';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830p';
+import { propagate3 } from './trajectory3d.js?v=20260830p';
+import { jacobi3 } from './cr3bp3d.js?v=20260830p';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830p';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830p';
+import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830p';
+import { advance, resumeFrom } from './playback.js?v=20260830p';
+import { extrema3 } from './events3.js?v=20260830p';
+import { zeroVelocitySlices, ceilingOver, windowFor } from './zvs.js?v=20260830p';
 import { ARTEMIS3D, GATEWAY_NRHO, LOW_LUNAR, NASA_REFERENCE, GATEWAY_ON_FAMILY,
-         ORION_DEPARTURE } from './artemis.js?v=20260830n';
-import { planRendezvous3, targetAt } from './targeting3d.js?v=20260830n';
+         ORION_DEPARTURE } from './artemis.js?v=20260830p';
+import { planRendezvous3, targetAt } from './targeting3d.js?v=20260830p';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -36,7 +37,7 @@ import { planRendezvous3, targetAt } from './targeting3d.js?v=20260830n';
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830n';
+const STAMP = '20260830p';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -130,7 +131,7 @@ const LAUNCH3_MS_PER_PX = 8;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830n', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830p', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -892,6 +893,13 @@ function load3(p) {
 // One tap to each end of the orbit. ARTEMIS_DEMO_SPEC.md F: seek the extrema
 // MEASURED from the trajectory on screen, never a predetermined timestamp --
 // which also means these keep working when the family member changes.
+// Turning the surface on is a request to see it, so the camera goes and finds it.
+ui.zvc.addEventListener('change', () => {
+  if (!spatial) return;
+  updateZvs();
+  if (cmpMode === 'llo') fitLlo(); else fitSpatial();
+});
+
 for (const [btn, which] of [[ui.seekNear, 'near'], [ui.seekFar, 'far']]) {
   btn.addEventListener('click', () => seekPass(which));
 }
@@ -945,6 +953,20 @@ function fitSpatial() {
   }
   // include the Moon, so the orbit is always seen in its place rather than alone
   lo[0] = Math.min(lo[0], MOON_X - 0.04); hi[0] = Math.max(hi[0], MOON_X + 0.04);
+  // ...and the zero-velocity surface when it is on, because a boundary framed
+  // out of shot is not a boundary anyone can see. The first version fitted the
+  // orbit and left the slices sweeping in from off-screen as loose arcs.
+  if (zvsSlices) {
+    for (const slice of zvsSlices) {
+      if (!slice.segs.length) continue;
+      lo[2] = Math.min(lo[2], slice.z); hi[2] = Math.max(hi[2], slice.z);
+      for (let i = 0; i < slice.segs.length; i += 2) {
+        const x = slice.segs[i], y = slice.segs[i + 1];
+        if (x < lo[0]) lo[0] = x; if (x > hi[0]) hi[0] = x;
+        if (y < lo[1]) lo[1] = y; if (y > hi[1]) hi[1] = y;
+      }
+    }
+  }
   // An Artemis demo makes a claim about L1 and L2 -- that the orbit is NOT parked
   // at one of them -- so the frame has to contain them for the claim to be
   // checkable. Without this the default fit cropped L2 out of the picture while
@@ -1128,8 +1150,70 @@ function lloAt(t) {
           lloRun.zs[lo] + (lloRun.zs[hi] - lloRun.zs[lo]) * f];
 }
 
+// --- the zero-velocity surface, in three dimensions --------------------------
+//
+// Cached on C, exactly as the planar curves are, because THREE_D_SPEC.md 11 says
+// "recompute only when C changes, not every animation frame" -- and seven slices
+// of marching squares is about 100 ms, which every frame would be a slideshow.
+let zvsSlices = null, zvsFor = null;
+
+/**
+ * Slices at the heights this trajectory actually reaches.
+ *
+ * Tied to the orbit rather than to round numbers: a boundary drawn at an
+ * altitude nothing goes to is decoration by another route. When the run is
+ * planar the stack collapses to the single z = 0 ring, which is the planar
+ * curve and nothing is lost.
+ */
+function updateZvs() {
+  if (!ui.zvc.checked) { zvsSlices = null; zvsFor = null; return; }
+  const editing = ed3.active && ed3.valid();
+  const C = editing ? ed3.jacobi() : (run3 ? run3.C0 : null);
+  if (C === null || !Number.isFinite(C)) { zvsSlices = null; zvsFor = null; return; }
+  let zMax = 0;
+  if (editing) zMax = Math.abs(ed3.state[2]);
+  else if (run3) for (let i = 0; i < run3.n; i += 1) zMax = Math.max(zMax, Math.abs(run3.zs[i]));
+  // Coarser and thinner while a candidate is being dragged: C moves with every
+  // frame of the drag, so the full stack would be recomputed continuously.
+  // Measured: 7 slices at 240 cells is 50 ms, which is fine once when a preset
+  // loads and a slideshow under a finger; 3 at 180 is 9 ms, which is not.
+  const opts = ed3.active ? { count: 1, n: 180 } : { count: 3, n: 240 };
+  // Sampled over the trajectory's own neighbourhood rather than the whole system:
+  // at a halo's zoom the default window spends its resolution on a boundary two
+  // DU away while the lid over the Moon falls between two cells.
+  const win = ed3.active
+    ? { x0: ed3.state[0] - 0.5, x1: ed3.state[0] + 0.5, y0: ed3.state[1] - 0.5, y1: ed3.state[1] + 0.5 }
+    : windowFor(run3);
+  Object.assign(opts, win);
+  const key = `${C.toFixed(9)}|${zMax.toFixed(6)}|${opts.n}|${win.x0.toFixed(4)}`;
+  if (zvsFor === key) return;
+  zvsSlices = zeroVelocitySlices(C, zMax, opts);
+  zvsFor = key;
+}
+
+/**
+ * What the slice stack is a picture of, in one line.
+ *
+ * The ceiling is the altitude directly over the Moon where 2*Omega falls to C --
+ * above it, at this energy, the spacecraft cannot be. Set beside the orbit's own
+ * excursion it says how much of its energy budget the orbit is spending on
+ * height, which for an NRHO turns out to be nearly all of it.
+ */
+function zvsLine() {
+  const C = ed3.active && ed3.valid() ? ed3.jacobi() : (run3 ? run3.C0 : null);
+  if (C === null) return 'surface  —';
+  const ceil = ceilingOver(C, MOON_X);
+  let zMax = 0;
+  if (run3 && !ed3.active) for (let i = 0; i < run3.n; i += 1) zMax = Math.max(zMax, Math.abs(run3.zs[i]));
+  const km = (v) => (v * DU_KM / 1000).toFixed(1);
+  const lid = ceil === Infinity ? 'open' : `${km(ceil)}k km`;
+  return `surface  ${zvsSlices.length} slices   lid over the Moon ${lid}`
+    + (zMax > 0 ? `   orbit ${km(zMax)}k` : '');
+}
+
 function render3() {
   scene3d.resize();
+  updateZvs();
   const st = state3At(clock3);
   const pr = ui.panel.getBoundingClientRect();
   const vr = ui.canvas.getBoundingClientRect();
@@ -1142,6 +1226,7 @@ function render3() {
     head: st ? st.s : null,
     compare: compareLayer(),
     inset: insetView(),
+    zvs: zvsSlices,
     showPlane: ui.plane.checked, showTrack: ui.track.checked,
     sprite: spriteHandle(),
     edit: ed3.active
@@ -1179,6 +1264,7 @@ function render3() {
     `solver   ${run3.accepted} steps, ${run3.rejected} rejected`
       + `${preset3.quasi || preset3.rendezvous ? '' : `   closes ${preset3.closure.toExponential(1)}`}`,
     `frame    ${FRAME_LABEL[frame] || frame}`,
+    ...(zvsSlices ? [zvsLine()] : []),
     // A quasi-periodic trajectory has no period and no closure residual, so it
     // is given neither. Quoting a "period" for the in-plane frequency would be
     // exactly the mislabelling THREE_D_SPEC.md 9 forbids.
@@ -1332,10 +1418,15 @@ function setSpatial(on) {
     ed3.end(); setEditing3(false);
   }
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
-  // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
-  // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so
-  // they are switched off rather than left to do something undefined.
-  for (const b of [ui.preset, ui.plan, ui.target, ui.free, ui.zvc, ui.vel, ui.fit]) b.disabled = on;
+  // The planar controls with no 3D meaning. `vel` is the planar velocity arrow,
+  // which the 3D scene draws only for a candidate being edited and has its own
+  // control for.
+  //
+  // `zvc` used to be in this list, switched off because zero-velocity SURFACES
+  // were outside Phase 1 -- so the box sat there, greyed, and a reader in 3D who
+  // wanted the boundary got nothing and no explanation. The surface exists now,
+  // as slices, so the box works.
+  for (const b of [ui.preset, ui.plan, ui.target, ui.free, ui.vel]) b.disabled = on;
   ui.execute.disabled = on || !pending;
   ui.hint.textContent = on ? SPATIAL_HINT : NORMAL_HINT;
   if (on) {
@@ -1794,7 +1885,13 @@ ui.canvas.addEventListener('dblclick', (e) => {
   fitView();
 });
 
-ui.fit.addEventListener('click', fitView);
+ui.fit.addEventListener('click', () => {
+  // One button, one meaning: frame what is on screen. It used to be disabled in
+  // 3D, which left the spatial view with no way back to a sensible framing but a
+  // double-tap nobody is told about.
+  if (spatial) { if (cmpMode === 'llo') fitLlo(); else fitSpatial(); return; }
+  fitView();
+});
 
 // Safari on iOS fires its own gesture events for a pinch and will happily zoom
 // the whole page instead of the scene. touch-action: none on the canvas handles

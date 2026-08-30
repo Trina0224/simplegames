@@ -20,9 +20,9 @@
 //                       the 3D orbit projects into the planar geometry -- except
 //                       it is visible from every angle, not only from the top.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830n';
-import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830n';
-import { spriteHandle } from './render.js?v=20260830n';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830p';
+import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830p';
+import { spriteHandle } from './render.js?v=20260830p';
 
 // Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
 // screen pixels. The planar view inflates them because the whole Earth-Moon
@@ -178,7 +178,7 @@ export class Scene3D {
 
   draw(view) {
     const { ctx } = this;
-    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite, compare, inset } = view;
+    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite, compare, inset, zvs } = view;
     this.resize();
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -205,6 +205,37 @@ export class Scene3D {
       ctx.lineWidth = 1;
       this._path(P, whole, frame, (i) => whole.zs[i]);
       ctx.stroke();
+    }
+
+    // --- the zero-velocity surface, as slices --------------------------------
+    //
+    // Drawn before the trajectory, and only ever as level sets. THREE_D_SPEC.md 11
+    // warns that a volumetric isosurface "can easily obscure the orbit", which is
+    // the honest objection to the obvious implementation -- so there is no
+    // surface here to obscure anything with. Each ring is the exact contour of
+    // 2*Omega(x, y, z) = C at one real height, and the plane's own ring is
+    // brightest because it is the curve a reader arriving from the 2D view
+    // already knows.
+    if (zvs && zvs.length) {
+      const top = Math.max(1e-9, ...zvs.map((s) => Math.abs(s.z)));
+      for (const slice of zvs) {
+        if (!slice.segs.length) continue;
+        const fade = 1 - 0.62 * (Math.abs(slice.z) / top);
+        ctx.strokeStyle = `rgba(255, 205, 66, ${(0.30 + 0.48 * fade).toFixed(3)})`;
+        ctx.lineWidth = Math.abs(slice.z) < 1e-12 ? 1.5 : 1;
+        ctx.beginPath();
+        for (let i = 0; i < slice.segs.length; i += 4) {
+          const a = frame === 'rotating'
+            ? [slice.segs[i], slice.segs[i + 1], slice.z]
+            : displayPos3(slice.segs[i], slice.segs[i + 1], slice.z, t, frame);
+          const b = frame === 'rotating'
+            ? [slice.segs[i + 2], slice.segs[i + 3], slice.z]
+            : displayPos3(slice.segs[i + 2], slice.segs[i + 3], slice.z, t, frame);
+          const p = P(a[0], a[1], a[2]), q = P(b[0], b[1], b[2]);
+          ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+        }
+        ctx.stroke();
+      }
     }
 
     // --- a second orbit, for comparison --------------------------------------

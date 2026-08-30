@@ -40,6 +40,9 @@ The existing 2D implementation is the regression baseline. Do not rewrite it cas
     other member the family slider can reach.
 16. Two orbits at different scales may be drawn twice, at two scales, with the magnification
     stated. Neither may be rescaled to make a picture work.
+17. The zero-velocity surface is drawn as level sets, never as a mesh. Every curve on screen
+    is an exact contour of `2*Omega(x,y,z) = C` at a real height, at heights the trajectory
+    actually reaches, from the live C. See `src/zvs.js`.
 
 ## First implementation sequence
 

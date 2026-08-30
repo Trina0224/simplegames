@@ -11,31 +11,34 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830n';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830n';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830n';
-import { Dopri5 } from '../src/integrator.js?v=20260830n';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830n';
-import { PRESETS } from '../src/presets.js?v=20260830n';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830n';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu, vuToMs } from '../src/constants.js?v=20260830n';
-import { displayToRotating } from '../src/display.js?v=20260830n';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830n';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830n';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830n';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830n';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830n';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830n';
-import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830n';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830p';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830p';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830p';
+import { Dopri5 } from '../src/integrator.js?v=20260830p';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830p';
+import { PRESETS } from '../src/presets.js?v=20260830p';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830p';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu, vuToMs } from '../src/constants.js?v=20260830p';
+import { displayToRotating } from '../src/display.js?v=20260830p';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830p';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830p';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830p';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830p';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830p';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830p';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830p';
 import { GATEWAY_NRHO, CAPSTONE_NRHO, LOW_LUNAR, NASA_REFERENCE, ARTEMIS3D,
-         ORION_DEPARTURE, GATEWAY_ON_FAMILY } from '../src/artemis.js?v=20260830n';
-import { extrema3 } from '../src/events3.js?v=20260830n';
-import { targetAt, endPoint3, solveRendezvous3, planRendezvous3, classify } from '../src/targeting3d.js?v=20260830n';
-import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830n';
-import { advance, resumeFrom } from '../src/playback.js?v=20260830n';
-import { scaleLabel } from '../src/render3d.js?v=20260830n';
-import { toInertial } from '../src/frames.js?v=20260830n';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830n';
+         ORION_DEPARTURE, GATEWAY_ON_FAMILY } from '../src/artemis.js?v=20260830p';
+import { extrema3 } from '../src/events3.js?v=20260830p';
+import { sliceAt, sliceHeights, zeroVelocitySlices, forbidden3, ceilingOver, windowFor } from '../src/zvs.js?v=20260830p';
+import { zeroVelocityCurves } from '../src/zvc.js?v=20260830p';
+import { omega3 as OM3 } from '../src/cr3bp3d.js?v=20260830p';
+import { targetAt, endPoint3, solveRendezvous3, planRendezvous3, classify } from '../src/targeting3d.js?v=20260830p';
+import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830p';
+import { advance, resumeFrom } from '../src/playback.js?v=20260830p';
+import { scaleLabel } from '../src/render3d.js?v=20260830p';
+import { toInertial } from '../src/frames.js?v=20260830p';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830p';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -1270,6 +1273,100 @@ console.log('\n23. The comparison and the family view are the same physics, show
       Math.abs(x.period - GATEWAY_NRHO.period) >= Math.abs(m.period - GATEWAY_NRHO.period) - 1e-15),
     `nearest by ${g.periodGapDays.toFixed(4)} d and ${g.periluneGapKm.toFixed(0)} km -- ` +
     `named as the nearest rather than as the same orbit, which it is not`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n24. The zero-velocity surface, sliced rather than meshed');
+{
+  // The strongest check available, and the reason the slices are computed by the
+  // same marching squares as the planar curves: at z = 0 the two must be the
+  // SAME CURVE. Not similar -- the same, to floating point.
+  const C = 3.15;
+  const flat = zeroVelocityCurves(C, { n: 320 });
+  const slice = sliceAt(C, 0, { n: 320 });
+  let worst = 0;
+  for (let i = 0; i < Math.min(flat.length, slice.length); i += 1) {
+    worst = Math.max(worst, Math.abs(flat[i] - slice[i]));
+  }
+  check('the z = 0 slice IS the planar zero-velocity curve',
+    flat.length === slice.length && flat.length > 0 && worst < 1e-12,
+    `${flat.length / 4} segments each, worst coordinate difference ${worst.toExponential(1)}`);
+
+  // and the boundary test agrees with the definition it is named after
+  let agree = 0, total = 0;
+  for (let i = 0; i < 400; i += 1) {
+    const x = 0.3 + (i % 20) * 0.06, y = -0.5 + Math.floor(i / 20) * 0.05, z = 0.02 * ((i % 7) - 3);
+    const byDef = 2 * OM3(x, y, z, MU) - C < 0;
+    if (forbidden3(x, y, z, C, MU) === byDef) agree += 1;
+    total += 1;
+  }
+  check('forbidden3 is 2*Omega < C and nothing else', agree === total,
+    `${agree} of ${total} sample points agree with the definition`);
+
+  // Slicing above and below, because Omega is even in z and a stack that drew
+  // only the upper half would read as a lid rather than as a solid.
+  const hs = sliceHeights(0.2, 3);
+  check('the stack is symmetric about the plane, and includes it',
+    hs.includes(0) && hs.length === 7 && hs.every((z) => hs.includes(-z)),
+    `heights ${hs.map((z) => z.toFixed(3)).join(', ')}`);
+
+  // --- the lid, and the fact that makes it worth drawing -------------------
+  //
+  // A periodic orbit cannot climb above its own energy's ceiling. This is not a
+  // stylistic check: an orbit that did would be a violation of the Jacobi
+  // integral, so it is the one place the surface can falsify the trajectories.
+  for (const o of [...PRESETS3D, NRHO3D, GATEWAY_NRHO]) {
+    const r = propagate3(o.state, o.period, { sample: o.period / 4000, absTol: 1e-13, relTol: 1e-13 });
+    let zMax = 0;
+    for (const z of r.zs) zMax = Math.max(zMax, Math.abs(z));
+    const lid = ceilingOver(o.C, MOON_X);
+    check(`${o.id} stays under its own energy ceiling`,
+      zMax < lid,
+      `climbs to ${(zMax * DU_KM / 1000).toFixed(1)}k km; the lid over the Moon at C = ` +
+      `${o.C.toFixed(6)} is ${(lid * DU_KM / 1000).toFixed(1)}k km -- ` +
+      `${((lid - zMax) * DU_KM).toFixed(0)} km of headroom`);
+  }
+
+  // The NRHOs spend nearly all of it, which is the point of drawing the surface
+  // at all: they are not near-rectilinear by choice of shape but by running out
+  // of room.
+  const gw = GATEWAY_NRHO;
+  const rg = propagate3(gw.state, gw.period, { sample: gw.period / 4000, absTol: 1e-13, relTol: 1e-13 });
+  let gz = 0;
+  for (const z of rg.zs) gz = Math.max(gz, Math.abs(z));
+  const gl = ceilingOver(gw.C, MOON_X);
+  check('and the Gateway-like NRHO spends almost all of it',
+    gz / gl > 0.9 && gz / gl < 1,
+    `${(100 * gz / gl).toFixed(1)}% of its ceiling used -- ` +
+    `${(gz * DU_KM / 1000).toFixed(1)}k km of a possible ${(gl * DU_KM / 1000).toFixed(1)}k`);
+
+  // The ceiling is a bisection, so it is checked against the equation directly.
+  check('the ceiling really is where 2*Omega crosses C',
+    forbidden3(MOON_X, 0, gl * 1.0001, gw.C, MU) && !forbidden3(MOON_X, 0, gl * 0.9999, gw.C, MU),
+    `forbidden a hair above ${(gl * DU_KM / 1000).toFixed(3)}k km and allowed a hair below`);
+
+  // At large C the lid collapses onto the body itself, and it must do so along
+  // the asymptote the physics gives: high above a primary the only term that
+  // matters is its own well, 2*mu/r, so the ceiling tends to 2*mu/C. This
+  // replaced a check that a body with "no pocket at all" reported a zero
+  // ceiling -- there is no such case, because 2*Omega diverges at a primary and
+  // the point directly above one is allowed at every finite energy.
+  const asym = [100, 1000, 10000].map((c) => ceilingOver(c, MOON_X) / (2 * MU / c));
+  check('at high energy the lid collapses onto the body, along 2*mu/C',
+    asym.every((r) => r > 1 && r < 1.4) && asym[2] < asym[0],
+    `ceiling / (2*mu/C) = ${asym.map((r) => r.toFixed(4)).join(', ')} at C = 100, 1 000, 10 000 ` +
+    `-- approaching 1 from above, as the other terms stop mattering`);
+
+  // The window is sized to the trajectory, and has to actually contain the
+  // feature: an empty stack would be a picture of nothing.
+  const win = windowFor({ xs: rg.xs, ys: rg.ys, zs: rg.zs, n: rg.xs.length });
+  const stack = zeroVelocitySlices(gw.C, gz, { count: 3, n: 200, ...win });
+  const drawn = stack.filter((sl) => sl.segs.length > 0).length;
+  check('the stack it draws is not empty, and grows with height',
+    drawn >= 5 &&
+      stack[stack.length - 1].segs.length > stack[1].segs.length,
+    `${drawn} of ${stack.length} slices carry curves; the highest has ` +
+    `${stack[stack.length - 1].segs.length / 4} segments against ${stack[1].segs.length / 4} at the lowest`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

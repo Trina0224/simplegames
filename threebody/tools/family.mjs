@@ -7,8 +7,8 @@
 // hand-picked: that is the point of a family browser rather than a list.
 
 import { writeFileSync } from 'node:fs';
-import { MU, DU_KM, TU_DAYS } from '../src/constants.js?v=20260830n';
-import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830n';
+import { MU, DU_KM, TU_DAYS } from '../src/constants.js?v=20260830p';
+import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830p';
 
 // Members kept per branch. Fewer come out than are asked for: the targets are
 // spaced geometrically in perilune and two of them can land on the same branch
@@ -98,5 +98,5 @@ for (const p of ['L1', 'L2']) {
   head.push('  ],');
 }
 head.push('};', '', "export const FAMILY_POINTS = ['L1', 'L2'];", '');
-writeFileSync(new URL('../src/family3d.js?v=20260830n', import.meta.url), head.join('\n'));
+writeFileSync(new URL('../src/family3d.js?v=20260830p', import.meta.url), head.join('\n'));
 console.error('wrote src/family3d.js');

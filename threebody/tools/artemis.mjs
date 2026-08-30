@@ -23,13 +23,13 @@
 // a "circular" orbit is itself measured rather than assumed away.
 
 import { writeFileSync } from 'node:fs';
-import { MU, DU_KM, TU_DAYS, MOON_X, MOON_RADIUS_KM, MOON_RADIUS } from '../src/constants.js?v=20260830n';
-import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830n';
-import { FAMILY3D } from '../src/family3d.js?v=20260830n';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830n';
-import { jacobi3 } from '../src/cr3bp3d.js?v=20260830n';
-import { planRendezvous3 } from '../src/targeting3d.js?v=20260830n';
-import { EARTH_X } from '../src/constants.js?v=20260830n';
+import { MU, DU_KM, TU_DAYS, MOON_X, MOON_RADIUS_KM, MOON_RADIUS } from '../src/constants.js?v=20260830p';
+import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830p';
+import { FAMILY3D } from '../src/family3d.js?v=20260830p';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830p';
+import { jacobi3 } from '../src/cr3bp3d.js?v=20260830p';
+import { planRendezvous3 } from '../src/targeting3d.js?v=20260830p';
+import { EARTH_X } from '../src/constants.js?v=20260830p';
 
 // --- what NASA publishes, kept apart from anything measured here ------------
 // ARTEMIS_DEMO_SPEC.md: "Program facts are labels/context, not inputs to the
@@ -343,5 +343,5 @@ export const ORION_DEPARTURE = {
 export const ARTEMIS3D = [GATEWAY_NRHO, CAPSTONE_NRHO, ORION_DEPARTURE];
 `;
 
-writeFileSync(new URL('../src/artemis.js?v=20260830n', import.meta.url), src);
+writeFileSync(new URL('../src/artemis.js?v=20260830p', import.meta.url), src);
 console.error('wrote src/artemis.js');

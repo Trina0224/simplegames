@@ -27,10 +27,10 @@
 //   and the result is classified by measuring what the propagated trajectory
 //   actually does rather than by what the algebra intended.
 
-import { MU } from './constants.js?v=20260830n';
-import { jacobi3 } from './cr3bp3d.js?v=20260830n';
-import { propagate3 } from './trajectory3d.js?v=20260830n';
-import { vuToMs } from './constants.js?v=20260830n';
+import { MU } from './constants.js?v=20260830p';
+import { jacobi3 } from './cr3bp3d.js?v=20260830p';
+import { propagate3 } from './trajectory3d.js?v=20260830p';
+import { vuToMs } from './constants.js?v=20260830p';
 
 /**
  * Where a periodic target is at time `t` after its own epoch zero.

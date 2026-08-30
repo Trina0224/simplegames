@@ -6,9 +6,9 @@
 // propagation settings sufficient to reproduce it, and that nothing here may be
 // hand-tuned into looking right.
 
-import { MU } from './constants.js?v=20260830n';
-import { lagrangePoints } from './lagrange.js?v=20260830n';
-import { omega } from './cr3bp.js?v=20260830n';
+import { MU } from './constants.js?v=20260830p';
+import { lagrangePoints } from './lagrange.js?v=20260830p';
+import { omega } from './cr3bp.js?v=20260830p';
 
 const L = Object.fromEntries(lagrangePoints(MU).map((p) => [p.name, p]));
 

@@ -9,7 +9,7 @@
 //
 // State is [x, y, vx, vy] in the rotating frame, normalised units.
 
-import { MU } from './constants.js?v=20260830n';
+import { MU } from './constants.js?v=20260830p';
 
 /** Distance to the Earth, and to the Moon. */
 export function radii(x, y, mu = MU) {
