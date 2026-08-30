@@ -246,7 +246,18 @@ Golden behavior:
 - left edge physically down -> left
 - nearly flat -> small in-plane gravity
 
-Use the known-good `DeviceMotionEvent.accelerationIncludingGravity` mapping without a second screen-orientation rotation unless device evidence requires it.
+Use the known-good `DeviceMotionEvent.accelerationIncludingGravity` mapping. The sensor read itself is still frozen.
+
+**Device evidence has required the screen-orientation rotation.** DeviceMotion reports in the device's fixed frame, which equals the screen's frame only while the display is in its natural orientation. Rainpane relayouts on `orientationchange`, so past that point the two frames disagree by exactly `screen.orientation.angle`: a quarter turn sends the water sideways, and a tablet held upside-down sends it straight **up**. Reproduced in `rp-orient.mjs` by holding the screen upright in each of the four display orientations and asking where the water runs:
+
+```text
+before:  0° down    90° right   180° UP     270° left
+after:   0° down    90° down    180° down   270° down
+```
+
+The correction is applied in `vector()`, at read time, and is the identity at angle 0 — so all four golden behaviours above are bit-for-bit what they were. It is a rotation of the answer, not a change to how the sensor is read. `window.orientation` is the iOS-before-16.4 fallback and counts the same rotation the other way round.
+
+Fog Mirror's `src/orientation.js` has the same defect and the same `orientationchange` relayout; it has not been changed.
 
 ---
 

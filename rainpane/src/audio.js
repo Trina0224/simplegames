@@ -41,8 +41,26 @@ const MAX_VOICES = 26;
 // How many taps a listener can actually pick out of the roar. Past this point
 // more drops make the texture denser, not the individual taps more numerous.
 const TAPS_MAX_PER_S = 150;
-const MAX_SALIENT_PER_BIN = Math.max(1, Math.round(TAPS_MAX_PER_S * BIN_S));
 const REF_ENERGY = 7.5e-5;          // a 2 mm drop at terminal velocity, in joules
+// The acoustic energy the window takes in a downpour, MEASURED off the solver
+// rather than calculated, and the difference matters: worked out by hand from
+// the mean drop diameter it comes to 0.26, and the real figure is twenty-four
+// times that. Impact energy goes as roughly the fourth power of diameter while
+// the Marshall-Palmer spectrum has a long tail, so nearly all the energy is in
+// the few biggest drops and the mean diameter says almost nothing about it.
+// Everything is referred to this, so "full" means an actual downpour.
+const REF_FLUX = 6.3;               // joules a second onto 1.2 m2 at 180 mm/h
+// The arriving power is estimated over a fixed number of drops rather than a
+// fixed stretch of time, and that is not a detail. Impact energy is dominated by
+// the few biggest drops, so in drizzle — under two drops a second on the visible
+// patch — a time-averaged estimate is zero almost always and enormous for an
+// instant, and the sound comes out as silence with occasional bursts. Averaging
+// over the last N drops instead stretches the window automatically when drops
+// are rare (about 25 s in drizzle, under a second in a downpour), which is
+// exactly the adaptivity a heavy-tailed process needs. The age limit is what
+// lets it fall to nothing when the rain stops.
+const RECENT = 64;                  // drops kept as a sample of the population
+const RECENT_MAX_S = 8;             // ...and how stale one may be
 
 export class AudioEngine {
   constructor() {
@@ -61,6 +79,15 @@ export class AudioEngine {
     this.pending = [];
     this.binAt = 0;
     this.wetness = 0;
+    // The measured acoustic power arriving on the whole window, in joules a
+    // second. This is the one quantity the beds and the tap density are built
+    // from; see _flush.
+    this.flux = 0;
+    this.recent = [];               // a rolling sample of real drops
+    this.owed = 0;                  // fractional taps carried between bins
+    this.flushAt = 0;
+    this.meanGap = 0;               // this rain's own rhythm, in seconds
+    this.lastArrival = 0;
     this.targets = {};              // last value asked of each bed parameter
     this.heard = 0;                 // salient impacts voiced, for the tests
     this.clustered = 0;             // ...and impacts folded into the texture
@@ -194,6 +221,10 @@ export class AudioEngine {
     // Anything that arrived while hidden is stale: a backlog of old impacts
     // played on return is worse than silence.
     this.pending.length = 0;
+    this.owed = 0;
+    this.recent.length = 0;
+    this.meanGap = 0;
+    this.lastArrival = 0;
   }
 
   /** Called once a frame. Flushes one bin's worth of impacts. */
@@ -203,32 +234,44 @@ export class AudioEngine {
     this._beds(t);
     if (now - this.binAt < BIN_S * 1000) return;
     this.binAt = now;
-    this._flush(t);
+    // How much time a bin really covers, not how much it nominally covers. A
+    // 20 ms bin polled once a frame at 60 Hz actually fires every 33 ms, so a
+    // per-bin tap allowance quietly caps the rate at two thirds of what the
+    // constant says. Measure the gap and size the allowance from it.
+    const dt = this.flushAt ? Math.min(0.25, t - this.flushAt) : BIN_S;
+    this.flushAt = t;
+    this._flush(t, dt);
   }
 
   /**
-   * The exterior bed and the patter texture both follow the rainfall rate, but
-   * they are not the same curve: the outside is a wash that grows steadily and
-   * gets darker as the rain gets heavier, and the patter is the pane's own
-   * surface, which is quiet in drizzle and becomes a roar. The patter also dulls
-   * as the glass wets over, because a film damps the contact.
+   * The beds.
    *
-   * This runs every frame, so it does two things carefully. It re-schedules a
-   * parameter only when its target has actually moved, rather than laying down
-   * three hundred automation events a second on each of five parameters. And
-   * when a target reaches zero it *pins* it there: setTargetAtTime approaches a
-   * value without ever arriving, so a bed left to decay towards zero keeps
-   * hissing forever. Rain that has stopped has to be silent, not nearly silent.
+   * Both of these follow one measured quantity — the acoustic power actually
+   * arriving on the window — and not the rain slider. That matters, because
+   * loudness does not follow how *many* drops fall, it follows how much energy
+   * they bring, and those are very different curves. Drizzle puts 562 drops a
+   * second on a big window and a downpour puts 24 000, only forty times more;
+   * but the drizzle drops average 0.46 mm and the downpour's 1.28 mm, so the
+   * energy ratio is nearer four thousand. A bed keyed to drop count is far too
+   * loud in light rain, and that is the sheet of hiss that should not be there.
+   *
+   * Incoherent sources add in power, so amplitude is the square root of flux.
+   * That is also the entire justification for using filtered noise for the
+   * texture: it is not standing in for the taps, it *is* what several hundred
+   * random taps a second sum to. Below that density the taps are voiced
+   * individually and the texture is correspondingly near-silent — which is the
+   * point. A sheet of sound has to be made of drops, not laid underneath them.
    */
   _beds(t) {
-    const r = this.rate;
-    const wash = r <= 0 ? 0 : Math.min(1, Math.pow(r / 90, 0.55));
-    const patter = r <= 0 ? 0 : Math.min(1, Math.pow(r / 130, 0.75));
+    // what is left once the drops being voiced individually are taken out
+    const heardFlux = Math.min(this.flux, this.salientRate() * REF_ENERGY);
+    const texture = Math.min(1, Math.sqrt(Math.max(0, this.flux - heardFlux) / REF_FLUX));
+    const wash = Math.min(1, Math.sqrt(this.flux / REF_FLUX));
     const wet = Math.min(1, this.wetness * 1.6);
     this._ramp('outGain', this.outsideGain.gain, 0.16 * wash, 0.35);
     this._ramp('outTone', this.outsideTone.frequency, OUTSIDE_HZ * (1 - 0.35 * wash), 0.5);
-    this._ramp('patGain', this.patterGain.gain, 0.20 * patter, 0.25);
-    this._ramp('patTone', this.patterBand.frequency, PLATE_HZ * (1 - 0.30 * wet) * (1 - 0.15 * patter), 0.4);
+    this._ramp('patGain', this.patterGain.gain, 0.20 * texture, 0.25);
+    this._ramp('patTone', this.patterBand.frequency, PLATE_HZ * (1 - 0.30 * wet) * (1 - 0.15 * texture), 0.4);
     this._ramp('patQ', this.patterBand.Q, 0.9 + 0.5 * (1 - wet), 0.4);
   }
 
@@ -247,54 +290,104 @@ export class AudioEngine {
   }
 
   /**
+   * How many taps a second stand out of the roar.
+   *
+   * Not a count of drops: a count of drops *worth hearing*. The arriving power
+   * divided by the energy of one clearly audible drop is exactly that number,
+   * and it falls out of the solver's own figures rather than a fitted curve.
+   * Measured, it runs about 1 a second in drizzle, 17 in light rain, 33 in
+   * rain, and saturates from heavy rain upward — which is the shape the ear
+   * expects: distinct ticks when it is barely raining, a continuous sheet when
+   * it is pouring, and no threshold anywhere in between.
+   */
+  salientRate() {
+    return Math.min(TAPS_MAX_PER_S, this.flux / REF_ENERGY);
+  }
+
+  /**
    * One bin.
    *
-   * The window is three hundred times the patch on screen, so at a downpour it
-   * is taking thousands of drops a second. Drawing thousands of size variates a
-   * second would be absurd, and so would voicing them.
+   * Two jobs. First, measure: sum what landed on the visible patch, scale it to
+   * the window, and follow it with a smoothing filter. That one number drives
+   * the beds and the tap density, and it is why nothing here consults the rain
+   * slider. An earlier version drew the tap count from the declared rate, which
+   * meant a drop that demonstrably hit the glass made no sound whenever the
+   * slider said it shouldn't have — the sound had stopped following the
+   * simulation and started following a number beside it.
    *
-   * What you can actually pick out of the roar is a few taps a second, and the
-   * ones you pick out are the loud ones. So this voices at most one tap per drop
-   * the simulation really put on the glass, choosing which drops those are by
-   * energy, without replacement. Everything else the window received — the
-   * on-screen population times the area multiplier, minus what was voiced — is
-   * never instantiated at all: it is the patter texture.
-   *
-   * Note what this does *not* do. It does not consult the declared rainfall
-   * rate. An earlier version drew the tap count from the rate, which meant a
-   * drop that demonstrably hit the glass made no sound whenever the rate said it
-   * shouldn't have — the sound stopped following the simulation and started
-   * following a number beside it. The rate belongs in the beds, which are a
-   * statistical wash; an impact is an event, and events are heard.
+   * Second, voice: pick that many drops, weighted by energy, because the ones
+   * you pick out of rain are the loud ones. They are drawn from a rolling sample
+   * of drops that really landed, so their sizes, speeds and landing conditions
+   * are the simulation's rather than invented. At a downpour the window takes
+   * 24 000 drops a second and 150 are voiced; the rest is energy, and energy is
+   * all the texture ever needed from it.
    */
-  _flush(t) {
+  _flush(t, dt = BIN_S) {
     const bin = this.pending;
-    if (!bin.length) return;
+    for (const ev of bin) { ev.at = t; this.recent.push(ev); }
+    if (bin.length) {
+      // The rain's own rhythm, tracked separately from the sample because the
+      // sample gets pruned and a pruned sample cannot tell you its own interval.
+      const d = Math.min(4, this.lastArrival ? (t - this.lastArrival) / bin.length : BIN_S);
+      this.meanGap = this.meanGap ? this.meanGap + (d - this.meanGap) * 0.15 : d;
+      this.lastArrival = t;
+    }
+    bin.length = 0;
+
+    const cutoff = t - RECENT_MAX_S;
+    let k = 0;
+    for (const ev of this.recent) if (ev.at >= cutoff) this.recent[k++] = ev;
+    this.recent.length = k;
+    if (k > RECENT) this.recent.splice(0, k - RECENT);
+
+    // The window sees the same rain over three hundred times the area.
+    let energy = 0;
+    for (const ev of this.recent) energy += ev.energy;
+    if (!this.recent.length) { this.flux = 0; return; }
+    const span = Math.max(BIN_S, t - this.recent[0].at + BIN_S);
+
+    // A fixed-count window on its own can only fall as 1/t, so when the rain
+    // stops the wash coasts for the whole length of the sample — ten seconds of
+    // rain you can hear after rain you cannot see. Worse, pruning is not
+    // even-handed: once all but one drop has aged out, the estimate is one big
+    // drop over a short span, which is *larger* than the rain that produced it.
+    //
+    // What says the rain has eased is a gap that is long *for this rain*. A
+    // second of quiet is ordinary in drizzle and unheard-of in a downpour, so
+    // idle time is judged against the tracked interval above. Normal running
+    // never touches this; stopping collapses it in about three intervals, at
+    // any rate.
+    //
+    // Judged no finer than a bin, too. Idle time is only observable at the rate
+    // bins are flushed, so in a downpour — drops nine milliseconds apart, bins
+    // thirty — every bin looks idle by several intervals and the wash gets held
+    // down by a factor of hundreds. Compare against whichever is coarser.
+    const scale = Math.max(this.meanGap, dt);
+    const idle = t - this.lastArrival;
+    const eased = scale > 0 ? Math.exp(-Math.max(0, idle - 3 * scale) / (3 * scale)) : 1;
+    this.flux = (energy / span) * this.multiplier * eased;
+
+    // Fractional taps are carried rather than rounded away: at one tap a second
+    // a bin is owed a fiftieth of a tap, and rounding that off is silence.
+    const most = Math.max(1, Math.ceil(TAPS_MAX_PER_S * dt));
+    this.owed = Math.min(most, this.owed + this.salientRate() * dt);
     const budget = Math.max(0, MAX_VOICES - this.voices);
-    const n = Math.min(bin.length, MAX_SALIENT_PER_BIN, budget);
+    const n = Math.min(Math.floor(this.owed), most, budget);
+    if (n <= 0) return;
+    this.owed -= n;
 
     let total = 0;
-    for (const ev of bin) total += ev.energy;
+    for (const ev of this.recent) total += ev.energy;
     for (let i = 0; i < n; i += 1) {
-      // pick one of the bin's remaining drops, weighted by energy
       let pick = Math.random() * total;
-      let at = bin.length - 1;
-      for (let k = 0; k < bin.length; k += 1) {
-        pick -= bin[k].energy;
-        if (pick <= 0) { at = k; break; }
-      }
-      const ev = bin[at];
-      total -= ev.energy;
-      bin[at] = bin[bin.length - 1];
-      bin.length -= 1;
-      // Spread the bin's taps across it rather than firing them together: they
-      // did not arrive at the same instant, and stacked onsets read as one loud
-      // click instead of several drops.
-      this._tap(t + (i + Math.random()) * (BIN_S / MAX_SALIENT_PER_BIN), ev, Math.random());
+      let ev = this.recent[this.recent.length - 1];
+      for (const cand of this.recent) { pick -= cand.energy; if (pick <= 0) { ev = cand; break; } }
+      // spread across the bin: they did not arrive at the same instant, and
+      // stacked onsets read as one loud click rather than as several drops
+      this._tap(t + (i + Math.random()) * (dt / most), ev, Math.random());
       this.heard += 1;
     }
-    this.clustered += Math.max(0, (bin.length + n) * this.multiplier - n);
-    bin.length = 0;
+    this.clustered += Math.max(0, this.flux / REF_ENERGY - n / dt) * dt;
   }
 
   /**
@@ -307,10 +400,21 @@ export class AudioEngine {
    * literature reports between a drop landing on a dry solid and one landing in
    * standing liquid. It is a continuous morph, not two sounds.
    */
-  _tap(when, ev, atX) {
-    const ctx = this.ctx;
+  /**
+   * Everything about how one drop sounds, as numbers — separated from the graph
+   * that plays them so the model can be rendered offline and measured exactly.
+   * A live AudioContext with beds running is a poor instrument for asking
+   * whether wet glass is duller than dry glass.
+   */
+  tapParams(ev) {
     const e = Math.min(6, ev.energy / REF_ENERGY);
-    if (e < 0.02) return;
+    // A gate here has to sit far below "quiet", not near it. At 0.02 it
+    // silenced every drop drizzle produces, so light rain was a sheet of hiss
+    // with no drops in it at all. Selection is already weighted by energy; let
+    // the loudness curve do the rest, and keep this only to skip work that
+    // would be inaudible anyway.
+    if (e < 0.001) return null;
+
     // How much of the drop's sound the water already there takes away. The
     // controlling quantity is the film's depth relative to the *drop*, not an
     // absolute thickness: a tenth of a millimetre is a puddle to drizzle and
@@ -327,12 +431,38 @@ export class AudioEngine {
     // that a stream of drops is not a scale.
     const jitter = 0.82 + Math.random() * 0.36;
     // Dry glass rings near the plate's own frequency. A film mass-loads and
-    // damps the contact, so the answer drops well down and loses its edge —
-    // this is the difference the impact-acoustics work reports between a drop
-    // landing on a dry solid and one landing in standing liquid, and it has to
-    // be large enough to hear, not a few per cent.
+    // damps the contact, so the answer drops well down and loses its edge.
     const freq = PLATE_HZ * jitter * (1 - 0.30 * Math.min(1, e / 3)) * (1 - 0.62 * wet);
-    const decay = (0.020 + 0.055 * Math.min(1, e / 2)) * (1 - 0.45 * wet);
+    const q = PLATE_Q * (1 - 0.5 * wet);
+
+    // A bandpass fed with noise passes more the lower and the wider it is set,
+    // so without this, making a tap duller quietly makes it louder. Normalising
+    // it means `loud` is the only thing setting loudness, and darkness is only
+    // darkness. The exponents are measured, not derived (rp-filter.mjs, on this
+    // exact noise through this exact filter): level goes as f^-0.26 and Q^-0.45.
+    // An idealised bandpass on white noise gives -0.5 and -0.5, and correcting
+    // by that overshoots the frequency term badly. Re-measure if _build's
+    // buffer changes.
+    const shape = Math.pow(freq / PLATE_HZ, 0.26) * Math.pow(q / PLATE_Q, 0.45);
+
+    return {
+      wet,
+      peak: loud * shape,
+      freq,
+      q,
+      decay: (0.020 + 0.055 * Math.min(1, e / 2)) * (1 - 0.45 * wet),
+      // The contact crack: the first thing a film kills, and most of what makes
+      // dry glass sound like glass.
+      crackPeak: loud * 1.15 * Math.pow(1 - wet, 2.2),
+      crackHz: 4200 * (1 - 0.30 * wet),
+      crackDecay: 0.004 + 0.006 * (1 - wet),
+    };
+  }
+
+  _tap(when, ev, atX) {
+    const ctx = this.ctx;
+    const p = this.tapParams(ev);
+    if (!p) return;
 
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -341,14 +471,12 @@ export class AudioEngine {
 
     const ring = ctx.createBiquadFilter();
     ring.type = 'bandpass';
-    ring.frequency.value = freq;
-    ring.Q.value = PLATE_Q * (1 - 0.5 * wet);
+    ring.frequency.value = p.freq;
+    ring.Q.value = p.q;
 
-    // The contact crack: the first thing a film kills, and most of what makes
-    // dry glass sound like glass.
     const crack = ctx.createBiquadFilter();
     crack.type = 'highpass';
-    crack.frequency.value = 4200 * (1 - 0.30 * wet);
+    crack.frequency.value = p.crackHz;
 
     const gRing = ctx.createGain();
     const gCrack = ctx.createGain();
@@ -362,17 +490,19 @@ export class AudioEngine {
     gCrack.connect(out);
     if (pan) pan.connect(this.master);
 
+    // Every envelope decays to a fraction of its own peak, never to a fixed
+    // floor. An absolute 0.0001 is nothing under a loud tap and most of a quiet
+    // one, so quiet taps would never decay at all.
     const a = 0.0008;
     gRing.gain.setValueAtTime(0, when);
-    gRing.gain.linearRampToValueAtTime(loud, when + a);
-    gRing.gain.exponentialRampToValueAtTime(0.0001, when + a + decay);
-    // the contact crack is shorter than the ring, and the first thing a film kills
-    const crackLoud = loud * 1.15 * Math.pow(1 - wet, 2.2) + 1e-5;
+    gRing.gain.linearRampToValueAtTime(p.peak, when + a);
+    gRing.gain.exponentialRampToValueAtTime(Math.max(1e-6, p.peak * 0.002), when + a + p.decay);
+    const crackLoud = p.crackPeak + 1e-5;
     gCrack.gain.setValueAtTime(0, when);
     gCrack.gain.linearRampToValueAtTime(crackLoud, when + 0.0004);
-    gCrack.gain.exponentialRampToValueAtTime(0.0001, when + 0.004 + 0.006 * (1 - wet));
+    gCrack.gain.exponentialRampToValueAtTime(Math.max(1e-6, crackLoud * 0.002), when + 0.0004 + p.crackDecay);
 
-    const stop = when + a + decay + 0.03;
+    const stop = when + a + p.decay + 0.03;
     src.start(when, offset, stop - when + 0.02);
     this.busy.push(stop);
     // onended only tears the graph down; it is not what counts the voice.
