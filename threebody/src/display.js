@@ -29,8 +29,8 @@
 // an algebraically equal but differently-rounded shortcut, so that the
 // validation suite compares the code against the spec's own arithmetic.
 
-import { EARTH_X, MOON_X } from './constants.js?v=20260830d';
-import { toInertial } from './frames.js?v=20260830d';
+import { EARTH_X, MOON_X } from './constants.js?v=20260830e';
+import { toInertial } from './frames.js?v=20260830e';
 
 /** The frames the UI may ask for, in the order they are offered. */
 export const FRAMES = ['rotating', 'earth', 'inertial'];

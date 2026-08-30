@@ -17,8 +17,8 @@
 // reason, and the enlarged radius never reaches the physics: collision is tested
 // against the real one in trajectory.js, which cannot see this file.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830d';
-import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830d';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830e';
+import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830e';
 
 const EARTH_DRAW = 0.055;
 const MOON_DRAW = 0.030;
@@ -222,10 +222,17 @@ export class Scene {
     const at = (x, y, ts) => displayPos(x, y, ts, frame);
     const turn = (x, y) => (moving ? displayPos(x, y, t, frame) : [x, y]);
 
-    // --- the forbidden region, kept quiet ---------------------------------
+    // --- the forbidden region ---------------------------------------------
+    //
+    // Yellow, and bright. It was a dim blue before, on the reasoning that the
+    // trajectory should stay the subject of the picture, but that reasoning was
+    // wrong for this curve: it is a boundary the spacecraft cannot cross, the
+    // user turns it on deliberately, and a line you have to hunt for is not
+    // showing you anything. Warm also puts it as far from the cyan trajectory as
+    // the colour wheel allows, so the two never read as the same object.
     if (showZvc && zvc && zvc.length) {
-      ctx.strokeStyle = 'rgba(112, 152, 214, 0.22)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 205, 66, 0.78)';
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
       for (let i = 0; i < zvc.length; i += 4) {
         const a = P(...turn(zvc[i], zvc[i + 1]));
@@ -307,8 +314,9 @@ export class Scene {
     // disc is wider than the window and a label at r + 7 is off the screen.
     ctx.fillStyle = 'rgba(200, 214, 232, 0.72)';
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'left';
     ctx.fillText('Earth', ep[0] + Math.min(er + 7, 52), ep[1] + 4);
-    ctx.fillText('Moon', mp[0] + Math.min(mr + 7, 52), mp[1] + 4);
+    ctx.fillText('Moon', mp[0] + Math.min(mr + 7, 52), mp[1] + 14);
 
     // --- equilibria: present, not shouting ---------------------------------
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -326,8 +334,17 @@ export class Scene {
       }
       ctx.stroke();
       ctx.fillStyle = un ? 'rgba(226, 160, 120, 0.62)' : 'rgba(140, 214, 176, 0.62)';
-      ctx.fillText(p.name, s[0] + 6, s[1] - 5);
+      // Away from the Moon, whichever way that is. L1 and L2 sit a few pixels
+      // either side of it and their labels used to land on top of the Moon's
+      // own; pushing each one outward along the line from the Moon separates
+      // all three, and keeps working in the frames where the whole picture
+      // turns, which a fixed left/right nudge would not.
+      const away = Math.hypot(s[0] - mp[0], s[1] - mp[1]) || 1;
+      const ux = (s[0] - mp[0]) / away, uy = (s[1] - mp[1]) / away;
+      ctx.textAlign = ux < 0 ? 'right' : 'left';
+      ctx.fillText(p.name, s[0] + ux * 10 + (ux < 0 ? -1 : 1) * 2, s[1] + uy * 10 - 3);
     }
+    ctx.textAlign = 'left';
 
     // --- a planned burn, before it is committed -----------------------------
     if (plan && plan.xs && plan.xs.length > 1) {
@@ -397,11 +414,11 @@ export class Scene {
     }
 
     // --- scale bar, sized to whatever the camera is showing -----------------
-    this._scaleBar();
+    this._scaleBar(view.avoid);
     ctx.restore();
   }
 
-  _scaleBar() {
+  _scaleBar(avoid) {
     const { ctx } = this;
     // pick a round number of kilometres that lands near a fifth of the view
     const wantDu = this.span * 0.22;
@@ -409,7 +426,11 @@ export class Scene {
     const pow = Math.pow(10, Math.floor(Math.log10(wantKm)));
     const nice = [1, 2, 5, 10].map((k) => k * pow).reduce((a, c) => (Math.abs(c - wantKm) < Math.abs(a - wantKm) ? c : a));
     const px = (nice / DU_KM) * this.scale;
-    const y = this.h - 22;
+    // The bar lives in the bottom-left corner, which on a narrow screen is under
+    // the controls panel. `avoid` is where that panel starts, in canvas pixels;
+    // when the bar would run beneath it the bar moves above it instead. On a
+    // wide screen the panel is centred and nowhere near, so nothing moves.
+    const y = avoid && 16 + px + 10 > avoid.left ? avoid.top - 14 : this.h - 22;
     ctx.strokeStyle = 'rgba(170, 190, 214, 0.42)';
     ctx.lineWidth = 1;
     ctx.beginPath();

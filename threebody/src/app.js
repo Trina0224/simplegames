@@ -6,15 +6,15 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830d';
-import { jacobi } from './cr3bp.js?v=20260830d';
-import { lagrangePoints } from './lagrange.js?v=20260830d';
-import { propagate } from './trajectory.js?v=20260830d';
-import { zeroVelocityCurves } from './zvc.js?v=20260830d';
-import { planTransfer } from './targeting.js?v=20260830d';
-import { PRESETS, byId } from './presets.js?v=20260830d';
-import { Scene } from './render.js?v=20260830d';
-import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=20260830d';
+import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830e';
+import { jacobi } from './cr3bp.js?v=20260830e';
+import { lagrangePoints } from './lagrange.js?v=20260830e';
+import { propagate } from './trajectory.js?v=20260830e';
+import { zeroVelocityCurves } from './zvc.js?v=20260830e';
+import { planTransfer } from './targeting.js?v=20260830e';
+import { PRESETS, byId } from './presets.js?v=20260830e';
+import { Scene } from './render.js?v=20260830e';
+import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=20260830e';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -23,7 +23,7 @@ import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830d';
+const STAMP = '20260830e';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -36,7 +36,19 @@ const ui = {
   play: el('play'), reset: el('reset'), zvc: el('zvc'), vel: el('vel'),
   target: el('target'), plan: el('plan'), execute: el('execute'), fit: el('fit'),
   readout: el('readout'), note: el('note'), title: el('title'), blurb: el('blurb'),
+  panel: document.querySelector('.controls'),
+  diag: el('diag'),
 };
+
+// The diagnostics panel folds away on a phone, where it and the blurb and the
+// controls together are the entire screen. It is collapsed, never dropped --
+// SPEC.md 9 is explicit that they are not to be removed to tidy the small view,
+// and one tap is not removal. Forced open again the moment there is room, since
+// a `details` that is closed stays closed even where its summary is hidden.
+const NARROW = window.matchMedia('(max-width: 640px)');
+const foldDiagnostics = (m) => { ui.diag.open = !m.matches; };
+foldDiagnostics(NARROW);
+NARROW.addEventListener('change', foldDiagnostics);
 
 const scene = new Scene(ui.canvas);
 let run = null;        // { xs, ys, ts, n, C0, status, drift }
@@ -57,7 +69,7 @@ let currentView = { ...DEFAULT_VIEW };
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830d', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830e', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -146,7 +158,13 @@ function render() {
     if (zvcFor !== key) { zvcSegs = zeroVelocityCurves(run.C0); zvcFor = key; }
   }
 
+  // Where the controls panel sits, in canvas pixels, so the scale bar can stay
+  // out from under it. Layout only -- the renderer uses it for one corner.
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+
   scene.draw({
+    avoid: { left: pr.left - vr.left, top: pr.top - vr.top },
     frame, t: clock, points: POINTS,
     trail: run && s ? { xs: run.xs, ys: run.ys, ts: run.ts, n: Math.max(2, s.index + 1) } : null,
     head, zvc: zvcSegs, showZvc: ui.zvc.checked, showVel: ui.vel.checked,

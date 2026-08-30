@@ -52,8 +52,12 @@ wobbles about it.
 - **Drag anywhere else** to pan. **Pinch or scroll** to zoom, about the point
   under your fingers. **Fit**, or a double-tap on empty space, restores the
   framing the preset asked for.
-- **Zero-velocity** draws the boundary of where the spacecraft can be at all at
-  its current energy. Burn, and watch the necks around L1 and L2 open or close.
+- **Zero-velocity** draws, in yellow, the boundary of where the spacecraft can be
+  at all at its current energy. Burn, and watch the necks around L1 and L2 open
+  or close. It used to be a dim blue, on the reasoning that the trajectory should
+  stay the subject of the picture; that was wrong for this curve, which you turn
+  on deliberately and then have to be able to see. Warm also puts it as far from
+  the cyan trajectory as the colour wheel allows.
 - **Target** solves for a burn that arrives, by shooting — not by steering. It
   reports Δv, flight time, miss distance and the Jacobi constant either side, and
   when it cannot find one it says so instead of snapping to the destination.
@@ -129,6 +133,37 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### Nothing sits on top of anything else
+
+Three things used to collide on a portrait tablet, and all three were the same
+mistake — a position chosen once, for one screen:
+
+The blurb and the diagnostics were two separately placed fixed boxes. That is
+fine until the viewport is narrow enough for them to reach each other, and then
+the readout simply covered the blurb. They are one flex row now, which cannot
+overlap itself: the readout keeps the width its content needs and the blurb takes
+what is left. The row is transparent to the pointer, so the gap between the two
+panels is still canvas and still pans — measured, not assumed.
+
+The readout's own longest line was wider than the `max-width: 46vw` it had been
+given, and `overflow: hidden` ate the end of it silently. Its width is in `ch`
+now, because the content is monospace and its longest ordinary line is a known
+number of characters. Plus 30px, because `box-sizing` is `border-box` here and a
+bare `53ch` spends 28 characters' worth on the padding — which is exactly the bug
+in miniature, so it is written down rather than tuned around.
+
+The scale bar sat in the bottom-left corner, which on a narrow screen is
+underneath the controls. `render.js` is now told where that panel starts and puts
+the bar above it when the two would meet. On a wide screen the panel is centred
+and nowhere near, so nothing moves.
+
+Below 640px the blurb, ten lines of diagnostics and the controls are the entire
+screen, with nowhere left to watch the orbit — so there the diagnostics fold
+behind a summary. Collapsed, not dropped: SPEC.md 9 says they are not to be
+removed to tidy up the small view, and one tap is not removal. They are forced
+open again the moment there is room, because a `details` that is closed stays
+closed even where its summary is hidden.
 
 ### Why every import carries a `?v=`
 
@@ -213,6 +248,9 @@ how it looks, and it drives nothing.
 | cycling all three frames | leaves the state bit-identical |
 | a gestured burn | returns to rotating coordinates, off by 1.7e-18 VU |
 | module requests on load | 17, all versioned, 0 bare — the worker's four included |
+| panel overlap at 390, 744, 834 and 1280 px wide | 0 px², nothing clipped, ten readout lines everywhere |
+| a drag in the gap between the panels | pans the camera; the run is untouched |
+| a drag on the blurb | moves the camera 0.000000 DU |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
 | collision | detected against the physical radius, not the drawn one |

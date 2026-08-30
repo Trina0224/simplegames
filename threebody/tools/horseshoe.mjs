@@ -11,9 +11,9 @@
 // horseshoes, C(L4) < C < C(L2). Searching only up to C(L3) — the bottom sixth
 // of it — finds nothing, which is how this was got wrong the first time.
 
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830d';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830d';
-import { findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830d';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830e';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830e';
+import { findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830e';
 
 const L = Object.fromEntries(lagrangePoints(MU).map((p) => [p.name, p]));
 console.log(`Earth-Moon mu = ${MU}`);

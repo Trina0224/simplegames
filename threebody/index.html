@@ -10,13 +10,18 @@
 <body>
 <canvas id="view"></canvas>
 
-<header class="panel head">
-  <h1 id="title">Earth–Moon horseshoe</h1>
-  <p id="blurb"></p>
-  <p id="note" class="note"></p>
-</header>
+<div class="top">
+  <header class="panel head">
+    <h1 id="title">Earth–Moon horseshoe</h1>
+    <p id="blurb"></p>
+    <p id="note" class="note"></p>
+  </header>
 
-<pre id="readout" class="panel readout"></pre>
+  <details id="diag" class="panel readout" open>
+    <summary>diagnostics</summary>
+    <pre id="readout"></pre>
+  </details>
+</div>
 
 <div class="panel controls">
   <label>Preset <select id="preset"></select></label>
@@ -46,6 +51,6 @@
   <p class="hint">Drag the spacecraft to burn — position does not change, velocity does. Drag anywhere else to pan; pinch or scroll to zoom; double-tap to fit.</p>
 </div>
 
-<script type="module" src="src/app.js?v=20260830d"></script>
+<script type="module" src="src/app.js?v=20260830e"></script>
 </body>
 </html>

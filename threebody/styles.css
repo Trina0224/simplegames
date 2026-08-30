@@ -16,16 +16,42 @@ html, body { height: 100%; margin: 0; background: #05070c; color: var(--ink);
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
-.head { left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); max-width: min(420px, calc(100vw - 24px)); }
+/* The blurb and the readout share the top of the screen. They used to be two
+   independently placed fixed boxes, which is fine until the viewport is narrow
+   enough for them to reach each other -- on a portrait tablet the readout sat on
+   top of the blurb and hid it. One flex row cannot overlap itself: the readout
+   keeps the width its content needs and the blurb takes what is left. The row
+   itself is transparent to the pointer so that the gap between the two panels is
+   still canvas, and still pans. */
+.top {
+  position: fixed; z-index: 2; pointer-events: none;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  top: max(12px, env(safe-area-inset-top));
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.top > .panel { position: static; pointer-events: auto; }
+
+.head { flex: 0 1 420px; min-width: 0; }
 .head h1 { margin: 0 0 4px; font-size: 17px; font-weight: 650; letter-spacing: 0.2px; }
 .head p { margin: 0; color: var(--muted); font-size: 13px; }
 .note { margin-top: 7px !important; color: var(--accent) !important; font-size: 12px !important; }
 
+/* Width in `ch`, because the content is monospace and its longest ordinary line
+   is a known number of characters -- 51, the solver line. Guessing in vw got it
+   wrong and `overflow: hidden` then quietly ate the end of it. The 30px is the
+   padding and border: box-sizing is border-box here, so a bare 53ch would spend
+   28 of those characters' worth on the padding and wrap the solver line anyway.
+   `pre-wrap` is for the one line that can legitimately exceed the width: the
+   build stamp's cached-page warning, which should wrap rather than push the
+   blurb off the screen. */
 .readout {
-  right: max(12px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top));
+  flex: 0 0 auto; width: calc(53ch + 30px);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55;
-  color: #b9cbdd; white-space: pre; max-width: 46vw; overflow: hidden;
+  color: #b9cbdd;
 }
+.readout > pre { margin: 0; white-space: pre-wrap; font: inherit; }
+.readout > summary { display: none; }
 
 .controls {
   left: 50%; transform: translateX(-50%);
@@ -52,7 +78,28 @@ input[type="range"] { flex: 1; min-width: 90px; }
 .pill:disabled { opacity: 0.4; cursor: default; }
 .hint { margin: 0; font-size: 12px; color: var(--muted); }
 
-@media (max-width: 720px) {
-  .readout { display: none; }
-  .head { max-width: calc(100vw - 24px); }
+/* Between a phone and a tablet the row still fits, but only if the readout gives
+   a little back, so it shrinks a step rather than the blurb being squeezed to a
+   column of single words. */
+@media (max-width: 900px) {
+  .readout { font-size: 10px; }
+  .head h1 { font-size: 16px; }
+}
+
+/* Below this the two genuinely cannot sit side by side: the readout alone is
+   most of the width. Stack them instead of dropping the diagnostics -- SPEC.md
+   is explicit that they are not to be removed to tidy up the small view. */
+@media (max-width: 640px) {
+  .top { flex-direction: column; }
+  .head, .readout { flex: 0 0 auto; width: 100%; max-width: 100%; }
+  .readout { font-size: 10px; padding: 9px 11px; }
+  /* Ten lines of diagnostics plus the blurb plus the controls is the whole
+     phone screen, and then there is nowhere left to watch the orbit -- which is
+     what the page is for. So here they fold behind a summary instead: one tap
+     away, still complete, and still not removed. */
+  .readout > summary {
+    display: list-item; cursor: pointer; color: var(--muted);
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  .readout[open] > summary { margin-bottom: 7px; }
 }
