@@ -58,6 +58,10 @@ wobbles about it.
   stay the subject of the picture; that was wrong for this curve, which you turn
   on deliberately and then have to be able to see. Warm also puts it as far from
   the cyan trajectory as the colour wheel allows.
+- **Free launch** hands the initial condition to you. Drag the spacecraft to
+  place it, drag the yellow handle to aim and set the speed, watch the dashed
+  preview, and press Launch when it looks interesting. Crashes and escapes are
+  valid answers; the mode does not pick a safe orbit for you.
 - **Target** solves for a burn that arrives, by shooting — not by steering. It
   reports Δv, flight time, miss distance and the Jacobi constant either side, and
   when it cannot find one it says so — and says what got in the way — instead of
@@ -101,7 +105,9 @@ re-integrating anything.
 | `src/integrator.js` | adaptive Dormand–Prince 5(4) with dense output |
 | `src/trajectory.js` | propagation, event detection, family correction, classification |
 | `src/frames.js` | rotating ↔ inertial, the transform the validation suite checks |
-| `src/display.js` | the three display frames, built on that transform |
+| `src/display.js` | the three display frames, and the inverse Free Launch needs |
+| `src/freelaunch.js` | the candidate being edited, and what makes it invalid |
+| `assets/spacecraft-v1.png` | the sprite. Presentation only; the version is in the name |
 | `src/zvc.js` | zero-velocity curves from the live Jacobi constant |
 | `src/targeting.js` | shooting for a burn that arrives |
 | `src/presets.js` | reproducible initial states with their provenance |
@@ -139,6 +145,67 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### Free launch: your initial condition, their equations
+
+`FREE_LAUNCH_SPEC.md` is mostly a list of things this must not become — no
+atmosphere, no staging, no propellant, no finite burn, no autopilot. What is
+left is the whole point: the spacecraft is the same massless test particle it
+always was, and all the mode does is let you write `[x, y, vx, vy]` with your
+finger.
+
+Two decisions carry it, and both are about keeping the three frames honest.
+
+**The candidate is stored in rotating coordinates, always.** You place and aim
+in whichever frame is on screen, and it is converted once on the way in, through
+the inverse of the transform that draws it. Switching frames mid-edit therefore
+cannot produce a second physical state — there is only ever one. Measured: six
+frame switches while holding a candidate leave its rotating components
+*bit-identical*.
+
+That inverse is `displayToRotating` in `display.js`, and it takes a whole state
+rather than a velocity, because a velocity cannot be inverted on its own: the
+rotating↔inertial velocity map carries a term in the **position**. Aiming the
+same 45° screen gesture in each of the three frames gives the same displayed
+speed and three genuinely different rotating states, which is the correct answer
+and not a bug:
+
+```text
+rotating    vx  0.702753   vy  0.702753     1.018 km/s at 45° in this frame
+Earth-fol.  vx  0.329420   vy  0.733936     1.018 km/s at 45° in this frame
+inertial    vx  0.329420   vy  0.746086     1.018 km/s at 45° in this frame
+```
+
+**The editor works at epoch t = 0 and the clock is held there.** The scene you
+aim into is the scene the trajectory starts in. Editing at a running clock and
+resetting to zero on Launch would move the Moon between the last preview and the
+launch, which is precisely the "preview must not silently change" the spec
+forbids.
+
+Two handles rather than one gesture, because "move the spacecraft" and "set the
+velocity" are different verbs and a single drag outward from the sprite would
+have to guess. The aim handle is drawn even at zero speed, parked a fixed
+distance away on a dashed line — otherwise a candidate at rest has no visible
+way to be given a velocity at all.
+
+The speed rule is screen-space, 6 m/s per pixel, so the same hand movement means
+the same speed at every zoom level; a comfortable 300 px drag spans 0 to about
+1.8 km/s. The arrow is drawn at the exact inverse of that rule, so its head stays
+under the pointer however far you have zoomed.
+
+The preview is a real propagation by the same worker and the same tolerances as
+everything else — never a spline. One job is in flight at a time: a drag posts a
+new candidate every frame, and the worker is a queue rather than a pool, so
+starting them all would put the preview further behind the finger the longer you
+dragged. Holding the newest and starting it when the last one lands bounds the
+work by how fast the solver is. Measured after a 60-step, 8-second drag: nothing
+pending, and the displayed preview starts from exactly the state being held.
+
+Two numbers on screen are deliberately different. The chip beside the arrow
+reports speed **in the displayed frame**, because that is what the drag is
+setting; the readout keeps quoting rotating speed, as it does for a live run. A
+first version quoted the rotating speed next to the words "in this frame", which
+the frame-invariance test caught.
 
 ### A transfer that arrives, and a collision eight days later
 
@@ -317,6 +384,12 @@ how it looks, and it drives nothing.
 | a target on the Moon's surface | refused; 111 m/s "miss 0.23 km" was offered before the fix |
 | L-point transfers offered | 95, none with an arc that ends early — the same before and after |
 | missed collisions | 0 of 67 372 arcs that enter a body |
+| a candidate across six frame switches | rotating components bit-identical |
+| the same aim gesture in three frames | one displayed speed, three rotating states, round trip 2.2e-16 |
+| zoom and pan while editing | candidate identical |
+| Launch | uses exactly the state the preview was drawn from |
+| a 60-step drag | preview settles on the state actually held, nothing queued |
+| the sprite | reaches no numerical module — 10 of them checked for it |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
 | collision | detected against the physical radius, not the drawn one |

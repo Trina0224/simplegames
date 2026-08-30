@@ -17,11 +17,29 @@
 // reason, and the enlarged radius never reaches the physics: collision is tested
 // against the real one in trajectory.js, which cannot see this file.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830f';
-import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830f';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830h';
+import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830h';
 
 const EARTH_DRAW = 0.055;
 const MOON_DRAW = 0.030;
+
+// The spacecraft artwork. SPACECRAFT_ASSET.md: presentation only, sized in CSS
+// pixels and never in DU, so zoom cannot make it enormous or microscopic; the
+// physics never sees it. Its nose points UP in the source image, which is the
+// convention the rotation below assumes. The version is in the FILE NAME rather
+// than a query string, because a sprite is fetched by src= and not by an import
+// specifier, so tools/stamp.mjs cannot reach it -- a new drawing gets a new name
+// and iOS therefore cannot keep the old one.
+const SPRITE_SRC = '../assets/spacecraft-v1.png';   // relative to src/, where this module lives
+// Editor 24-32 px visible with a 32-44 px hit target; in flight 10-16 px.
+// These are the VISIBLE craft, which is not the same as the drawn box: the
+// artwork is inset in its square so that rotating it cannot clip the corners,
+// and it fills only this much of the side. Sizing the box instead would quietly
+// deliver a craft a third smaller than the spec asks for.
+const SPRITE_FILL = 181 / 256;
+export const EDITOR_PX = 30;
+export const EDITOR_HIT_PX = 40;
+const FLIGHT_PX = 13;
 
 // How far the camera may go. The lower bound is about a fifth of the Earth's
 // drawn disc, which is as close as anything here is worth looking at; the upper
@@ -56,6 +74,21 @@ const CRATERS = [
   [-0.20, -0.50, 0.26], [1.20, 0.45, 0.16], [0.45, 0.70, 0.14],
   [-1.10, -0.25, 0.18], [0.05, -0.05, 0.12], [0.95, -0.60, 0.13],
 ];
+
+/**
+ * The sprite, loaded once. If it never arrives the renderer keeps drawing the
+ * vector craft it always drew -- SPACECRAFT_ASSET.md requires the simulation to
+ * stay usable without the image, and a missing decoration must never be able to
+ * stop a physics sandbox.
+ */
+const sprite = { img: null, ok: false };
+if (typeof Image !== 'undefined') {
+  const img = new Image();
+  img.decoding = 'async';
+  img.onload = () => { sprite.img = img; sprite.ok = true; };
+  img.onerror = () => { sprite.ok = false; };
+  img.src = new URL(SPRITE_SRC, import.meta.url).href;
+}
 
 export class Scene {
   constructor(canvas) {
@@ -205,7 +238,7 @@ export class Scene {
 
   draw(view) {
     const { ctx } = this;
-    const { frame, t, points, trail, head, zvc, plan, burn, showZvc, showVel } = view;
+    const { frame, t, points, trail, head, zvc, plan, burn, showZvc, showVel, edit } = view;
     this.resize();
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -398,24 +431,139 @@ export class Scene {
         ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
       }
 
-      // a small craft pointing along its own velocity, rather than a dot
-      ctx.save();
-      ctx.translate(p[0], p[1]);
+      this._craft(p[0], p[1], ang, FLIGHT_PX);
+    }
+
+    // --- the Free Launch editor --------------------------------------------
+    if (edit && edit.state) this._editor(edit, P, t, frame);
+
+    // --- scale bar, sized to whatever the camera is showing -----------------
+    this._scaleBar(view.avoid);
+    ctx.restore();
+  }
+
+  /**
+   * The spacecraft, at a size given in screen pixels.
+   *
+   * `ang` is the screen-space heading: the image is drawn nose-up, so it is
+   * turned a further quarter turn to put that nose along the heading. Falls back
+   * to the vector craft when the artwork has not loaded.
+   */
+  _craft(px, py, ang, size) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(px, py);
+    if (sprite.ok) {
+      ctx.rotate(ang + Math.PI / 2);          // source nose points up
+      const box = size / SPRITE_FILL;
+      ctx.drawImage(sprite.img, -box / 2, -box / 2, box, box);
+    } else {
+      const k = size / 14;                    // the old marker was ~14 px across
       ctx.rotate(ang);
       ctx.beginPath();
-      ctx.moveTo(6.2, 0); ctx.lineTo(-3.6, 3.4); ctx.lineTo(-1.8, 0); ctx.lineTo(-3.6, -3.4);
+      ctx.moveTo(6.2 * k, 0); ctx.lineTo(-3.6 * k, 3.4 * k);
+      ctx.lineTo(-1.8 * k, 0); ctx.lineTo(-3.6 * k, -3.4 * k);
       ctx.closePath();
       ctx.fillStyle = '#f2fbff';
       ctx.fill();
       ctx.strokeStyle = 'rgba(120, 196, 236, 0.9)';
       ctx.lineWidth = 1;
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The candidate being edited: its preview path, the craft, and the two
+   * handles.
+   *
+   * Two handles rather than one gesture, because FREE_LAUNCH_SPEC.md separates
+   * "move the spacecraft" from "set the velocity" and a single drag outward from
+   * the sprite would have to guess which was meant. The aim handle is drawn even
+   * at zero speed, parked a fixed distance away, so there is always something
+   * obvious to pull -- otherwise a candidate at rest has no visible way to be
+   * given a velocity at all.
+   */
+  _editor(edit, P, t, frame) {
+    const { ctx } = this;
+    const [x, y, vx, vy] = displayState(
+      edit.state[0], edit.state[1], edit.state[2], edit.state[3], t, frame);
+    const p = P(x, y);
+
+    // the preview: a real propagation of this exact state, drawn as a path that
+    // cannot be mistaken for the run that is currently loaded
+    const pv = edit.preview;
+    if (pv && pv.n > 1) {
+      ctx.save();
+      ctx.setLineDash([7, 6]);
+      ctx.strokeStyle = edit.valid ? 'rgba(126, 240, 190, 0.72)' : 'rgba(255, 128, 110, 0.7)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      const step = Math.max(1, Math.floor(pv.n / 2200));
+      for (let i = 0; i < pv.n; i += step) {
+        const [ax, ay] = frame === 'rotating'
+          ? [pv.xs[i], pv.ys[i]] : displayPos(pv.xs[i], pv.ys[i], pv.ts[i], frame);
+        const q = P(ax, ay);
+        if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]);
+      }
+      ctx.stroke();
       ctx.restore();
+      // where it ends up, so a collision or an escape has somewhere to point
+      const last = pv.n - 1;
+      const [ex, ey] = frame === 'rotating'
+        ? [pv.xs[last], pv.ys[last]] : displayPos(pv.xs[last], pv.ys[last], pv.ts[last], frame);
+      const e = P(ex, ey);
+      ctx.strokeStyle = edit.valid ? 'rgba(126, 240, 190, 0.6)' : 'rgba(255, 128, 110, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(e[0], e[1], 4, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // --- scale bar, sized to whatever the camera is showing -----------------
-    this._scaleBar(view.avoid);
+    // the aim handle. At zero speed it parks at a fixed screen offset along the
+    // last meaningful heading, so it never disappears and never has to guess.
+    const speed = Math.hypot(vx, vy);
+    const ang = speed > 1e-9 ? Math.atan2(-vy, vx) : edit.aim;
+    const q = speed > 1e-9 ? P(x + vx * edit.arrowScale, y + vy * edit.arrowScale)
+                           : [p[0] + Math.cos(edit.aim) * 46, p[1] + Math.sin(edit.aim) * 46];
+
+    ctx.save();
+    ctx.setLineDash(speed > 1e-9 ? [] : [3, 4]);
+    ctx.strokeStyle = 'rgba(255, 214, 92, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    ctx.setLineDash([]);
+    if (speed > 1e-9) {
+      const a2 = Math.atan2(q[1] - p[1], q[0] - p[0]);
+      ctx.beginPath();
+      ctx.moveTo(q[0], q[1]);
+      ctx.lineTo(q[0] - 9 * Math.cos(a2 - 0.4), q[1] - 9 * Math.sin(a2 - 0.4));
+      ctx.lineTo(q[0] - 9 * Math.cos(a2 + 0.4), q[1] - 9 * Math.sin(a2 + 0.4));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 214, 92, 0.9)';
+      ctx.fill();
+    }
+    // the grab target, drawn so the invisible hit region is not a secret
+    ctx.beginPath(); ctx.arc(q[0], q[1], 9, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 214, 92, 0.18)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 214, 92, 0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
     ctx.restore();
+
+    // a restrained halo: enough to read as selected, not enough to swallow the
+    // silhouette, which already has its own engine glow in the artwork
+    const halo = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], EDITOR_HIT_PX * 0.7);
+    halo.addColorStop(0, edit.valid ? 'rgba(150, 220, 255, 0.26)' : 'rgba(255, 120, 100, 0.3)');
+    halo.addColorStop(1, 'rgba(150, 220, 255, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(p[0], p[1], EDITOR_HIT_PX * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = edit.valid ? 'rgba(150, 220, 255, 0.5)' : 'rgba(255, 120, 100, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.arc(p[0], p[1], EDITOR_HIT_PX / 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    this._craft(p[0], p[1], ang, EDITOR_PX);
   }
 
   _scaleBar(avoid) {

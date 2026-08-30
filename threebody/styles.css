@@ -77,6 +77,13 @@ input[type="range"] { flex: 1; min-width: 90px; }
 .pill.ghost { background: rgba(255,255,255,0.05); }
 .pill:disabled { opacity: 0.4; cursor: default; }
 .hint { margin: 0; font-size: 12px; color: var(--muted); }
+/* The live speed and heading of the candidate being aimed. Monospace so the
+   number stops jittering sideways while the arrow is being dragged. */
+.aim {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  color: #ffd65c; min-width: 15ch;
+}
+#free[aria-pressed="true"] { background: rgba(255, 214, 92, 0.22); color: #ffe9a8; }
 
 /* Between a phone and a tablet the row still fits, but only if the readout gives
    a little back, so it shrinks a step rather than the blurb being squeezed to a

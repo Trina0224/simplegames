@@ -10,16 +10,19 @@
 // repository has no package.json — the application itself needs no build step
 // and this suite does not change that.
 
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830f';
-import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830f';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830f';
-import { Dopri5 } from '../src/integrator.js?v=20260830f';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830f';
-import { PRESETS } from '../src/presets.js?v=20260830f';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830f';
-import { MOON_RADIUS, MOON_X } from '../src/constants.js?v=20260830f';
-import { toInertial } from '../src/frames.js?v=20260830f';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830f';
+import { readFileSync } from 'node:fs';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830h';
+import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830h';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830h';
+import { Dopri5 } from '../src/integrator.js?v=20260830h';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830h';
+import { PRESETS } from '../src/presets.js?v=20260830h';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830h';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830h';
+import { displayToRotating } from '../src/display.js?v=20260830h';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830h';
+import { toInertial } from '../src/frames.js?v=20260830h';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830h';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -382,6 +385,81 @@ console.log('\n11. Targeting cannot offer a path that does not exist');
   check('every offered candidate flies its whole arc', bad === 0,
     `${offered} candidates across 20 transfers, ${bad} of them ending early`);
 }
+console.log('\n12. Free Launch is a user-written initial condition, nothing more');
+{
+  const L = Object.fromEntries(lagrangePoints(MU).map((p) => [p.name, p]));
+  const f = new FreeLaunch();
+
+  // 3. A candidate aimed in any of the three frames must come back as the SAME
+  //    canonical rotating state. This is the transform Free Launch adds, run
+  //    against the forward one it inverts.
+  let worst = 0;
+  for (const frame of ['rotating', 'earth', 'inertial']) {
+    for (const t of [0, 0.4, 7.25]) {
+      for (const st of [[0.45, -0.62, 0.7, 0.7], [-0.9, 0.3, -0.2, 0.55], [1.05, 0.01, 0, -1.2]]) {
+        const shown = displayState(st[0], st[1], st[2], st[3], t, frame);
+        const back = displayToRotating(shown[0], shown[1], shown[2], shown[3], t, frame);
+        for (let i = 0; i < 4; i += 1) worst = Math.max(worst, Math.abs(back[i] - st[i]));
+      }
+    }
+  }
+  check('a candidate aimed in any frame returns the same rotating state', worst < 1e-15,
+    `worst component off by ${worst.toExponential(1)}`);
+
+  // 7. Invalid placement uses the PHYSICAL radii, the same ones collision uses.
+  const inside = [
+    ['the Earth centre', [EARTH_X, 0]],
+    ['just inside the Earth', [EARTH_X + EARTH_RADIUS * 0.99, 0]],
+    ['the Moon centre', [MOON_X, 0]],
+    ['just inside the Moon', [MOON_X, MOON_RADIUS * 0.99]],
+  ];
+  const outside = [
+    ['just outside the Earth', [EARTH_X + EARTH_RADIUS * 1.01, 0]],
+    ['just outside the Moon', [MOON_X, MOON_RADIUS * 1.01]],
+    ['L4', [L.L4.x, L.L4.y]],
+  ];
+  let wrong = '';
+  for (const [name, p] of inside) { f.begin([p[0], p[1], 0, 0]); if (f.valid()) wrong = name + ' accepted'; }
+  for (const [name, p] of outside) { f.begin([p[0], p[1], 0, 0]); if (!f.valid()) wrong = name + ' rejected'; }
+  check('placement is rejected inside a body and allowed just outside it', !wrong,
+    wrong || `physical radii: Earth ${(EARTH_RADIUS * DU_KM).toFixed(0)} km, Moon ${(MOON_RADIUS * DU_KM).toFixed(0)} km`);
+
+  // 4. and 12. The preview is a real propagation, and the outcome survives a
+  //    tighter tolerance -- a preview that changed character when the solver was
+  //    asked to work harder would not be worth showing.
+  const cand = [0.45, -0.62, msToVu(700) * 0.6, msToVu(700) * 0.8];
+  const loose = propagate(cand, PREVIEW_TU, { sample: 0.01 });
+  const tight = propagate(cand, PREVIEW_TU, { sample: 0.01, absTol: 1e-13, relTol: 1e-13 });
+  const gap = Math.hypot(loose.state[0] - tight.state[0], loose.state[1] - tight.state[1]);
+  check('a preview survives a tighter tolerance', loose.status === tight.status && gap < 1e-5,
+    `"${loose.status}" both ways, endpoints ${(gap * DU_KM).toFixed(3)} km apart`);
+
+  // 11. And a launched candidate holds the same Jacobi contract as everything
+  //     else -- Free Launch does not get its own weaker numerics.
+  check('a launched candidate holds the Jacobi contract', loose.relDrift < 1e-9,
+    `relative drift ${loose.relDrift.toExponential(1)} over ${PREVIEW_TU} TU`);
+
+  // 9. The sprite cannot reach the physics: nothing numerical imports the
+  //     renderer, and freelaunch.js holds no sizes at all.
+  const root = new URL('../src/', import.meta.url);
+  const numerical = ['cr3bp.js', 'integrator.js', 'lagrange.js', 'trajectory.js',
+    'targeting.js', 'zvc.js', 'presets.js', 'worker.js', 'frames.js', 'freelaunch.js'];
+  // Comments are stripped first. The point is that no screen quantity reaches a
+  // calculation, not that the word never appears -- freelaunch.js explains in
+  // prose why a zero-speed sprite keeps its heading, and a check that fails on
+  // that is checking the wrong thing.
+  const code = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  let leaks = [];
+  for (const m of numerical) {
+    const src = code(readFileSync(new URL(m, root), 'utf8'));
+    if (/from '\.\/render\.js/.test(src)) leaks.push(`${m} imports render.js`);
+    if (/EDITOR_PX|EDITOR_HIT_PX|FLIGHT_PX|SPRITE_SRC/.test(src)) leaks.push(`${m} uses a sprite size`);
+    if (/\bscene\b|toScreen|devicePixelRatio/.test(src)) leaks.push(`${m} touches the camera`);
+  }
+  check('no sprite or screen size can reach the physics', leaks.length === 0,
+    leaks.length ? leaks.join(', ') : `${numerical.length} numerical modules checked`);
+}
+
 console.log('     note: the step-end collision test was hunted for a case it could');
 console.log('     step over. 67 372 arcs that genuinely enter a body: all detected,');
 console.log('     none missed -- the adaptive step collapses near a body long before');

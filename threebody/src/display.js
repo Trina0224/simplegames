@@ -29,8 +29,8 @@
 // an algebraically equal but differently-rounded shortcut, so that the
 // validation suite compares the code against the spec's own arithmetic.
 
-import { EARTH_X, MOON_X } from './constants.js?v=20260830f';
-import { toInertial } from './frames.js?v=20260830f';
+import { EARTH_X, MOON_X } from './constants.js?v=20260830h';
+import { toInertial, toRotating } from './frames.js?v=20260830h';
 
 /** The frames the UI may ask for, in the order they are offered. */
 export const FRAMES = ['rotating', 'earth', 'inertial'];
@@ -104,6 +104,33 @@ export function displayPoints(points, t, frame) {
     const [px, py] = displayPos(p.x, p.y, t, frame);
     return { ...p, px, py };
   });
+}
+
+/**
+ * The inverse of displayState: a full state read off the displayed picture,
+ * expressed in the rotating coordinates the integrator works in.
+ *
+ * Free Launch needs this and nothing else did. The user places a spacecraft and
+ * drags out a velocity in whatever frame happens to be on screen, and what comes
+ * back has to be one canonical rotating state -- FREE_LAUNCH_SPEC.md is explicit
+ * that the three frames must not grow three different physics.
+ *
+ * Velocity cannot be inverted on its own: the rotating<->inertial velocity map
+ * carries a term in the POSITION, which is why this takes and returns a whole
+ * state rather than offering a tidier vector-only function that would be wrong.
+ * (burnToRotating below is the exception that proves it -- an impulse leaves the
+ * position alone, so that term cancels and only the rotation survives.)
+ */
+export function displayToRotating(X, Y, VX, VY, t, frame) {
+  if (frame === 'rotating') return [X, Y, VX, VY];
+  let ix = X, iy = Y, ivx = VX, ivy = VY;
+  if (frame === 'earth') {
+    // undo the translation first: the Earth-following frame IS the inertial one
+    // with Earth's own state subtracted, so add it back and carry on.
+    const e = earthInertial(t);
+    ix += e[0]; iy += e[1]; ivx += e[2]; ivy += e[3];
+  }
+  return toRotating(ix, iy, ivx, ivy, t);
 }
 
 /**
