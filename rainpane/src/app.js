@@ -181,7 +181,7 @@ function updateDiag(g) {
     `raw      ${d.raw.x.toFixed(2)}, ${d.raw.y.toFixed(2)}, ${d.raw.z.toFixed(2)}`,
     `sensor   ${d.enabled ? 'devicemotion' : 'off (screen down)'}`,
     `screen   angle ${d.reported === null ? '-' : d.reported}  ${d.kind || '-'}  legacy ${d.legacy === null ? '-' : d.legacy}`,
-    `         ${d.viewport}  ->  read ${d.angle}°  turn ${d.rotation}°`,
+    `         ${d.viewport}  ->  read ${d.angle}°  turn ${d.rotation}°${d.locked ? '   ROTATION LOCKED' : ''}`,
     `rain     ${rainfall.rate} mm/h   ${rainfall.massFlux().toFixed(1)} mm3/s`,
     `impacts  ${impacts.live.length} spreading`,
     `landed   ${(impacts.landed * surface.cellMm ** 3).toFixed(0)} mm3 in total`,

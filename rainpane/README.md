@@ -321,6 +321,32 @@ device, so past that point the two disagree by exactly `screen.orientation.angle
 a quarter turn sends the water sideways, and a tablet held upside-down sends it
 straight **up**. That is how it was found, on a device.
 
+### First, check whether the display is rotating at all
+
+Device readings ended a long argument. On a rotation-locked iPad,
+`screen.orientation` stays `portrait-primary` at angle 90 and the viewport stays
+portrait **however the tablet is held** — so nothing about the display rotation
+is ever exercised, and the correction below is correctly a no-op:
+
+```text
+held upright              raw (-0.25, -9.86)  ->  gravity ( 0.01,  1.00)  down
+turned, right edge down   raw (-9.82,  0.07)  ->  gravity ( 1.00, -0.00)  right
+turned, left edge down    raw ( 9.74, -0.07)  ->  gravity (-1.00,  0.01)  left
+```
+
+All three are correct. With the display locked in portrait and the tablet turned
+sideways, the screen's right or left edge **is** the physically lowest edge, and
+water running toward it is gravity working — that is the entire premise. It only
+*looks* wrong because the scene is painted on the screen and turns with it, so
+water running downhill reads as running across, or up, the picture.
+
+That distinction is worth surfacing rather than hiding: "the sensor mapping is
+broken" and "the display is locked" look identical from the sofa. The **i** panel
+says `ROTATION LOCKED` when the tablet is held a quarter-turn or more over while
+the display still calls itself portrait.
+
+### Then, the rotation itself
+
 The first attempt at this fixed the tablet-upside-down case and broke portrait,
 and the reason is worth writing down. **The two frames are measured from
 different reference orientations.** CoreMotion's axes are fixed to the hardware
@@ -338,9 +364,15 @@ in each of the four display orientations, on each kind of device:
 
 ```text
                           portrait  landscape  portrait  landscape
-phone   (natural portrait)   down      down       down      down
-tablet  (natural landscape)  down      down       down      down
+phone   (natural portrait)   down    (device)     down   (device)
+tablet  (natural landscape)  down    (device)     down   (device)
 ```
+
+The landscape columns are **printed, not asserted**. Simulating one means
+deciding what the accelerometer reads there, which follows from the very
+relation under test — and that circularity is exactly why this harness passed
+green while the device did not. Only portrait, where the frozen mapping was
+actually verified, is checked; the real device readings above are checked too.
 
 Fog Mirror's `src/orientation.js` has the same defect and the same relayout, and
 has not been changed.
