@@ -1,12 +1,22 @@
 # Rainpane
 
 Rain striking and running down a pane of glass, with a forest path at night
-behind it: impacts, pinned droplets, coalescence, depinning, runoff and
-rivulets, on the gravity your device actually reports — and the sound of the
-same rain, synthesised from the same impacts.
+behind it. Three systems, all consequences of one rainfall:
 
-See [`SPEC.md`](SPEC.md) for the product specification, [`AGENTS.md`](AGENTS.md)
-for the rules and the research hierarchy this is held to.
+1. **The water on the glass** — impacts, pinned droplets, coalescence,
+   depinning, runoff and rivulets, on the gravity your device actually reports.
+2. **The sound** — synthesised from the same impacts the solver emits. Nothing
+   is sampled or looped.
+3. **The air outside** — heavy rain takes the distance away and leaves the path
+   at your feet sharp, because the optical path through rainy air grows with
+   distance.
+
+The specifications are external design requirements and are not authored here:
+[`SPEC.md`](SPEC.md) for the water, [`AUDIO_SPEC.md`](AUDIO_SPEC.md) for the
+sound, [`VISIBILITY_SPEC.md`](VISIBILITY_SPEC.md) for the atmosphere, and
+[`AGENTS.md`](AGENTS.md) for the rules and the research hierarchy this is held
+to. This README is the implementation's own record: what was built, what was
+measured, and what turned out to be wrong on the way.
 
 ## What is in this build
 
@@ -56,9 +66,19 @@ for the rules and the research hierarchy this is held to.
 
 No camera mode, no local-image mode, no thunder, no wind, no airborne rain
 streaks, and no interface beyond one intensity slider, a mute and a diagnostics
-readout. The audio here is the first two layers only — see **Sound** below. The
-point of this build is that the water on the glass can be judged on a real
-device; everything else can be added on top of a solver that is already right.
+readout.
+
+Two things are half-built on purpose. The audio is layers A–C only — the exterior
+bed and the impacts — because runoff and edge drainage must be driven by measured
+solver flux rather than guessed thresholds; see **Sound**. And the atmospheric
+veil has full fidelity only for the built-in scene, because a depth mask is
+authored per scene and an arbitrary photograph has no trustworthy depth; see
+**Seeing through rain**.
+
+**The impact timbre is not finished.** It has been reported twice from the device
+— once as "a lot of little explosions", once as "like castanets" — and the
+current splash-led model is a response to the second that has not yet been heard.
+Every metric it can be held to passes; none of them is an ear.
 
 (The rain streaks and light specks visible in the picture are in the scene
 photograph itself, not drawn by this code.)
@@ -517,9 +537,15 @@ python3 -m http.server 8000
 ```
 
 On iOS the first tap is what grants motion access, so the start screen is not
-decoration. The **i** button shows the live gravity vector, the rain rate, head
-and impact counts and the water budget — that readout is how the physics gets
-judged on a device rather than in a screenshot.
+decoration. The **i** button shows the live gravity vector and display rotation,
+the rain rate, head and impact counts, the water budget, the audio and veil
+state, and the build stamp — that readout is how any of this gets judged on a
+device rather than in a screenshot. **Tapping the readout itself toggles the rain
+veil**, so the atmosphere can be told apart from the water on the glass by eye.
+
+Check the build stamp before reporting anything. Safari caches ES modules hard,
+and a fix can be live on the server while the device still runs the previous
+build.
 
 ## Where the code lives
 
@@ -529,14 +555,26 @@ judged on a device rather than in a screenshot.
 | `src/impact.js` | the spread/retract/settle lifecycle of one drop |
 | `src/surface.js` | thickness, wetted memory, pinning, creep, capillarity |
 | `src/flows.js` | beads and rivulet heads: pinning, motion, trails, merging |
-| `src/render.js` | optics: refraction, Fresnel rim, highlight, meniscus |
-| `src/scene.js` | what is behind the pane |
-| `src/gravity.js` | copied verbatim from Fog Mirror. Frozen |
+| `src/render.js` | optics: the rain veil, refraction, Fresnel rim, highlight, meniscus |
+| `src/scene.js` | what is behind the pane, and its visibility masks |
+| `src/gravity.js` | Fog Mirror's sensor read, plus the display rotation |
 | `src/audio.js` | the beds, the impact voices, the acoustic pane |
-| `src/app.js` | clock, layout, the one control |
+| `src/app.js` | clock, layout, the controls |
+| `tools/make-visibility-mask.py` | authors the depth / near-ground / lantern masks |
 
 ## Next
 
-The milestones in `SPEC.md` past this point: airborne rain, layered audio, local
-image and camera scenes, wind and thunder. None of them should require changing
-the solver.
+In rough order of how much they would change what you see and hear:
+
+1. **The impact timbre.** The only open item that is actually wrong rather than
+   merely absent. Needs an ear, not another metric — and if one more blind pass
+   misses, an A/B switch to compare candidates on the device in one sitting
+   beats guessing across rounds.
+2. **Audio layers D and E** — runoff texture and boundary drainage.
+   `surface.metrics()` already reports moving-water fraction and depth so the
+   thresholds can be measured rather than guessed.
+3. **Airborne rain** — resolvable near streaks, which the visibility layer is
+   explicitly separate from.
+4. Local image and camera scenes, wind and thunder.
+
+None of them should require changing the solver.
