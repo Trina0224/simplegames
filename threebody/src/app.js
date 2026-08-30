@@ -6,15 +6,15 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830e';
-import { jacobi } from './cr3bp.js?v=20260830e';
-import { lagrangePoints } from './lagrange.js?v=20260830e';
-import { propagate } from './trajectory.js?v=20260830e';
-import { zeroVelocityCurves } from './zvc.js?v=20260830e';
-import { planTransfer } from './targeting.js?v=20260830e';
-import { PRESETS, byId } from './presets.js?v=20260830e';
-import { Scene } from './render.js?v=20260830e';
-import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=20260830e';
+import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830f';
+import { jacobi } from './cr3bp.js?v=20260830f';
+import { lagrangePoints } from './lagrange.js?v=20260830f';
+import { propagate } from './trajectory.js?v=20260830f';
+import { zeroVelocityCurves } from './zvc.js?v=20260830f';
+import { planTransfer } from './targeting.js?v=20260830f';
+import { PRESETS, byId } from './presets.js?v=20260830f';
+import { Scene } from './render.js?v=20260830f';
+import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=20260830f';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -23,7 +23,7 @@ import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830e';
+const STAMP = '20260830f';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -69,7 +69,7 @@ let currentView = { ...DEFAULT_VIEW };
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830e', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830f', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {

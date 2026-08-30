@@ -9,10 +9,10 @@
 // rather than solved, because with time free the problem is underdetermined and
 // the answer would be an arbitrary point on a curve of solutions.
 
-import { MU } from './constants.js?v=20260830e';
-import { jacobi } from './cr3bp.js?v=20260830e';
-import { propagate } from './trajectory.js?v=20260830e';
-import { vuToMs } from './constants.js?v=20260830e';
+import { MU } from './constants.js?v=20260830f';
+import { jacobi } from './cr3bp.js?v=20260830f';
+import { propagate } from './trajectory.js?v=20260830f';
+import { vuToMs } from './constants.js?v=20260830f';
 
 /**
  * Fly a candidate and report where it got to — and whether it got there at all.

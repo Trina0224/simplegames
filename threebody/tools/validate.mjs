@@ -10,16 +10,16 @@
 // repository has no package.json — the application itself needs no build step
 // and this suite does not change that.
 
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830e';
-import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830e';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830e';
-import { Dopri5 } from '../src/integrator.js?v=20260830e';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830e';
-import { PRESETS } from '../src/presets.js?v=20260830e';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830e';
-import { MOON_RADIUS, MOON_X } from '../src/constants.js?v=20260830e';
-import { toInertial } from '../src/frames.js?v=20260830e';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830e';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830f';
+import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830f';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830f';
+import { Dopri5 } from '../src/integrator.js?v=20260830f';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830f';
+import { PRESETS } from '../src/presets.js?v=20260830f';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830f';
+import { MOON_RADIUS, MOON_X } from '../src/constants.js?v=20260830f';
+import { toInertial } from '../src/frames.js?v=20260830f';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830f';
 
 let failures = 0;
 const check = (name, ok, detail) => {

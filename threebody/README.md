@@ -239,6 +239,14 @@ twelve* mistake, which is otherwise silent and produces exactly the mixed build
 described above. It names the file that was left behind rather than listing the
 forty-three that are right.
 
+**Bump it on every deploy**, not only when this mechanism changes. What the
+version is for is telling a person whether the page in front of them is the one
+that was just pushed; a change that ships under the old stamp cannot be
+distinguished from a cached copy of the previous one, which is the confusion the
+whole thing exists to remove. The tool cannot catch this — it checks that the
+version is *consistent*, not that it *moved* — so it is a habit, written down
+here because it has already been forgotten once.
+
 The readout's `build` line is not a constant either. `app.js` compares the stamp
 it was built with against the `?v=` the browser actually requested, and when they
 disagree it says so:
