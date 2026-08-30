@@ -8,32 +8,62 @@
 
 import { writeFileSync } from 'node:fs';
 import { MU, DU_KM, TU_DAYS } from '../src/constants.js?v=20260830k';
-import { haloBranch, lunarGeometry, closure } from '../src/halo.js?v=20260830k';
+import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830k';
 
 const WANT = 34;          // members kept per branch, evenly spaced along it
 const out = {};
 
 for (const point of ['L1', 'L2']) {
-  const branch = haloBranch(point, { steps: 400 });
+  // Two continuations, one family. The held-component walk gets from the
+  // Richardson seed through the first fold; pseudo-arclength takes it from there
+  // to the lunar surface, because past the SECOND fold there is no component
+  // left to hold. See haloArc in src/halo.js. Measured: L2 stopped at a perilune
+  // of 7412 km on the held-component walk alone and reaches the surface with the
+  // arclength continuation, passing through Gateway's published geometry on the
+  // way.
+  const held = haloBranch(point, { steps: 400 });
+  const branch = [...held, ...haloArc(held[held.length - 1], held[held.length - 2],
+    { ds: 4e-4, steps: 20000 })];
+
+  // Spaced by PERILUNE, not by index. The two continuations do not step at the
+  // same rate along the family -- L2 is 64 members by held component and 3023 by
+  // arclength -- so an evenly-indexed sample put 33 of 34 members below 7254 km
+  // and jumped straight there from 50922 km. The slider is meant to walk the
+  // family, and what a reader watches change is how close it comes to the Moon.
+  //
+  // Geometrically rather than linearly spaced, because the family's interesting
+  // half is its deep end: linear spacing in perilune spends half the slider
+  // between 50000 and 25000 km, where consecutive members are hard to tell apart.
+  const geom = branch.map((m) => lunarGeometry(m));
+  const hi = geom[0].perilune, lo = geom[geom.length - 1].perilune;
   const pick = [];
   for (let i = 0; i < WANT; i += 1) {
-    const j = Math.round((i * (branch.length - 1)) / (WANT - 1));
-    if (!pick.length || pick[pick.length - 1] !== j) pick.push(j);
+    const want = hi * Math.pow(lo / hi, i / (WANT - 1));
+    let best = 0;
+    for (let j = 1; j < geom.length; j += 1) {
+      if (Math.abs(geom[j].perilune - want) < Math.abs(geom[best].perilune - want)) best = j;
+    }
+    if (!pick.length || pick[pick.length - 1] !== best) pick.push(best);
   }
   out[point] = pick.map((j) => {
     const m = branch[j];
-    const g = lunarGeometry(m);
+    const g = geom[j];
     const c = closure(m);
     return {
       state: m.state, period: m.period, C: m.C, residual: m.residual,
       hold: m.hold, closure: c.error, drift: c.run.relDrift,
       zMaxKm: +(g.zMax * DU_KM).toFixed(0),
-      periluneKm: +(g.perilune * DU_KM).toFixed(0),
+      // Three decimals, not none. The family runs down to the lunar surface and
+      // its last members clear it by metres: rounded to whole kilometres the
+      // deepest one stores 1737 against a radius of 1737.4 and reads as being
+      // INSIDE the Moon, which it is not.
+      periluneKm: +(g.perilune * DU_KM).toFixed(3),
       apoluneKm: +(g.apolune * DU_KM).toFixed(0),
       slenderness: +g.slenderness.toFixed(3),
     };
   });
-  console.error(`${point}: ${branch.length} corrected, ${out[point].length} kept, `
+  console.error(`${point}: ${held.length} by held component + ${branch.length - held.length} by `
+    + `arclength = ${branch.length} corrected, ${out[point].length} kept, `
     + `perilune ${out[point][0].periluneKm} -> ${out[point][out[point].length - 1].periluneKm} km`);
 }
 

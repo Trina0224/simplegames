@@ -24,7 +24,7 @@ import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830k';
 import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830k';
 import { propagate3 } from '../src/trajectory3d.js?v=20260830k';
 import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830k';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830k';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830k';
 import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830k';
 import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830k';
 import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830k';
@@ -686,9 +686,15 @@ console.log('\n16. The families are one continuation, not a shortlist');
       `worst Jacobi drift ${worstDrift.toExponential(2)}`);
     check(`every ${point} member reports the C it stores`, worstC < 1e-9,
       `worst ${worstC.toExponential(1)}`);
-    check(`no ${point} member passes inside the Moon`, inside === 0,
-      `closest perilune ${Math.min(...fam.map((m) => m.periluneKm)).toLocaleString('en-US')} km ` +
-      `against a lunar radius of ${(MOON_RADIUS * DU_KM).toFixed(0)} km`);
+    // The family really does run into the Moon; the continuation is stopped at
+    // the surface rather than at a tidy altitude, so the deepest member grazes.
+    // Reported to metres, because at this depth "1737 km against 1737 km" is a
+    // rounding artefact and says nothing about which side of the surface it is.
+    const deep = Math.min(...fam.map((m) => lunarGeometry(
+      { state: m.state, period: m.period }).perilune)) * DU_KM;
+    check(`no ${point} member passes inside the Moon`, inside === 0 && deep > MOON_RADIUS * DU_KM,
+      `deepest perilune ${deep.toFixed(3)} km against a lunar radius of ` +
+      `${(MOON_RADIUS * DU_KM).toFixed(1)} km -- ${((deep - MOON_RADIUS * DU_KM) * 1000).toFixed(0)} m of clearance`);
 
     const peri = fam.map((m) => m.periluneKm);
     const zs = fam.map((m) => m.zMaxKm);
@@ -715,19 +721,29 @@ console.log('\n16. The families are one continuation, not a shortlist');
   // about trimming it and the user asked to see the real family; what the deep
   // end needs is the model's limits stated, which is the app's job, not a
   // shorter list.
-  const deepest = Math.min(...FAMILY3D.L1.map((m) => m.periluneKm)) - MOON_RADIUS * DU_KM;
-  check('the L1 family is kept whole, low end and all',
-    deepest < 100 && deepest > 0,
-    `its deepest member passes ${deepest.toFixed(0)} km above the lunar surface -- ` +
-    `kept, and flagged as idealized rather than removed`);
+  for (const point of FAMILY_POINTS) {
+    const d = lunarGeometry({
+      state: FAMILY3D[point][FAMILY3D[point].length - 1].state,
+      period: FAMILY3D[point][FAMILY3D[point].length - 1].period,
+    }).perilune * DU_KM - MOON_RADIUS * DU_KM;
+    check(`the ${point} family is kept whole, low end and all`, d < 100 && d > 0,
+      `its deepest member passes ${d < 1 ? (d * 1000).toFixed(0) + ' m' : d.toFixed(0) + ' km'} ` +
+      `above the lunar surface -- kept, and flagged as idealized rather than removed`);
+  }
 
-  // The NRHO is not a separate discovery: it is where the L2 branch ends.
-  const last = FAMILY3D.L2[FAMILY3D.L2.length - 1];
-  let same = 0;
-  for (let i = 0; i < 6; i += 1) same = Math.max(same, Math.abs(last.state[i] - NRHO3D.state[i]));
-  check('the end of the L2 branch IS the NRHO preset',
-    same === 0 && last.period === NRHO3D.period,
-    `every component identical, period ${last.period}`);
+  // The NRHO preset is a member of the family, not a separate discovery. It used
+  // to be the LAST member, because the held-component continuation stopped there;
+  // pseudo-arclength walks the same family on past it to the lunar surface, so it
+  // is now an interior member and the test says so instead.
+  const nrhoG = lunarGeometry(NRHO3D);
+  const peris = FAMILY3D.L2.map((m) => m.periluneKm);
+  const inside = nrhoG.perilune * DU_KM > peris[peris.length - 1]
+    && nrhoG.perilune * DU_KM < peris[0];
+  check('the NRHO preset is an interior member of the L2 family it came from',
+    inside && closure(NRHO3D).error < 1e-8,
+    `perilune ${(nrhoG.perilune * DU_KM).toFixed(0)} km, between the family's ` +
+    `${peris[0].toLocaleString('en-US')} and ${peris[peris.length - 1].toLocaleString('en-US')} km; ` +
+    `closure ${closure(NRHO3D).error.toExponential(1)}`);
 
   // And the thing that a small residual alone would have missed.
   check('a member is accepted on closure, not on residual alone',
@@ -834,6 +850,83 @@ console.log('\n18. Playback stops when the trajectory did');
   check('and Play on a finished run starts it over rather than doing nothing',
     resumeFrom(hitMoon.ts[2], hitMoon) === 0 && resumeFrom(0.8, hitMoon) === 0.8,
     'at the end -> 0; part-way through -> unchanged');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n19. A fold is the end of a parameterisation, not of a family');
+{
+  // haloBranch walks the family by holding one component. The L2 branch turns
+  // over twice: it handles the first fold by switching z0 -> x0 and STOPS at the
+  // second, with the family running very nearly perpendicular to the parameter it
+  // is being asked to advance. haloArc holds nothing -- the arclength condition
+  // replaces the held component -- so a fold in any component is a non-event.
+  const held = haloBranch('L2', { steps: 400 });
+  const last = held[held.length - 1], pen = held[held.length - 2];
+  const dz = Math.abs(last.state[2] - pen.state[2]), dx = Math.abs(last.state[0] - pen.state[0]);
+  check('the held-component branch stalls against a fold in x0', dx * 20 < dz,
+    `its last two members are ${dz.toExponential(1)} apart in z0 and only ` +
+    `${dx.toExponential(1)} in x0 -- a ratio of ${(dz / dx).toFixed(0)}, which is a family ` +
+    `running nearly perpendicular to the parameter it is being advanced in`);
+
+  const coarse = haloArc(last, pen, { ds: 4e-3, steps: 20000 });
+  const fine = haloArc(last, pen, { ds: 1e-3, steps: 20000 });
+  const gHeld = lunarGeometry(last);
+  const gEnd = lunarGeometry(coarse[coarse.length - 1]);
+  check('arclength continuation carries the same family past it',
+    coarse.length > 100 && gEnd.perilune < gHeld.perilune / 3,
+    `${coarse.length} further members, perilune ${(gHeld.perilune * DU_KM).toFixed(0)} km ` +
+    `-> ${(gEnd.perilune * DU_KM).toFixed(0)} km`);
+
+  // The strongest check available: the answer must not depend on the stride. Two
+  // walks four times apart in step size have to arrive at the same orbit, or what
+  // is being followed is the discretisation rather than the family.
+  const gFine = lunarGeometry(fine[fine.length - 1]);
+  check('and where it ends does not depend on how big its steps were',
+    Math.abs(gEnd.perilune - gFine.perilune) * DU_KM < 1 &&
+      Math.abs(coarse[coarse.length - 1].period - fine[fine.length - 1].period) * TU_DAYS < 1e-3,
+    `ds 4e-3 ends at ${(gEnd.perilune * DU_KM).toFixed(3)} km and T ` +
+    `${(coarse[coarse.length - 1].period * TU_DAYS).toFixed(4)} d; ds 1e-3 at ` +
+    `${(gFine.perilune * DU_KM).toFixed(3)} km and T ` +
+    `${(fine[fine.length - 1].period * TU_DAYS).toFixed(4)} d ` +
+    `(${fine.length} members against ${coarse.length})`);
+
+  let worst = 0;
+  for (let i = 0; i < coarse.length; i += 7) worst = Math.max(worst, closure(coarse[i]).error);
+  check('every member it produces is still a closed periodic orbit', worst < 1e-8,
+    `worst closure ${worst.toExponential(2)} over every 7th member -- these are far more ` +
+    `unstable than the shallow halos, and close to 1e-9 rather than 1e-11 because of it`);
+
+  check('it stops at the lunar surface rather than continuing through it',
+    gEnd.perilune > MOON_RADIUS && (gEnd.perilune - MOON_RADIUS) * DU_KM < 1,
+    `deepest member clears the surface by ${((gEnd.perilune - MOON_RADIUS) * DU_KM * 1000).toFixed(0)} m`);
+
+  // What the Artemis demos rest on: the family passes THROUGH Gateway's published
+  // geometry rather than being fitted to it. Three independent published numbers,
+  // and the family has to bracket each one -- a member above and a member below.
+  const g = coarse.map((m) => ({ m, geo: lunarGeometry(m), d: m.period * TU_DAYS }));
+  const brackets = (v, of) => g.some((r) => of(r) > v) && g.some((r) => of(r) < v);
+  check('the family passes through the geometry NASA publishes for Gateway',
+    brackets(6.5, (r) => r.d) &&
+      brackets((1500 + MOON_RADIUS * DU_KM) / DU_KM, (r) => r.geo.perilune) &&
+      brackets(70000 / DU_KM, (r) => r.geo.apolune),
+    `period spans ${Math.min(...g.map((r) => r.d)).toFixed(2)}-${Math.max(...g.map((r) => r.d)).toFixed(2)} d ` +
+    `about 6.5; near pass ${(Math.min(...g.map((r) => r.geo.perilune)) * DU_KM - MOON_RADIUS * DU_KM).toFixed(0)}-` +
+    `${(Math.max(...g.map((r) => r.geo.perilune)) * DU_KM - MOON_RADIUS * DU_KM).toFixed(0)} km about 1500; ` +
+    `far pass ${(Math.min(...g.map((r) => r.geo.apolune)) * DU_KM / 1000).toFixed(0)}-` +
+    `${(Math.max(...g.map((r) => r.geo.apolune)) * DU_KM / 1000).toFixed(0)} thousand km about 70`);
+
+  // and the three published numbers must agree with EACH OTHER on which member --
+  // if they picked three different orbits, matching any one of them would be a
+  // coincidence rather than the family going where NASA's does.
+  const near = (want, of) => g.reduce((a, r) => (Math.abs(of(r) - want) < Math.abs(of(a) - want) ? r : a));
+  const byT = near(6.5, (r) => r.d);
+  const byPeri = near((1500 + MOON_RADIUS * DU_KM) / DU_KM, (r) => r.geo.perilune);
+  const byApo = near(70000 / DU_KM, (r) => r.geo.apolune);
+  check('and its three published figures select the same orbit, not three different ones',
+    Math.abs(byT.d - byPeri.d) < 0.3 && Math.abs(byT.d - byApo.d) < 0.3,
+    `period match ${byT.d.toFixed(3)} d, near-pass match ${byPeri.d.toFixed(3)} d, ` +
+    `far-pass match ${byApo.d.toFixed(3)} d -- all within ` +
+    `${(Math.max(byT.d, byPeri.d, byApo.d) - Math.min(byT.d, byPeri.d, byApo.d)).toFixed(3)} d of each other`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

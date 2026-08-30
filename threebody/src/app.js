@@ -413,9 +413,21 @@ function familyMember(point, i) {
     blurb: 'One continuation, not a shortlist. Every member here was corrected from '
       + 'the one before it, and the slider walks the family from a small halo down to '
       + 'a near-rectilinear orbit that all but grazes the Moon.',
-    expect: `|z| ${m.zMaxKm.toLocaleString('en-US')} km, perilune ${m.periluneKm.toLocaleString('en-US')} km, `
+    expect: `|z| ${m.zMaxKm.toLocaleString('en-US')} km, perilune ${Math.round(m.periluneKm).toLocaleString('en-US')} km, `
       + `slenderness ${m.slenderness.toFixed(2)}`,
   };
+}
+
+/**
+ * An altitude above the lunar surface, in the unit that says what it is.
+ *
+ * The family now continues to the surface itself, and its deepest members clear
+ * it by single metres. Rounded to whole kilometres those read "0 km over the
+ * Moon", which is not a small altitude -- it is no altitude at all.
+ */
+function altText(km) {
+  if (km < 1) return `${(km * 1000).toFixed(0)} m over the Moon`;
+  return `${km.toFixed(0)} km over the Moon`;
 }
 
 /**
@@ -455,8 +467,7 @@ function closestLabel3(run, near) {
   if (run.status === 'impact: Moon') return 'hit the Moon';
   if (run.status === 'impact: Earth') return 'hit the Earth';
   if (!near || !(near.moonAltKm < 1e5)) return 'not near the Moon';
-  return `${near.moonAltKm.toFixed(0)} km over the Moon`
-    + (near.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : '');
+  return altText(near.moonAltKm) + (near.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : '');
 }
 
 // The altitude below which the model's own limits are worth stating outright.
@@ -480,7 +491,7 @@ function updateCaution(run) {
   ui.caution.hidden = !low;
   if (low) {
     ui.caution.textContent =
-      `Closest approach ${c.moonAltKm.toFixed(0)} km above the Moon. This is an idealized `
+      `Closest approach ${c.moonAltKm < 1 ? (c.moonAltKm * 1000).toFixed(0) + ' m' : c.moonAltKm.toFixed(0) + ' km'} above the Moon. This is an idealized `
       + `CR3BP result: the Moon is a point mass here, and lunar mascons, nonspherical `
       + `gravity and terrain are not modeled. A real orbit this low would not behave `
       + `like this and would not stay.`;
@@ -516,7 +527,7 @@ function load3(p) {
     // tells you what you are looking at.
     const alt = p.periluneKm - MOON_RADIUS_KM;
     ui.famRead.textContent = `|z| ${p.zMaxKm.toLocaleString('en-US')} km   `
-      + `${alt.toFixed(0)} km over the Moon   ${(p.period * TU_DAYS).toFixed(2)} d`;
+      + `${altText(alt)}   ${(p.period * TU_DAYS).toFixed(2)} d`;
   }
   fitSpatial();
 }

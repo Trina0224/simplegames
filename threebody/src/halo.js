@@ -23,7 +23,7 @@
 // Richardson (1980), Celestial Mechanics 22(3), 241-253, DOI 10.1007/BF01229511.
 // Howell (1984), Celestial Mechanics 32, 53-71, DOI 10.1007/BF01358403.
 
-import { MU, MOON_X } from './constants.js?v=20260830k';
+import { MU, MOON_X, MOON_RADIUS } from './constants.js?v=20260830k';
 import { lagrangePoints } from './lagrange.js?v=20260830k';
 import { jacobi3 } from './cr3bp3d.js?v=20260830k';
 import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830k';
@@ -534,6 +534,168 @@ export function haloBranch(point, opts = {}) {
     const m = { ...o, param: target, hold };
     prev2 = prev; prev = m;
     out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Pseudo-arclength continuation: the family walked with no held component at all.
+ *
+ * `haloBranch` walks the family by holding one component of the initial state and
+ * correcting the other two. That works until the family turns over in whatever is
+ * being held -- and the L2 branch turns over TWICE. The first fold is in z0 and
+ * the branch handles it by switching to x0. The second is in x0, and it is where
+ * the branch stops: measured, its last two members are 8.2e-5 apart in z0 and
+ * 1.0e-7 apart in x0, which is a family running very nearly perpendicular to the
+ * parameter it is being asked to advance. The stride collapses to `minStep` and
+ * the walk ends at a perilune of 7412 km. Halving the stride does not help: with
+ * minStep at 1e-7 it reaches 6729 km and stops for the same reason. A fold is not
+ * the end of a family; it is the end of a PARAMETERISATION.
+ *
+ * So this one holds nothing. The unknown is the whole initial state
+ * u = (x0, z0, vy0) -- y0, vx0 and vz0 are zero by the symmetry the corrector
+ * assumes -- and the two residuals are (vx, vz) at the next y = 0 crossing, as
+ * before. Two equations, three unknowns: the solution set is a curve, and the
+ * family IS that curve. The third equation is the arclength condition
+ *
+ *     (u - u_pred) · t = 0
+ *
+ * which pins the corrector to the plane through the predicted point normal to the
+ * family's own tangent. The tangent is the null vector of the 2x3 Jacobian, which
+ * for a 2x3 matrix is just the cross product of its rows, and its sign is fixed by
+ * continuity with the previous step. Nothing about that construction cares which
+ * way the family happens to be leaning, so a fold in any component is simply not
+ * an event.
+ *
+ * Measured: it passes the second fold without noticing and continues from a
+ * perilune of 7412 km down to the lunar surface, through the geometry NASA
+ * describes for Gateway (about 6.5 days, roughly 1 500 km at the near pass and
+ * 70 000 km at the far one) on the way. Those members are found, not fitted.
+ *
+ * Closure loosens as it goes deep -- 1e-10 at the top, a few times 1e-9 at
+ * Gateway depth -- and that is the orbits, not the arithmetic: these are violently
+ * unstable and an initial condition good to 1e-11 cannot close better than its own
+ * amplification allows. The gate is closure, as in `haloBranch`, so a member that
+ * stops being periodic is dropped rather than reported.
+ *
+ * @param {Array} start   an already-corrected member to continue from
+ * @param {Array} before  the member before it, which fixes the direction of travel
+ */
+export function haloArc(start, before, opts = {}) {
+  const { mu = MU, steps = 6000, ds = 2e-4, minDs = 1e-9, tol = 1e-11,
+          tMax = 12, absTol = 1e-13, relTol = 1e-13, closeTol = 1e-6,
+          stopBelow = MOON_RADIUS } = opts;
+  const P = { mu, tMax, absTol, relTol };
+  const stateOf = (u) => [u[0], 0, u[1], 0, u[2], 0];
+
+  // the two residuals, and the crossing time that gives the half period
+  const shoot = (u) => {
+    const c = toPlaneCrossing3(stateOf(u), P);
+    return c ? { g: [c.state[3], c.state[5]], half: c.t } : null;
+  };
+
+  const jac = (u, m) => {
+    const h = 1e-8, J = [[0, 0, 0], [0, 0, 0]];
+    for (let k = 0; k < 3; k += 1) {
+      const v = u.slice(); v[k] += h;
+      const a = shoot(v); if (!a) return null;
+      J[0][k] = (a.g[0] - m.g[0]) / h;
+      J[1][k] = (a.g[1] - m.g[1]) / h;
+    }
+    return J;
+  };
+
+  // null vector of a 2x3 matrix = the cross product of its rows, oriented to
+  // continue in the direction already being travelled
+  const tangent = (J, prev) => {
+    const [a, b] = J;
+    let t = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const n = Math.hypot(t[0], t[1], t[2]);
+    if (!(n > 0) || !Number.isFinite(n)) return null;
+    t = [t[0] / n, t[1] / n, t[2] / n];
+    if (prev && t[0] * prev[0] + t[1] * prev[1] + t[2] * prev[2] < 0) t = [-t[0], -t[1], -t[2]];
+    return t;
+  };
+
+  // 3x3 solve by Gauss-Jordan with partial pivoting -- small and dense enough
+  // that nothing cleverer would earn its keep
+  const solve3 = (A, r) => {
+    const M = A.map((row, i) => [row[0], row[1], row[2], r[i]]);
+    for (let c = 0; c < 3; c += 1) {
+      let piv = c;
+      for (let i = c + 1; i < 3; i += 1) if (Math.abs(M[i][c]) > Math.abs(M[piv][c])) piv = i;
+      if (!(Math.abs(M[piv][c]) > 1e-16)) return null;
+      const tmp = M[c]; M[c] = M[piv]; M[piv] = tmp;
+      for (let i = 0; i < 3; i += 1) {
+        if (i === c) continue;
+        const f = M[i][c] / M[c][c];
+        for (let j = c; j <= 3; j += 1) M[i][j] -= f * M[c][j];
+      }
+    }
+    const u = [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+    return u.every(Number.isFinite) ? u : null;
+  };
+
+  const correct = (pred, t) => {
+    const u = pred.slice();
+    for (let i = 0; i < 40; i += 1) {
+      const m = shoot(u); if (!m) return null;
+      const arc = (u[0] - pred[0]) * t[0] + (u[1] - pred[1]) * t[1] + (u[2] - pred[2]) * t[2];
+      const err = Math.hypot(m.g[0], m.g[1]);
+      if (err < tol && Math.abs(arc) < 1e-13) {
+        return { u: u.slice(), half: m.half, residual: err, iterations: i };
+      }
+      const J = jac(u, m); if (!J) return null;
+      const step = solve3([J[0], J[1], t], [m.g[0], m.g[1], arc]);
+      if (!step) return null;
+      const n = Math.hypot(step[0], step[1], step[2]), cap = 0.02;
+      const k = n > cap ? cap / n : 1;
+      for (let j = 0; j < 3; j += 1) u[j] -= step[j] * k;
+      if (!u.every(Number.isFinite)) return null;
+    }
+    return null;
+  };
+
+  let u = [start.state[0], start.state[2], start.state[4]];
+  let prevT = null;
+  if (before) {
+    const d = [u[0] - before.state[0], u[1] - before.state[2], u[2] - before.state[4]];
+    const n = Math.hypot(d[0], d[1], d[2]);
+    // the null vector's sign is arbitrary; without this the first step is as
+    // likely to walk back up the family as down it
+    if (n > 0) prevT = [d[0] / n, d[1] / n, d[2] / n];
+  }
+
+  const out = [];
+  let stride = ds;
+  for (let i = 0; i < steps; i += 1) {
+    const m = shoot(u); if (!m) break;
+    const J = jac(u, m); if (!J) break;
+    const t = tangent(J, prevT); if (!t) break;
+
+    let got = null, h = stride;
+    while (h > minDs) {
+      const pred = [u[0] + h * t[0], u[1] + h * t[1], u[2] + h * t[2]];
+      const o = correct(pred, t);
+      if (o) {
+        const orbit = {
+          state: stateOf(o.u), period: 2 * o.half, residual: o.residual,
+          converged: true, iterations: o.iterations, hold: 'arc',
+          C: jacobi3(stateOf(o.u), mu),
+        };
+        if (closure(orbit, { mu, absTol, relTol }).error < closeTol) { got = { o, orbit }; break; }
+      }
+      h /= 2;
+    }
+    if (!got) break;
+
+    prevT = t; u = got.o.u;
+    stride = Math.min(ds, h * 1.6);
+    out.push(got.orbit);
+    // A member whose perilune is under the lunar surface is not an orbit anyone
+    // can fly, and the family really does continue into the Moon. Stop at the
+    // ground rather than reporting orbits through it.
+    if (lunarGeometry(got.orbit, { mu }).perilune <= stopBelow) { out.pop(); break; }
   }
   return out;
 }
