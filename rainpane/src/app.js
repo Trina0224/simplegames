@@ -7,14 +7,14 @@
 // audio, no thunder, no airborne rain and no decoration: the point is that the
 // water on the glass can be judged on a real device.
 
-import { Surface, MM } from './surface.js?v=20260830b';
-import { FlowSystem } from './flows.js?v=20260830b';
-import { ImpactField } from './impact.js?v=20260830b';
-import { Rainfall, INTENSITIES } from './rain.js?v=20260830b';
-import { PaneRenderer } from './render.js?v=20260830b';
-import { Scene } from './scene.js?v=20260830b';
-import { GravitySensor } from './gravity.js?v=20260830b';
-import { AudioEngine } from './audio.js?v=20260830b';
+import { Surface, MM } from './surface.js?v=20260830c';
+import { FlowSystem } from './flows.js?v=20260830c';
+import { ImpactField } from './impact.js?v=20260830c';
+import { Rainfall, INTENSITIES } from './rain.js?v=20260830c';
+import { PaneRenderer } from './render.js?v=20260830c';
+import { Scene } from './scene.js?v=20260830c';
+import { GravitySensor } from './gravity.js?v=20260830c';
+import { AudioEngine } from './audio.js?v=20260830c';
 
 // The grid follows a physical cell size, not a fixed count. Fixing the count
 // means a phone quietly simulates at twice the resolution of a tablet and pays
@@ -29,7 +29,7 @@ import { AudioEngine } from './audio.js?v=20260830b';
 // fixed. A query string makes each version a different URL, so there is nothing
 // to invalidate. The diagnostics show it, which is the point — "which build am
 // I actually looking at" should never again be something to reason about.
-const BUILD = '20260830b';
+const BUILD = '20260830c';
 
 const CELL_MM = 0.22;        // about a fifth of a millimetre of glass per cell
 const MAX_CELLS = 130000;    // ...unless that would cost too much
@@ -71,8 +71,6 @@ let fpsAt = 0;
 let metricsAt = 0;
 const drops = [];
 
-// ---------------------------------------------------------------- layout
-
 function layout() {
   const rect = el.app.getBoundingClientRect();
   const viewW = Math.max(1, rect.width);
@@ -91,10 +89,7 @@ function layout() {
   audio.setPane(paneArea);
   renderer.setSurfaceSize(cols, rows);
   renderer.setCellSize(surface.cellMm);
-  // The optics need to know how thick the thickest drop is, in cells.
   renderer.setThicknessScale(0.62 * Math.cbrt(flows.maxMass / (Math.PI * 0.52)), surface.beadFilm);
-  // Cap the backing store: refraction is per-pixel, and a retina tablet at full
-  // density is a lot of pixels for a phone GPU.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const scale = Math.min(dpr, Math.sqrt(2.6e6 / (viewW * viewH)));
   renderer.resize(viewW, viewH, Math.max(1, scale));
@@ -107,8 +102,6 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('orientationchange', () => setTimeout(layout, 250));
 
-// ---------------------------------------------------------------- clock
-
 function wake() {
   if (running) return;
   running = true;
@@ -118,7 +111,6 @@ function wake() {
 }
 
 function stepOnce(dt, g) {
-  // Rain arrives, spreads, and only then belongs to the pane.
   rainfall.step(dt, drops);
   for (const drop of drops) {
     const x = Math.random() * surface.cols;
@@ -147,7 +139,6 @@ function frame(now) {
 
   renderer.draw(surface, flows.heads);
 
-  // The audio reads reduced numbers at a control rate, never the grid.
   if (now - metricsAt > 60) {
     metricsAt = now;
     audio.updateMetrics(surface.metrics());
@@ -163,8 +154,6 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
-
-// ---------------------------------------------------------------- controls
 
 function showMessage(text) {
   el.message.textContent = text || '';
@@ -183,8 +172,6 @@ function setIntensity(index) {
 
 function updateDiag(g) {
   const d = gravity.debug();
-  // A live splash's water is already in the thickness field; adding it again
-  // here would double-count it.
   const onGlass = surface.totalWater() + flows.totalMass();
   const mm3 = onGlass * surface.cellMm ** 3;
   el.diag.textContent = [
@@ -223,10 +210,6 @@ function updateSound() {
   el.soundBtn.textContent = on ? 'Sound on' : 'Sound off';
 }
 
-// Acceptance test 8: the veil has to be separable from the glass water, so it
-// can be told apart from it by eye rather than by argument. Tapping the readout
-// toggles it; there is nowhere better to put a diagnostic control than on the
-// diagnostics.
 el.diag.addEventListener('click', () => {
   renderer.setVeil(!renderer.veil);
   showMessage(renderer.veil ? 'Rain veil on' : 'Rain veil off');
@@ -239,18 +222,12 @@ el.infoBtn.addEventListener('click', () => {
   if (showDiag) updateDiag(gravity.vector());
 });
 
-// ---------------------------------------------------------------- start
-
 async function begin() {
   if (started) return;
   started = true;
   el.start.hidden = true;
   layout();
 
-  // Audio first, and before anything is awaited. Safari only unlocks an
-  // AudioContext inside a user gesture, and the gesture is spent by the first
-  // await — asking for motion permission ends it, so an audio start placed
-  // after that prompt silently stays suspended on iOS.
   const heard = await audio.start();
   updateSound();
 
@@ -269,8 +246,6 @@ async function begin() {
 el.start.addEventListener('click', begin);
 el.start.addEventListener('pointerdown', (e) => e.preventDefault());
 
-// ---------------------------------------------------------------- lifecycle
-
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { running = false; audio.suspend(); }
   else if (started) { audio.resume(); wake(); }
@@ -278,13 +253,10 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('pagehide', () => { gravity.stop(); audio.suspend(); });
 
-// ---------------------------------------------------------------- boot
-
 layout();
 setIntensity(Number(el.intensity.value));
 scene.load().then(() => { renderer.setScene(scene); renderer.draw(surface, flows.heads); });
 
-// Handy from Safari's inspector on a real device.
 window.rainpane = {
   surface, flows, impacts, rainfall, renderer, gravity, scene, audio, layout,
   cellSize: () => cellSize,
