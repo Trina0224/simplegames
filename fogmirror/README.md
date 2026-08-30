@@ -51,7 +51,7 @@ side — plus a small number of moving water heads.
 | `src/condensation.js` | The fields: steam, evaporation, coarsening, downhill sag, and wiping |
 | `src/droplets.js` | Flow heads: collection, pinning, motion, trails, merging |
 | `src/render.js` | Optics: refraction, highlight, haze. Reads the fields, never writes them |
-| `src/orientation.js` | Gravity. Frozen — see below |
+| `src/orientation.js` | Gravity: the frozen sensor mapping, plus the display rotation |
 | `src/camera.js` | Camera lifecycle |
 | `src/input.js` | Pointer paths, including lift-off |
 | `src/app.js` | Clock, layout, controls |
@@ -113,11 +113,65 @@ Where there is water there is no mist, because liquid water absorbs the
 condensation it displaces — which is why a wiped stroke is a clear window and a
 trail is a clear streak.
 
-### Gravity is frozen
+### Which way is down
 
-`src/orientation.js` is left exactly as it was. Its mapping was verified on real
+Two separate things, and keeping them separate is the whole point.
+
+**The sensor mapping is frozen.** Its mapping was verified on real
 hardware, and `AGENTS.md` forbids changing it without a real-device test showing a
 regression. The rewrite treats gravity as an input.
+
+**The display rotation is not part of it, and was missing.** This page relayouts
+when you turn the device; the sensor does not. Past that point the two are in
+different frames and the water runs the wrong way across the picture — which is
+what Rainpane was eventually found to be doing, and the same code was here all
+along. `rotation()` turns the answer into the frame the page is drawn in. It is
+the identity in portrait, so the frozen mapping is untouched exactly where it
+was verified.
+
+The subtlety that cost three wrong fixes in Rainpane: those two frames count
+from **different** reference orientations. CoreMotion's axes are portrait-based
+on every iOS device; `screen.orientation.angle` is measured from the device's
+*natural* orientation, which is landscape on an iPad. So an iPad held upright
+reports 90, not 0, and rotating by that angle at face value turns the water
+sideways in the one orientation that used to work. `rotation()` works out which
+angle value *means* portrait on this device from the shape of the viewport, and
+measures from there — no iPad special case.
+
+`tools/orientation.mjs` tests it. That file is worth reading for how it does
+*not* work: the first harness written for this bug in Rainpane passed while the
+device failed, because it assumed what the accelerometer reports in landscape
+and then checked the formula against that assumption. It tested a belief. This
+one assumes nothing about the sensor convention — it cannot, since only a real
+device can confirm that — and checks the property the bug actually violated:
+
+> The sensor reading depends only on how the device is held, and the page turns
+> with the display. So for one fixed reading, the drawn direction must rotate by
+> exactly the display rotation, leaving the direction **in the world** unchanged.
+> Water does not care which way you are holding your iPad.
+
+It runs for a phone (natural orientation portrait) and an iPad (natural
+orientation landscape), which report different angles for the same physical
+orientation and are the reason the obvious fix was wrong. The last check is a
+negative control: rotating by the reported angle instead makes the world
+direction wander 180° on an iPad, so the test can tell the two apart.
+
+```sh
+node --experimental-default-type=module fogmirror/tools/orientation.mjs
+```
+
+### Which build am I looking at
+
+Every module URL carries `?v=`, so a new build is a new URL and Safari has
+nothing to serve from its cache. The **i** readout's last line shows the build,
+and says so when the page itself came from the cache:
+
+```text
+renderer webgl   build 20260830g (loaded as 20260830f — cached)
+```
+
+`tools/stamp.mjs` at the repository root keeps every module reference in step
+and fails if any of them disagree. Bump it on every deploy.
 
 ## Controls
 

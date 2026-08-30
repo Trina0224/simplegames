@@ -11,8 +11,8 @@
 // and the new one written. That is the only way to animate a spreading
 // footprint in a height field without inventing or losing water.
 
-import { weber } from './rain.js?v=20260830b';
-import { MM, NONE } from './surface.js?v=20260830b';
+import { weber } from './rain.js?v=20260830g';
+import { MM, NONE } from './surface.js?v=20260830g';
 
 // Real spreading takes a couple of milliseconds and retraction ten or twenty.
 // At sixty frames a second that is less than one frame, so it is dilated to

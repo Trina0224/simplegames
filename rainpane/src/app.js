@@ -7,14 +7,14 @@
 // audio, no thunder, no airborne rain and no decoration: the point is that the
 // water on the glass can be judged on a real device.
 
-import { Surface, MM } from './surface.js?v=20260830c';
-import { FlowSystem } from './flows.js?v=20260830c';
-import { ImpactField } from './impact.js?v=20260830c';
-import { Rainfall, INTENSITIES } from './rain.js?v=20260830c';
-import { PaneRenderer } from './render.js?v=20260830c';
-import { Scene } from './scene.js?v=20260830c';
-import { GravitySensor } from './gravity.js?v=20260830c';
-import { AudioEngine } from './audio.js?v=20260830c';
+import { Surface, MM } from './surface.js?v=20260830g';
+import { FlowSystem } from './flows.js?v=20260830g';
+import { ImpactField } from './impact.js?v=20260830g';
+import { Rainfall, INTENSITIES } from './rain.js?v=20260830g';
+import { PaneRenderer } from './render.js?v=20260830g';
+import { Scene } from './scene.js?v=20260830g';
+import { GravitySensor } from './gravity.js?v=20260830g';
+import { AudioEngine } from './audio.js?v=20260830g';
 
 // The grid follows a physical cell size, not a fixed count. Fixing the count
 // means a phone quietly simulates at twice the resolution of a tablet and pays
@@ -29,7 +29,17 @@ import { AudioEngine } from './audio.js?v=20260830c';
 // fixed. A query string makes each version a different URL, so there is nothing
 // to invalidate. The diagnostics show it, which is the point — "which build am
 // I actually looking at" should never again be something to reason about.
-const BUILD = '20260830c';
+//
+// It stopped being a bare constant after this app was found serving a MIXED
+// build on main: index.html and app.js at ...c while flows.js, impact.js and
+// render.js still imported surface.js at ...b, so the same module was fetched
+// twice under two URLs and either copy could come from the cache on its own.
+// STAMP is what this file was built as and tools/stamp.mjs moves it with every
+// import; LOADED is what the browser actually asked for. When they disagree the
+// diagnostics say so instead of reporting a version that is not running.
+const STAMP = '20260830g';
+const LOADED = new URL(import.meta.url).searchParams.get('v');
+const BUILD = LOADED === STAMP ? STAMP : `${STAMP} (loaded as ${LOADED || 'unversioned'} — cached)`;
 
 const CELL_MM = 0.22;        // about a fifth of a millimetre of glass per cell
 const MAX_CELLS = 130000;    // ...unless that would cost too much

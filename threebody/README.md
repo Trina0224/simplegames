@@ -16,7 +16,7 @@ The design requirements are external and are not authored here:
 ```sh
 python3 -m http.server 8000      # then open /threebody/
 node --experimental-default-type=module threebody/tools/validate.mjs   # the physics
-node --experimental-default-type=module threebody/tools/stamp.mjs      # the build stamp
+node --experimental-default-type=module tools/stamp.mjs                # the build stamp, all apps
 ```
 
 ## Using it
@@ -110,7 +110,7 @@ re-integrating anything.
 | `src/app.js` | the clock and the controls |
 | `tools/validate.mjs` | the suite below |
 | `tools/horseshoe.mjs` | regenerates the horseshoe family from nothing |
-| `tools/stamp.mjs` | puts one `?v=` on every module reference, and checks it |
+| `../tools/stamp.mjs` | puts one `?v=` on every module reference, and checks it — shared by every app |
 
 ### How the app is put together
 
@@ -229,8 +229,8 @@ the page, but not the worker — a worker does not get the page's import map, an
 be left able to go stale. Hence the version lives in the source:
 
 ```sh
-node ... tools/stamp.mjs 20260901a   # set it everywhere
-node ... tools/stamp.mjs             # check it, exit 1 if mixed
+node ... tools/stamp.mjs threebody 20260901a   # set it everywhere
+node ... tools/stamp.mjs                       # check every app, exit 1 if mixed
 ```
 
 Check mode is the one that earns its keep. It fails if any local module reference
@@ -238,6 +238,11 @@ is missing a version or disagrees with the rest — the *bumped eleven files out
 twelve* mistake, which is otherwise silent and produces exactly the mixed build
 described above. It names the file that was left behind rather than listing the
 forty-three that are right.
+
+The tool lives at the repository root and covers Threebody, Rainpane and Fog
+Mirror, because it moved there the day Rainpane was found serving a mixed build
+on `main` — `index.html` and `app.js` at one version, `surface.js` still being
+imported at the previous one by three of its siblings. One tool, one rule.
 
 **Bump it on every deploy**, not only when this mechanism changes. What the
 version is for is telling a person whether the page in front of them is the one

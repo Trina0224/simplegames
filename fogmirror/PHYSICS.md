@@ -101,6 +101,26 @@ This is an empirical target-hardware fact for this project. Do not replace it wi
 
 The water-physics redesign must treat gravity as an input and leave `orientation.js` alone.
 
+### Amendment: the display rotation
+
+The behaviour above was verified with the display **in portrait**. The page
+relayouts on `orientationchange`; the sensor does not, so once the display is
+turned the two are in different frames and the water runs the wrong way across
+the picture. Rainpane hit this on device and it took three wrong fixes to find.
+
+The mapping quoted above is unchanged and stays frozen. What was added is a
+rotation of the *answer* into the frame the page is laid out in — `rotation()`
+in `orientation.js` — which is a different thing from the second rotation
+forbidden above, and is the identity in portrait, so the verified behaviour is
+untouched exactly where it was verified.
+
+The device finding that makes it non-obvious: CoreMotion's axes are portrait-
+based on every iOS device, while `screen.orientation.angle` is measured from the
+device's **natural** orientation, which is landscape on an iPad. So an iPad held
+upright reports 90, not 0. **Do not replace `rotation()` with a bare
+`screen.orientation.angle` rotation** — that is the fix that was tried first and
+it turns the water sideways in the one orientation that used to work.
+
 ---
 
 ## 4. State model

@@ -2,12 +2,25 @@
 // controls. The physics lives in condensation.js and droplets.js; the optics
 // live in render.js; gravity comes from orientation.js unchanged.
 
-import { Surface } from './condensation.js';
-import { FlowSystem } from './droplets.js';
-import { MirrorRenderer } from './render.js';
-import { MirrorCamera } from './camera.js';
-import { GravitySensor } from './orientation.js';
-import { PointerPaths } from './input.js';
+import { Surface } from './condensation.js?v=20260830g';
+import { FlowSystem } from './droplets.js?v=20260830g';
+import { MirrorRenderer } from './render.js?v=20260830g';
+import { MirrorCamera } from './camera.js?v=20260830g';
+import { GravitySensor } from './orientation.js?v=20260830g';
+import { PointerPaths } from './input.js?v=20260830g';
+
+// Which build is this? Safari caches ES modules hard and GitHub Pages serves
+// them with a lifetime of its own, so a fix can be pushed and still not be what
+// the device is running -- and then a bug that is already fixed gets debugged
+// again. Every module URL carries ?v=, so a new build is a new URL and there is
+// nothing to serve from the cache; tools/stamp.mjs keeps them all in step.
+//
+// STAMP is what this file was built as; the query is what the browser actually
+// asked for. When they disagree the diagnostics say so, rather than quietly
+// reporting a version that is not running.
+const STAMP = '20260830g';
+const LOADED = new URL(import.meta.url).searchParams.get('v');
+const BUILD = LOADED === STAMP ? STAMP : `${STAMP} (loaded as ${LOADED || 'unversioned'} — cached)`;
 
 const GRID_SHORT = 208;      // simulation cells across the shorter axis
 const STEP = 1 / 60;
@@ -163,9 +176,14 @@ function updateDiag(g) {
     `gravity  ${g.x >= 0 ? ' ' : ''}${g.x.toFixed(2)}, ${g.y >= 0 ? ' ' : ''}${g.y.toFixed(2)}   plane ${g.plane.toFixed(2)}`,
     `raw      ${d.raw.x.toFixed(2)}, ${d.raw.y.toFixed(2)}, ${d.raw.z.toFixed(2)}`,
     `sensor   ${d.enabled ? 'devicemotion' : 'off (screen down)'}`,
+    // The two lines a wrong water direction is diagnosed from. Everything the
+    // rotation is derived from is on screen, so a bad answer can be read off
+    // the device instead of argued about from the sofa.
+    `screen   angle ${d.reported === null ? '-' : d.reported}  ${d.kind || '-'}  legacy ${d.legacy === null ? '-' : d.legacy}`,
+    `         ${d.viewport}  ->  read ${d.angle}°  turn ${d.rotation}°${d.locked ? '   ROTATION LOCKED' : ''}`,
     `heads    ${flows.heads.length}   merges ${flows.merges}`,
     `water    surface ${surface.totalWater().toFixed(0)}  moving ${flows.totalMass().toFixed(0)}`,
-    `renderer ${renderer.ok ? 'webgl' : '2d fallback'}`,
+    `renderer ${renderer.ok ? 'webgl' : '2d fallback'}   build ${BUILD}`,
   ].join('\n');
 }
 
@@ -242,4 +260,4 @@ layout();
 renderer.draw(surface, flows.heads, el.video);
 
 // Handy from Safari's inspector on a real device; it cannot capture anything.
-window.fogMirror = { surface, flows, gravity, renderer, camera, layout, cellSize: () => cellSize };
+window.fogMirror = { surface, flows, gravity, renderer, camera, layout, cellSize: () => cellSize, get build() { return BUILD; } };

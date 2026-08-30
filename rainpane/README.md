@@ -487,8 +487,33 @@ matching it. GitHub Pages serves modules with a cache lifetime and Safari holds
 on to them hard, so a fix can be live on the server while the device quietly
 runs the previous build — which cost two rounds here, debugging a bug that was
 already fixed. A query string makes each version a different URL, so there is
-nothing to invalidate. Bump `BUILD` in `app.js`, the `?v=` on every import, and
-the one on the script tag in `index.html`, together, on every ship.
+nothing to invalidate.
+
+**And the "together" was where it went wrong.** Bumping it by hand meant
+`index.html` and `app.js` reached `20260830c` while `flows.js`, `impact.js` and
+`render.js` were still importing their siblings at `20260830b` — which sat on
+`main` until it was noticed from the Fog Mirror work. Measured in the browser:
+`surface.js`, `flows.js` and `rain.js` were each **fetched twice**, once under
+each version, 12 module requests for 9 files. Nothing was visibly broken —
+`MM = 15` and `NONE = 0` are plain numbers, so the two copies agreed — but the
+two halves of the build could go stale independently, which is worse than
+everything going stale together: a fresh `app.js` beside a cached `surface.js`
+behaves like neither version and reports the new one.
+
+So it is not done by hand any more. `tools/stamp.mjs` at the repository root
+sets one version across every module reference in an app, and with no argument
+checks all three apps and fails if any version disagrees:
+
+```sh
+node --experimental-default-type=module tools/stamp.mjs rainpane 20260901a
+node --experimental-default-type=module tools/stamp.mjs
+```
+
+`app.js` no longer declares its build as a bare constant either. It compares the
+stamp it was built with against the `?v=` the browser actually asked for, and
+says so when they differ, rather than reporting a version that is not running.
+Bump it on every deploy — the tool checks that the version is *consistent*, not
+that it *moved*.
 
 ### Then, the rotation itself
 
@@ -557,7 +582,7 @@ build.
 | `src/flows.js` | beads and rivulet heads: pinning, motion, trails, merging |
 | `src/render.js` | optics: the rain veil, refraction, Fresnel rim, highlight, meniscus |
 | `src/scene.js` | what is behind the pane, and its visibility masks |
-| `src/gravity.js` | Fog Mirror's sensor read, plus the display rotation |
+| `src/gravity.js` | Fog Mirror's sensor read, plus the display rotation — now in both |
 | `src/audio.js` | the beds, the impact voices, the acoustic pane |
 | `src/app.js` | clock, layout, the controls |
 | `tools/make-visibility-mask.py` | authors the depth / near-ground / lantern masks |

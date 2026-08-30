@@ -82,7 +82,7 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`;
 
-import { radiusForMass } from './droplets.js';
+import { radiusForMass } from './droplets.js?v=20260830g';
 
 const WATER_SCALE = 2.6;   // height mapped into 0..1 for the texture
 
