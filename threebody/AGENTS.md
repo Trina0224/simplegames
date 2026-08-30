@@ -31,7 +31,7 @@ Forbidden:
 - splines that visually imitate horseshoes/halos/transfers
 - directly moving position toward L1–L5
 - hand-authored “turnaround” behavior near the Moon
-- different fake trajectories for rotating and inertial views
+- different fake trajectories for different display frames
 
 Interpolation is allowed only for rendering between already integrated states.
 
@@ -188,16 +188,55 @@ Do not advertise “minimum Δv” without an actual optimization.
 
 ## Reference-frame contract
 
-Support both:
+Support three display frames:
 
-1. rotating/synodic frame,
-2. inertial barycentric frame.
+1. rotating / synodic frame,
+2. Earth-following frame,
+3. inertial barycentric frame.
 
-They must show the same physical trajectory transformed between coordinate systems.
+All three must show the **same integrated physical trajectory** transformed between coordinate systems. Switching frames must never trigger a second integration or substitute a different trajectory.
 
-The rotating frame keeps Earth, Moon and L points fixed. The inertial frame rotates those same states at the system angular rate.
+### Rotating / synodic
 
-Do not integrate a second trajectory just to make the inertial picture look nicer.
+Earth, Moon and L1–L5 are fixed. This is the primary frame for seeing tadpoles, horseshoes and zero-velocity geometry.
+
+### Inertial barycentric
+
+Transform the rotating CR3BP state into the non-rotating barycentric frame. Earth and Moon circle their common barycenter.
+
+### Earth-following
+
+This is an educational display frame intended to match the most familiar human mental model: Earth stays visually at the origin while the Moon revolves around it.
+
+It is **not an inertial frame** and must never be described as one. Earth is not assumed physically stationary. The view is obtained from the same barycentric inertial state by translating the origin to the instantaneous Earth state.
+
+For any inertial position and velocity:
+
+```text
+r_display = r_inertial - r_earth,inertial
+v_display = v_inertial - v_earth,inertial
+```
+
+Apply the same instantaneous translation to:
+
+- spacecraft,
+- Moon,
+- L1–L5,
+- zero-velocity geometry when shown,
+- planned trajectory,
+- travelled trajectory,
+- velocity/burn vectors as appropriate.
+
+The Earth-following view must therefore show:
+
+- Earth fixed at the display origin,
+- Moon revolving around Earth,
+- the spacecraft moving relative to Earth,
+- L points revolving with the Earth–Moon line.
+
+Do not implement this by drawing an arbitrary circular Moon orbit or by freezing Earth inside the physical model. It is a display transform only.
+
+Frame changes should preserve playback time, trajectory history, camera interaction, diagnostics and numerical state.
 
 ---
 
@@ -249,6 +288,10 @@ Recommended overlays:
 - Jacobi constant/drift
 
 Visual scale may be nonliteral for Earth/Moon radii so they remain visible, but orbital distances and dynamics must remain physically scaled. Any enlarged body radius used only for display must not change collision/gravity calculations.
+
+Camera zoom/pan/fit are presentation only. They must never alter trajectory state, integration settings or numerical results.
+
+For now, do not clamp enlarged Earth/Moon render radii merely because zoom has been added; evaluate the apparent size on-device first.
 
 ---
 
@@ -315,14 +358,16 @@ A build is unacceptable if any are false:
 4. Jacobi constant remains within the established numerical error budget without burns.
 5. A burn changes velocity and Jacobi constant but not position instantaneously.
 6. Zero-velocity curves correspond to the current C.
-7. Rotating and inertial views are transforms of the same trajectory.
-8. L1/L2/L3 instability can be demonstrated by a small perturbation.
-9. L4/L5 tadpole presets arise from integration, not drawing.
-10. Horseshoe preset arises from integration and exhibits genuine co-orbital horseshoe behavior.
-11. Tightening integrator tolerance does not materially change validated presets.
-12. A collision with Earth or Moon is detected physically rather than visually.
-13. Targeted paths report residual error and do not silently snap to the destination.
-14. No orbit family is labeled solely by visual resemblance.
+7. Rotating, Earth-following and barycentric inertial views are transforms of the same trajectory.
+8. Earth-following is obtained by subtracting Earth's instantaneous inertial state; it does not alter the physical model or re-integrate.
+9. In Earth-following view, Earth is fixed at the display origin while Moon and L points revolve consistently with the transformed Earth–Moon state.
+10. L1/L2/L3 instability can be demonstrated by a small perturbation.
+11. L4/L5 tadpole presets arise from integration, not drawing.
+12. Horseshoe preset arises from integration and exhibits genuine co-orbital horseshoe behavior.
+13. Tightening integrator tolerance does not materially change validated presets.
+14. A collision with Earth or Moon is detected physically rather than visually.
+15. Targeted paths report residual error and do not silently snap to the destination.
+16. No orbit family is labeled solely by visual resemblance.
 
 ---
 
@@ -334,7 +379,7 @@ v0.1 should prove:
 
 - accurate Earth–Moon planar CR3BP,
 - L1–L5,
-- rotating/inertial frame switching,
+- rotating / Earth-following / inertial frame switching,
 - Jacobi/zero-velocity geometry,
 - free burns,
 - target planning,
