@@ -7,7 +7,7 @@
 // head and the rivulet it is leaving are the same surface, so they cannot look
 // like a circle towing a line.
 
-import { radiusForMass } from './flows.js';
+import { radiusForMass } from './flows.js?v=20260830a';
 
 const VERT = `
 attribute vec2 aPos;

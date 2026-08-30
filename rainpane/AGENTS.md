@@ -375,6 +375,18 @@ No microphone is required for Rainpane.
 
 ---
 
+## Shipping
+
+Bump `BUILD` in `src/app.js`, the `?v=` on every import in `src/*.js`, and the
+one on the script tag in `index.html` — all to the same value — on every ship.
+GitHub Pages plus Safari's module cache will otherwise serve a device the
+previous build while the fix sits live on the server, and the diagnostics will
+report the new code's intentions while the old code runs. This has already cost
+two rounds of debugging an already-fixed bug. The build stamp is shown in the
+`i` panel so a report can be tied to a specific build.
+
+---
+
 ## Performance philosophy
 
 Do not prematurely simplify physics or audio solely because a model sounds expensive. Measure on current iPhone/iPad first.

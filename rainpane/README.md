@@ -345,6 +345,29 @@ broken" and "the display is locked" look identical from the sofa. The **i** pane
 says `ROTATION LOCKED` when the tablet is held a quarter-turn or more over while
 the display still calls itself portrait.
 
+With the lock **off**, the display really does rotate and the correction earns
+its keep. Read off the device, turned a quarter to the right:
+
+```text
+screen  angle 180  landscape-secondary  legacy -90
+        1133x612  ->  read 180°  turn 270°
+raw (9.61, -0.54)  ->  gravity (0.06, 0.99)  down
+```
+
+That reading is now a test case, and it is the only landscape ground truth in
+the file — the harness cannot generate one for itself without assuming the
+answer.
+
+### Which build am I looking at?
+
+The **i** panel shows a build stamp, and every module is imported with a `?v=`
+matching it. GitHub Pages serves modules with a cache lifetime and Safari holds
+on to them hard, so a fix can be live on the server while the device quietly
+runs the previous build — which cost two rounds here, debugging a bug that was
+already fixed. A query string makes each version a different URL, so there is
+nothing to invalidate. Bump `BUILD` in `app.js`, the `?v=` on every import, and
+the one on the script tag in `index.html`, together, on every ship.
+
 ### Then, the rotation itself
 
 The first attempt at this fixed the tablet-upside-down case and broke portrait,
