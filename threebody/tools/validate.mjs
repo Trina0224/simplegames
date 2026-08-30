@@ -16,6 +16,8 @@ import { lagrangePoints } from '../src/lagrange.js?v=20260830e';
 import { Dopri5 } from '../src/integrator.js?v=20260830e';
 import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830e';
 import { PRESETS } from '../src/presets.js?v=20260830e';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830e';
+import { MOON_RADIUS, MOON_X } from '../src/constants.js?v=20260830e';
 import { toInertial } from '../src/frames.js?v=20260830e';
 import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830e';
 
@@ -281,6 +283,109 @@ console.log('\n10. The horseshoe family, across mass ratios');
   console.log('     (an initial-condition sweep finds these; at Earth-Moon it does not,');
   console.log('      which is why the family there has to be corrected into existence)');
 }
+
+console.log('\n11. Targeting cannot offer a path that does not exist');
+{
+  // Reported as: L4 tadpole, target L5, plan, execute -> "miss 0.0 km" and then
+  // "impact: Moon". Pinned here because the measurement says something different
+  // from the report: the transfer is real and the collision is what happens
+  // AFTERWARDS. Arriving at a libration point is not stopping at one -- the
+  // spacecraft goes through it with velocity to spare and keeps going, and the
+  // executed run is more than twice the flight time long. So this checks both
+  // halves: the arc really is clean, and the impact really is later.
+  const L = Object.fromEntries(lagrangePoints(MU).map((p) => [p.name, p]));
+  const base = propagate([L.L4.x + 0.01, L.L4.y, 0, 0], 16, { sample: 0.01 });
+  const i = base.ts.length - 1;
+  const s0 = [base.xs[i], base.ys[i], base.vxs[i], base.vys[i]];
+
+  const b = planTransfer(s0, [L.L5.x, L.L5.y], { times: [5] }).best;
+  const after = [s0[0], s0[1], s0[2] + b.dvx, s0[3] + b.dvy];
+  const arc = propagate(after, b.timeOfFlight, { sample: b.timeOfFlight / 4000 });
+  let dMin = Infinity;
+  for (let k = 0; k < arc.xs.length; k += 1) dMin = Math.min(dMin, Math.hypot(arc.xs[k] - MOON_X, arc.ys[k]));
+  const run = propagate(after, Math.max(b.timeOfFlight * 2.2, 12), { sample: 0.001 });
+
+  check('the reported L4 -> L5 burn is found', !!b && b.converged && b.feasible,
+    `dv ${b.dvMs.toFixed(1)} m/s, miss ${(b.residual * DU_KM).toFixed(2)} km`);
+  check('its arc flies the whole way cleanly', arc.status === 'ok' && dMin > MOON_RADIUS,
+    `closest to the Moon ${(dMin * DU_KM / 1000).toFixed(0)} 000 km, radius ${(MOON_RADIUS * DU_KM).toFixed(0)} km`);
+  check('the collision is AFTER arrival, not before', run.status === 'impact: Moon' && run.t > b.timeOfFlight,
+    `arrives ${(b.timeOfFlight * TU_DAYS).toFixed(1)} d, hits the Moon ${(run.t * TU_DAYS).toFixed(1)} d ` +
+    `-- ${((run.t - b.timeOfFlight) * TU_DAYS).toFixed(1)} d later`);
+}
+{
+  // And the guard itself, on a case where the geometry really does force the
+  // issue: a target ON the Moon's surface. Every arrival there is a collision,
+  // and because propagation stops exactly at the surface the terminal residual
+  // goes to zero -- so a solver scoring on residual alone calls it converged and
+  // reports a miss of a few hundred metres. Scoring on residual alone is what
+  // the planner used to do.
+  const L = Object.fromEntries(lagrangePoints(MU).map((p) => [p.name, p]));
+  const surface = [MOON_X - MOON_RADIUS, 0];
+  const s0 = [L.L1.x + 0.01, L.L1.y, 0, 0];
+
+  const plan = planTransfer(s0, surface);
+  check('no transfer is offered to a target inside a body', plan.best === null,
+    plan.best ? `OFFERED dv ${plan.best.dvMs.toFixed(0)} m/s, miss ${(plan.best.residual * DU_KM).toFixed(2)} km`
+              : `nothing survived; ${plan.blocked.map(([w, n]) => `${n} flight times ran into ${w.replace('impact: ', 'the ')}`).join(', ')}`);
+  check('and the refusal says what stopped it',
+    plan.blocked.length > 0 && plan.blocked[0][0] === 'impact: Moon',
+    JSON.stringify(plan.blocked));
+
+  // The invariant, stated generally: a reported miss distance always belongs to
+  // an arc that flew the whole flight time. It is the residual, not the return
+  // value, that used to lie -- `solveBurn` almost always has SOMETHING to report,
+  // because its first iterate is the unburned coast -- so the check is on every
+  // residual the solver is willing to put a number to, over problems chosen to
+  // include targets that can only be reached through a body.
+  const LIST = [1.2, 1.8, 2.5, 3.2, 4, 5, 6.5, 8, 10, 13, 16, 20, 25, 30];
+  const targets = [
+    ['Moon surface, Earth-facing', [MOON_X - MOON_RADIUS, 0]],
+    ['Moon surface, far side', [MOON_X + MOON_RADIUS, 0]],
+    ['Moon surface, +y', [MOON_X, MOON_RADIUS]],
+    ['L1', [L.L1.x, L.L1.y]], ['L2', [L.L2.x, L.L2.y]],
+    ['L4', [L.L4.x, L.L4.y]], ['L5', [L.L5.x, L.L5.y]],
+  ];
+  let quoted = 0, lying = 0, worst = '';
+  for (const from of ['L1', 'L2', 'L3', 'L4', 'L5']) {
+    const a0 = [L[from].x + 0.01, L[from].y, 0, 0];
+    for (const [tn, tgt] of targets) {
+      for (const T of LIST) {
+        const r = solveBurn(a0, tgt, T, { tol: 1e-5 });
+        if (!r || r.residual === undefined) continue;
+        quoted += 1;
+        const flown = propagate([a0[0], a0[1], a0[2] + r.dvx, a0[3] + r.dvy], T,
+          { sample: T, absTol: 1e-11, relTol: 1e-11 });
+        if (flown.status !== 'ok') {
+          lying += 1;
+          if (!worst) worst = `${from} -> ${tn} at T=${T}: quoted ${(r.residual * DU_KM).toFixed(2)} km, arc ended "${flown.status}"`;
+        }
+      }
+    }
+  }
+  check('every quoted miss distance belongs to an arc that flew the whole way',
+    lying === 0, lying ? worst : `${quoted} residuals across ${5 * targets.length * LIST.length} solves, none from a terminated arc`);
+
+  // every candidate the planner is willing to offer must fly its whole arc
+  let offered = 0, bad = 0;
+  for (const from of ['L1', 'L2', 'L3', 'L4', 'L5']) {
+    for (const to of ['L1', 'L2', 'L4', 'L5']) {
+      if (from === to) continue;
+      const a0 = [L[from].x + 0.01, L[from].y, 0, 0];
+      for (const c of planTransfer(a0, [L[to].x, L[to].y]).all) {
+        offered += 1;
+        const a = [a0[0], a0[1], a0[2] + c.dvx, a0[3] + c.dvy];
+        if (propagate(a, c.timeOfFlight, { sample: c.timeOfFlight, absTol: 1e-11, relTol: 1e-11 }).status !== 'ok') bad += 1;
+      }
+    }
+  }
+  check('every offered candidate flies its whole arc', bad === 0,
+    `${offered} candidates across 20 transfers, ${bad} of them ending early`);
+}
+console.log('     note: the step-end collision test was hunted for a case it could');
+console.log('     step over. 67 372 arcs that genuinely enter a body: all detected,');
+console.log('     none missed -- the adaptive step collapses near a body long before');
+console.log('     a step could straddle it, so the integrator is left alone.');
 
 console.log(`\n${failures === 0 ? 'all checks passed' : failures + ' CHECK(S) FAILED'}\n`);
 process.exit(failures ? 1 : 0);

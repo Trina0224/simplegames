@@ -60,7 +60,13 @@ wobbles about it.
   the cyan trajectory as the colour wheel allows.
 - **Target** solves for a burn that arrives, by shooting — not by steering. It
   reports Δv, flight time, miss distance and the Jacobi constant either side, and
-  when it cannot find one it says so instead of snapping to the destination.
+  when it cannot find one it says so — and says what got in the way — instead of
+  snapping to the destination.
+- **Arriving at a libration point is not stopping at one.** The transfer delivers
+  the spacecraft there with velocity to spare, and the executed run is more than
+  twice the flight time long, so what happens afterwards is often more
+  interesting than the arrival — including hitting something. The note names both
+  events with their times, because it used to name only the first.
 - L1, L2 and L3 are drawn as crosses because nothing rests there; L4 and L5 as
   rings because things can.
 
@@ -133,6 +139,47 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### A transfer that arrives, and a collision eight days later
+
+Reported as a targeting bug: L4 tadpole, target L5, plan, execute — the app said
+*miss 0.0 km* and then *impact: Moon*, which reads as a solver that accepted a
+path through the Moon.
+
+It was not. Measured on the reported case: the burn is 384.8 m/s, the spacecraft
+reaches L5 at 21.7 days with a miss of 0.0 km, and its closest approach to the
+Moon along the way is 216 000 km — the Moon's radius is 1737 km. The collision is
+at 29.7 days, **8.0 days after arriving**, because arriving at a libration point
+is not stopping at one and the executed run is 2.2× the flight time long. Both
+facts were on screen and nothing connected them or said which came first, so the
+note now names both events and the gap between them:
+
+```text
+executed Δv 384.8 m/s → L5 in 21.71 d, miss 0.0 km
+   ·   then, still coasting, impact: Moon at 29.7 d — 8.0 d after arriving
+```
+
+The guard that was asked for went in anyway, because the planner genuinely
+lacked it. `solveBurn` scored candidates on terminal residual alone, and
+`propagate` stops early on impact — so its terminal state is wherever it stopped,
+and differencing *that* against the target still produces a number. For a target
+near a body that number can be small: aimed at a point on the Moon's surface, the
+old planner returned a 111 m/s transfer reporting a **0.23 km miss** whose arc
+ends in `impact: Moon`. It now tracks the best iterate that actually flew the
+whole flight time, separately from the nearest one that did not, and quotes a
+miss only for the former.
+
+Two things worth being straight about. Through the app this was unreachable: the
+only targets offered are L1–L5, all of them 58 000 km or more from the Moon, so
+an arc that stopped at the surface could never score as an arrival. Across 4 480
+L-point transfers the guard changes nothing — old and new agree exactly. It is a
+real fix to `targeting.js` as a module, not to the reported symptom.
+
+And the collision test itself was suspected of stepping over bodies, since it
+looks only at the end of each accepted step. It was hunted for: **67 372 arcs
+that genuinely enter a body, all 67 372 detected, none missed** — the adaptive
+step collapses near a body long before a step could straddle it. So the
+integrator and the event detection were left alone.
 
 ### Nothing sits on top of anything else
 
@@ -251,6 +298,12 @@ how it looks, and it drives nothing.
 | panel overlap at 390, 744, 834 and 1280 px wide | 0 px², nothing clipped, ten readout lines everywhere |
 | a drag in the gap between the panels | pans the camera; the run is untouched |
 | a drag on the blurb | moves the camera 0.000000 DU |
+| the reported L4 → L5 burn | 384.8 m/s, arrives 21.7 d, miss 0.0 km, nearest the Moon 216 000 km |
+| its collision | 29.7 d — 8.0 d after arriving, not before |
+| quoted miss distances | 490 of 490 belong to an arc that flew the whole way; 164 did not before the fix |
+| a target on the Moon's surface | refused; 111 m/s "miss 0.23 km" was offered before the fix |
+| L-point transfers offered | 95, none with an arc that ends early — the same before and after |
+| missed collisions | 0 of 67 372 arcs that enter a body |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
 | collision | detected against the physical radius, not the drawn one |

@@ -97,7 +97,27 @@ function integrate(state, duration, onDone) {
   }
 }
 
-function load(state, duration, label, view) {
+/**
+ * What to say under the title once a run has been computed.
+ *
+ * This exists for a specific confusion. A targeted burn can arrive cleanly and
+ * then, still coasting, hit something later -- arriving at a libration point is
+ * not stopping there. The note said "miss 0.0 km", the readout said
+ * "impact: Moon", and nothing on screen connected the two or said which came
+ * first, so it read as a planner that had accepted a colliding transfer. It had
+ * not: in the reported case the spacecraft reached L5 at 21.7 days and hit the
+ * Moon at 29.7. Arrival and what happens afterwards are two different events, so
+ * the note names both, with their times.
+ */
+function noteFor(label, status, tEnd, arrival) {
+  if (!label || status === 'ok' || !Number.isFinite(tEnd)) return label || '';
+  const when = `${(tEnd * TU_DAYS).toFixed(1)} d`;
+  if (!arrival) return `${label}   ·   ${status} at ${when}`;
+  const gap = Math.max(0, tEnd - arrival.t) * TU_DAYS;
+  return `${label}   ·   then, still coasting, ${status} at ${when} — ${gap.toFixed(1)} d after arriving`;
+}
+
+function load(state, duration, label, view, arrival = null) {
   ui.note.textContent = 'integrating…';
   // Stop playing the OLD trajectory while the new one is being computed. Without
   // this the loop runs off the end of the previous run during the gap and pauses
@@ -113,7 +133,7 @@ function load(state, duration, label, view) {
     zvcFor = null;
     pending = null;
     ui.execute.disabled = true;
-    ui.note.textContent = label || '';
+    ui.note.textContent = noteFor(label, data.status, data.ts[data.ts.length - 1], arrival);
   });
 }
 
@@ -432,13 +452,19 @@ ui.plan.addEventListener('click', () => {
     const res = planTransfer(state, [tgt.x, tgt.y]);
     if (!res.best) {
       pending = null; ui.execute.disabled = true;
-      ui.note.textContent = `no burn found to ${tgt.name} among ${res.tried} flight times. That is an answer, not a failure — try moving first, or a different target.`;
+      // Say what got in the way when something did. "No solution" and "every
+      // candidate flew into the Moon" are different answers and the second one
+      // is the more useful.
+      const why = (res.blocked || []).map(([what, n]) => `${n} ended in ${what}`).join(', ');
+      ui.note.textContent = `no burn found to ${tgt.name} among ${res.tried} flight times`
+        + (why ? ` — ${why} before arriving` : '')
+        + `. That is an answer, not a failure — try moving first, or a different target.`;
       return;
     }
     const b = res.best;
     const after = [s.x, s.y, s.vx + b.dvx, s.vy + b.dvy];
     const path = propagate(after, b.timeOfFlight, { sample: b.timeOfFlight / 400 });
-    pending = { burn: b, after, path: { xs: path.xs, ys: path.ys, ts: path.ts } };
+    pending = { burn: b, after, target: tgt.name, path: { xs: path.xs, ys: path.ys, ts: path.ts } };
     ui.execute.disabled = false;
     ui.note.textContent = [
       `${tgt.name}: Δv ${b.dvMs.toFixed(1)} m/s`,
@@ -456,7 +482,9 @@ ui.execute.addEventListener('click', () => {
   ui.title.textContent = 'Targeted burn';
   ui.blurb.textContent = 'Solved by shooting, not steering: the burn happens once and the equations do the rest.';
   load(pending.after, Math.max(b.timeOfFlight * 2.2, 12),
-    `executed Δv ${b.dvMs.toFixed(1)} m/s, miss ${(b.residual * DU_KM).toFixed(1)} km`, null);
+    `executed Δv ${b.dvMs.toFixed(1)} m/s → ${pending.target} in `
+      + `${(b.timeOfFlight * TU_DAYS).toFixed(2)} d, miss ${(b.residual * DU_KM).toFixed(1)} km`,
+    null, { t: b.timeOfFlight, name: pending.target });
 });
 
 window.addEventListener('resize', () => scene.resize());
