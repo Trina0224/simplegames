@@ -265,6 +265,30 @@ L1   perilune 51 120 → 1 788 km    |z| 2 049 → 95 266 km    slenderness 0.17
 L2   perilune 50 922 → 7 412 km    |z| 2 323 → 77 778 → 74 611 km    0.10 → 3.40
 ```
 
+### Saying what the model does not contain
+
+The deepest member of the L1 family passes **51 km above the lunar surface**. It
+is kept: the family is not trimmed for presentation, because a truncated family
+is a claim about the physics that the physics did not make.
+
+What that member needs is the model's limits stated, not removal. Every 3D run
+now reports its closest approach as an **altitude** — "1 788 km from the Moon"
+sounds roomy and "51 km above it" does not, and the second is the one that tells
+you what you are looking at — measured from the propagated samples rather than
+read from a stored field, so it will still be right for a free-launched
+trajectory that has no stored anything.
+
+Below 100 km the page says so outright:
+
+> Closest approach 51 km above the Moon. This is an idealized CR3BP result: the
+> Moon is a point mass here, and lunar mascons, nonspherical gravity and terrain
+> are not modeled. A real orbit this low would not behave like this and would not
+> stay.
+
+Amber rather than red, deliberately. This is a true member of a real family and a
+correct result of the model — it is the model's scope that needs stating, not the
+number that needs a warning triangle.
+
 ### NRHO: the same family, walked until it goes thin
 
 `THREE_D_SPEC.md` 9 and `THREE_D_AGENT.md` both insist NRHO is a **region of the

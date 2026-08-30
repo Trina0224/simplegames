@@ -35,6 +35,17 @@ html, body { height: 100%; margin: 0; background: #05070c; color: var(--ink);
 .head { flex: 0 1 420px; min-width: 0; }
 .head h1 { margin: 0 0 4px; font-size: 17px; font-weight: 650; letter-spacing: 0.2px; }
 .head p { margin: 0; color: var(--muted); font-size: 13px; }
+/* The low-altitude caveat. Amber rather than red: this is a real family member
+   and a true result of the model, not an error -- what it needs is the model's
+   limits stated, not a warning triangle. */
+.caution {
+  margin: 7px 0 0 !important; padding: 6px 9px;
+  border: 1px solid rgba(255, 205, 66, 0.34); border-radius: 9px;
+  background: rgba(255, 205, 66, 0.08);
+  color: #ffd98a !important; font-size: 12px !important; line-height: 1.45;
+}
+.caution[hidden] { display: none; }
+
 .note { margin-top: 7px !important; color: var(--accent) !important; font-size: 12px !important; }
 
 /* Width in `ch`, because the content is monospace and its longest ordinary line

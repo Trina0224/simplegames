@@ -6,22 +6,22 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, vuToMs, msToVu } from './constants.js?v=20260830i';
-import { jacobi } from './cr3bp.js?v=20260830i';
-import { lagrangePoints } from './lagrange.js?v=20260830i';
-import { propagate } from './trajectory.js?v=20260830i';
-import { zeroVelocityCurves } from './zvc.js?v=20260830i';
-import { planTransfer } from './targeting.js?v=20260830i';
-import { PRESETS, byId } from './presets.js?v=20260830i';
-import { Scene } from './render.js?v=20260830i';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830i';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830i';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830i';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830i';
-import { propagate3 } from './trajectory3d.js?v=20260830i';
-import { jacobi3 } from './cr3bp3d.js?v=20260830i';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830i';
-import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830i';
+import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830j';
+import { jacobi } from './cr3bp.js?v=20260830j';
+import { lagrangePoints } from './lagrange.js?v=20260830j';
+import { propagate } from './trajectory.js?v=20260830j';
+import { zeroVelocityCurves } from './zvc.js?v=20260830j';
+import { planTransfer } from './targeting.js?v=20260830j';
+import { PRESETS, byId } from './presets.js?v=20260830j';
+import { Scene } from './render.js?v=20260830j';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830j';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830j';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830j';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830j';
+import { propagate3 } from './trajectory3d.js?v=20260830j';
+import { jacobi3 } from './cr3bp3d.js?v=20260830j';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830j';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830j';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -30,7 +30,7 @@ import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830i';
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830i';
+const STAMP = '20260830j';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -44,6 +44,7 @@ const ui = {
   target: el('target'), plan: el('plan'), execute: el('execute'), fit: el('fit'),
   free: el('free'), launch: el('launch'), cancel: el('cancel'), zeroV: el('zeroV'),
   launchbar: el('launchbar'), aim: el('aim'), hint: document.querySelector('.hint'),
+  caution: el('caution'),
   spatial: el('spatial'), spatialbar: el('spatialbar'), preset3d: el('preset3d'),
   viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
   plane: el('plane'), track: el('track'),
@@ -108,7 +109,7 @@ let preset3 = null;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830i', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830j', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -402,6 +403,51 @@ function familyMember(point, i) {
   };
 }
 
+/**
+ * The closest the run actually gets to each body, measured from the propagated
+ * samples rather than taken from a stored field.
+ *
+ * Measured, because a stored perilune is a claim about a state and this is a
+ * claim about the trajectory on screen -- and once 3D Free Launch exists there
+ * will be runs with no stored anything.
+ */
+function closest3(run) {
+  let moon = Infinity, earth = Infinity;
+  for (let i = 0; i < run.xs.length; i += 1) {
+    const dm = Math.hypot(run.xs[i] - MOON_X, run.ys[i], run.zs[i]);
+    const de = Math.hypot(run.xs[i] - EARTH_X, run.ys[i], run.zs[i]);
+    if (dm < moon) moon = dm;
+    if (de < earth) earth = de;
+  }
+  return { moon, earth, moonAltKm: (moon - MOON_RADIUS) * DU_KM };
+}
+
+// The altitude below which the model's own limits are worth stating outright.
+const LOW_LUNAR_KM = 100;
+
+/**
+ * Say what the model does not contain, when it starts to matter.
+ *
+ * The deep end of the L1 family passes 51 km above the lunar surface. That is a
+ * true member of the continued family and it is kept -- the family is not
+ * trimmed for presentation -- but at that altitude the difference between this
+ * and a real orbit stops being academic, so the page says so rather than letting
+ * the number stand unqualified.
+ */
+function updateCaution(run) {
+  const c = closest3(run);
+  const low = c.moonAltKm < LOW_LUNAR_KM;
+  ui.caution.hidden = !low;
+  if (low) {
+    ui.caution.textContent =
+      `Closest approach ${c.moonAltKm.toFixed(0)} km above the Moon. This is an idealized `
+      + `CR3BP result: the Moon is a point mass here, and lunar mascons, nonspherical `
+      + `gravity and terrain are not modeled. A real orbit this low would not behave `
+      + `like this and would not stay.`;
+  }
+  return c;
+}
+
 function load3(p) {
   if (p && p.family && p.index === undefined) {
     // an entry from the menu: start at whatever the slider is showing
@@ -419,13 +465,18 @@ function load3(p) {
   // once. A halo that did not repeat would be obvious here.
   const r = propagate3(p.state, p.duration, { sample: p.duration / 6000, absTol: 1e-13, relTol: 1e-13 });
   run3 = { ...r, n: r.xs.length };
+  run3.closest = updateCaution(r);
   clock3 = 0;
   playing = true;
   ui.play.textContent = 'Pause';
   ui.note.textContent = p.expect ? 'expect: ' + p.expect : '';
   if (p.family) {
-    ui.famRead.textContent = `|z| ${p.zMaxKm.toLocaleString('en-US')} km   perilune `
-      + `${p.periluneKm.toLocaleString('en-US')} km   ${(p.period * TU_DAYS).toFixed(2)} d`;
+    // altitude, not distance from the centre: "1 788 km from the Moon" sounds
+    // roomy and "51 km above it" does not, and the second one is the one that
+    // tells you what you are looking at.
+    const alt = p.periluneKm - MOON_RADIUS_KM;
+    ui.famRead.textContent = `|z| ${p.zMaxKm.toLocaleString('en-US')} km   `
+      + `${alt.toFixed(0)} km over the Moon   ${(p.period * TU_DAYS).toFixed(2)} d`;
   }
   fitSpatial();
 }
@@ -492,12 +543,17 @@ function render3() {
   });
 
   if (!run3 || !st) return;
+  const near3 = run3.closest || { moonAltKm: Infinity };
   const C = jacobi3(st.s, MU);
   const drift = Math.abs(C - run3.C0);
   ui.readout.textContent = [
     `t        ${(clock3 * TU_DAYS).toFixed(2)} days   (${clock3.toFixed(3)} TU)`,
     `position ${st.s[0].toFixed(5)}, ${st.s[1].toFixed(5)}, ${st.s[2].toFixed(5)} DU`,
     `speed    ${vuToMs(Math.hypot(st.s[3], st.s[4], st.s[5])).toFixed(1)} m/s   z ${(st.s[2] * DU_KM).toFixed(0)} km`,
+    // Terse: the caution panel carries the full statement, and a readout line
+    // that wraps past 53 characters costs a whole extra row for a word.
+    `closest  ${near3.moonAltKm < 1e5 ? `${near3.moonAltKm.toFixed(0)} km over the Moon` : 'not near the Moon'}`
+      + `${near3.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : ''}`,
     `C0       ${run3.C0.toFixed(9)}`,
     `C now    ${C.toFixed(9)}`,
     // Two drifts, and they are different measurements. `drift` is computed from
@@ -625,7 +681,7 @@ function cancelFreeLaunch() {
 function setSpatial(on) {
   spatial = on;
   ui.spatialbar.hidden = !on;
-  if (!on) ui.familybar.hidden = true;
+  if (!on) { ui.familybar.hidden = true; ui.caution.hidden = true; }
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
   // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
   // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so

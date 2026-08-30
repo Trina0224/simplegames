@@ -11,24 +11,24 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830i';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830i';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830i';
-import { Dopri5 } from '../src/integrator.js?v=20260830i';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830i';
-import { PRESETS } from '../src/presets.js?v=20260830i';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830i';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830i';
-import { displayToRotating } from '../src/display.js?v=20260830i';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830i';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830i';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830i';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830i';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830i';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830i';
-import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830i';
-import { toInertial } from '../src/frames.js?v=20260830i';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830i';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830j';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830j';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830j';
+import { Dopri5 } from '../src/integrator.js?v=20260830j';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830j';
+import { PRESETS } from '../src/presets.js?v=20260830j';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830j';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830j';
+import { displayToRotating } from '../src/display.js?v=20260830j';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830j';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830j';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830j';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830j';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830j';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830j';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830j';
+import { toInertial } from '../src/frames.js?v=20260830j';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830j';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -708,6 +708,16 @@ console.log('\n16. The families are one continuation, not a shortlist');
       `|z| ${zs[0].toLocaleString('en-US')} -> peaks at ${zs[peak].toLocaleString('en-US')} km ` +
       `(member ${peak + 1} of ${zs.length}) -> ${zs[zs.length - 1].toLocaleString('en-US')} km`);
   }
+
+  // The family is kept whole, low end included. THREE_D_SPEC.md says nothing
+  // about trimming it and the user asked to see the real family; what the deep
+  // end needs is the model's limits stated, which is the app's job, not a
+  // shorter list.
+  const deepest = Math.min(...FAMILY3D.L1.map((m) => m.periluneKm)) - MOON_RADIUS * DU_KM;
+  check('the L1 family is kept whole, low end and all',
+    deepest < 100 && deepest > 0,
+    `its deepest member passes ${deepest.toFixed(0)} km above the lunar surface -- ` +
+    `kept, and flagged as idealized rather than removed`);
 
   // The NRHO is not a separate discovery: it is where the L2 branch ends.
   const last = FAMILY3D.L2[FAMILY3D.L2.length - 1];

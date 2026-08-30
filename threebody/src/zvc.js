@@ -8,8 +8,8 @@
 // L1 and L2 open or close in response. That is the most direct thing the
 // simulator can show about why some journeys are cheap and others impossible.
 
-import { MU } from './constants.js?v=20260830i';
-import { omega } from './cr3bp.js?v=20260830i';
+import { MU } from './constants.js?v=20260830j';
+import { omega } from './cr3bp.js?v=20260830j';
 
 /**
  * Marching squares over F = 2*Omega - C. Returns line segments in model
