@@ -4,7 +4,7 @@
 
 Rainpane is a touch-friendly browser simulation of rain striking and running down a pane of glass.
 
-The experience is atmospheric rather than game-like. A scene sits behind a virtual pane; rain impacts the pane, spreads, pins, coalesces, forms rivulets, and drains under gravity. Layered rain audio completes the ambience.
+The experience is atmospheric rather than game-like. A scene sits behind a virtual pane; rain impacts the pane, spreads, pins, coalesces, forms rivulets, and drains under gravity. Layered rain audio and distance-dependent rainy-atmosphere rendering complete the ambience.
 
 Primary targets:
 
@@ -17,74 +17,82 @@ Static GitHub Pages. No backend.
 
 ---
 
-## Read this before editing physics or audio
+## Required reading before editing
 
-Do not treat Rainpane as a particle-effects demo or as a looping-rain-audio player. The water layer is a coupled interfacial-flow simulation, and the audio layer is driven by the same rain/water state.
+Rainpane is split into three coupled but distinct parts:
 
-Before modifying rain impact, surface water, pinning, merging, rivulets, rendering, or sound, read:
+1. **Part 1 — glass-water physics and rendering**: `SPEC.md`
+2. **Part 2 — physically coupled sound**: `AUDIO_SPEC.md`
+3. **Part 3 — atmospheric visibility / heavy-rain veil**: `VISIBILITY_SPEC.md`
 
-- `SPEC.md`
-- `AUDIO_SPEC.md`
+Treat these as external design requirements. Do not assume they were authored by the current implementation agent.
 
-### Canonical research hierarchy
+Before modifying rain impact, surface water, pinning, merging, rivulets, rendering, sound, airborne rain, atmospheric fog/veil, background contrast, or distant-light bloom, read the relevant spec above. If a task crosses boundaries, read all three.
 
-#### Tier A — continuous surface water / merging
+Do not treat Rainpane as a particle-effects demo, a looping-rain-audio player, or a fullscreen fog filter. The water layer is a coupled interfacial-flow simulation; audio is driven by the same rain/water state; heavy-rain visibility is depth-aware atmospheric attenuation outside the pane.
+
+---
+
+## Canonical research hierarchy
+
+### Tier A — continuous surface water / merging
 
 1. **Ruyer-Quil, Bresch, Gisclon, Richard, Kessar & Cellier (2023), “Sliding and merging of strongly sheared droplets,” Journal of Fluid Mechanics 972, A40. DOI: 10.1017/jfm.2023.726.**
-   - Augmented shallow-water formulation with surface tension/full curvature, viscous effects, a capillary variable, and disjoining-pressure/contact-angle hysteresis.
-   - Models displacement and merging as a continuum rather than circles that only merge on overlap.
-   - Forcing is gas shear, not gravity-driven rain-on-glass. Reuse interfacial/capillary/hysteresis/merging ideas; replace forcing with Rainpane gravity and impact terms.
+   - Augmented shallow-water formulation with surface tension/full curvature, viscous effects, capillary terms and contact-angle hysteresis.
+   - Use for qualitative continuum displacement/merging ideas; replace the paper's gas-shear forcing with Rainpane gravity/impact forcing.
 
 2. **Chen, Chen & Wong (2013), “A heuristic approach to the simulation of water drops and flows on glass panes,” Computers & Graphics 37(8), 963–973. DOI: 10.1016/j.cag.2013.08.004.**
    - Directly targets glass panes.
    - Height map + particles/fronts where useful.
-   - ID map for drop/flow merging.
-   - Residual water after flow passes.
-   - Primary realtime architecture reference.
+   - ID-map style connectivity/merging and residual water.
+   - Primary realtime engineering reference.
 
-#### Tier B — impact, shape, pinning, sliding
+### Tier B — impact, shape, pinning, sliding
 
-3. **Goto, Tanaka & Sagawa (2009), “Real-Time Rendering of Flow of Water Drops on a Windshield,” IEEJ Transactions on Electronics, Information and Systems 129(12), 2152–2158. DOI: 10.1541/ieejeiss.129.2152.**
-   - Grid for irregular motion, 2D metaballs for thick drop shape/fusion, particles for thin water.
-   - Use different representations for different water scales.
+3. **Goto, Tanaka & Sagawa (2009), “Real-Time Rendering of Flow of Water Drops on a Windshield.”**
+   - Grid + implicit/metaball bulk shapes + separate thin-water representation.
 
-4. **Ahmed, Sellier, Jermy & Taylor (2014), “Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces,” European Journal of Mechanics B/Fluids 48, 218–230. DOI: 10.1016/j.euromechflu.2014.06.003.**
-   - Advancing/receding contact angles and hysteresis affect depinning and terminal velocity.
-   - Model start/stop hysteresis, not one radius threshold.
+4. **Ahmed, Sellier, Jermy & Taylor (2014), “Modeling the effects of contact angle hysteresis on the sliding of droplets down inclined surfaces.”**
+   - Advancing/receding hysteresis affects depinning and terminal velocity.
 
-5. **Šikalo, Tropea & Ganić (2005), “Impact of droplets onto inclined surfaces,” Journal of Colloid and Interface Science 286, 661–669.**
-   - Impact behavior depends on normal velocity, Weber/Reynolds numbers, inclination, roughness and wettability.
+5. **Šikalo, Tropea & Ganić (2005), “Impact of droplets onto inclined surfaces.”**
+   - Impact depends on velocity, inclination, wettability and surface properties.
 
-6. **“Droplet Impact and Spreading on Inclined Surfaces,” Langmuir 37(46), 2021, 13737–13745. DOI: 10.1021/acs.langmuir.1c02457.**
-   - Early inertia-dominated spreading followed by pinning/retraction when surface forces dominate.
+6. **“Droplet Impact and Spreading on Inclined Surfaces,” Langmuir 37(46), 2021. DOI: 10.1021/acs.langmuir.1c02457.**
+   - Early inertia-dominated spreading followed by capillary/pinning behavior.
 
-#### Tier C — rainfall statistics and airborne visual rain
+### Tier C — rainfall statistics and airborne rain optics
 
-7. **Marshall & Palmer (1948), “The distribution of raindrops with size,” Journal of Meteorology 5, 165–166.**
-   - Exponential drop-size distribution as a function of rainfall rate.
-   - Rain intensity changes both count and size spectrum.
+7. **Marshall & Palmer (1948), “The distribution of raindrops with size.”**
+   - Use as a statistical prior so rain intensity changes both count and drop-size spectrum.
 
-8. **Garg & Nayar (2006), “Photorealistic Rendering of Rain Streaks,” ACM Transactions on Graphics 25(3), 996–1002 / SIGGRAPH 2006. DOI: 10.1145/1141911.1141985.**
-   - Airborne/distant rain appearance only: oscillation, reflection/refraction, motion-blurred nonuniform streaks.
+8. **Garg & Nayar (2006), “Photorealistic Rendering of Rain Streaks.”**
+   - Airborne/distant rain only: oscillation, reflection/refraction and nonuniform motion-blurred streaks.
 
-#### Tier D — acoustics
+### Tier D — acoustics
 
-9. **Sound generation by water drop impact on surfaces, Experimental Thermal and Fluid Science (2020).**
-   - Single-drop impact produces surface- and wetness-dependent acoustic spectra.
-   - Dry solid, thin liquid film, and deeper liquid layers do not sound identical.
-   - Rainpane impact timbre must depend on local wetness/water thickness, not only drop size.
+9. **“Sound generation by water drop impact on surfaces,” Experimental Thermal and Fluid Science (2020).**
+   - Impact spectra depend on impact and surface/wetness state.
 
 10. **Roux & Cooper-White (2004), “Dynamics of water spreading on a glass surface.”**
-    - Connects drop impact/spreading dynamics on glass with acoustic observations.
-    - Use the same impact event parameters for visual and audio response.
+    - Useful link between drop impact/spreading on glass and acoustic observations.
 
 11. **ISO rainfall-noise measurement literature (ISO 140-18 / ISO 10140 family).**
-    - Rain-generated building noise depends on impact statistics, drop distribution, velocity, and the receiving structure.
-    - Do not model rain intensity as one loop with a volume knob.
+    - Rain noise depends on impact statistics, drop distribution, velocity and receiving structure.
 
-12. **Phillips, Agarwal & Jordan (2018), “The sound produced by a dripping tap is driven by resonant oscillations of an entrained air bubble,” Scientific Reports.**
-    - The familiar water `plink` from a drop entering a liquid pool is bubble-resonance dominated.
-    - Do not use generic faucet/dripping-water samples as glass-impact sounds.
+12. **Phillips, Agarwal & Jordan (2018), dripping-tap bubble-resonance work.**
+    - Generic water `plink` samples are the wrong acoustic mechanism for rain striking glass.
+
+### Tier E — atmospheric visibility / rain accumulation
+
+13. **Yang, Tan, Wang, Fang & Liu, “Single Image Deraining: From Model-Based to Data-Driven and Beyond.”**
+    - Distinguishes resolvable rain streaks from rain accumulation/veil; heavy rain lowers distant contrast and visibility.
+
+14. **Gultepe & Milbrandt (2010), “Probabilistic Parameterizations of Visibility Using Observations of Rain Precipitation Rate, Relative Humidity, and Visibility.” DOI: 10.1175/2009JAMC1927.1.**
+    - Use qualitatively to couple precipitation/humidity to visibility rather than applying an arbitrary constant fog opacity.
+
+15. **Slomp et al. (2011), “Photorealistic real-time rendering of spherical raindrops with hierarchical reflective and refractive maps.”**
+    - Realtime airborne-raindrop optics reference.
 
 ### Reference priority rule
 
@@ -94,10 +102,11 @@ When references operate at different scales:
 - preserve Chen-style realtime state/connectivity where a full PDE solve is unnecessary,
 - use impact papers to initialize post-impact state,
 - use Marshall–Palmer only for incoming-rain statistics,
-- use Garg–Nayar only for airborne appearance,
-- use acoustic impact literature to map the same simulated impact state into sound.
+- use Garg–Nayar/Slomp for airborne appearance,
+- use acoustic literature to map the same simulated impact state into sound,
+- use rain-visibility literature for **distance-dependent atmospheric attenuation**, not for glass-water behavior.
 
-Do not copy a forcing term or acoustic mechanism from a physically different scenario.
+Do not copy a forcing term or acoustic/optical mechanism from a physically different scenario.
 
 ---
 
@@ -111,14 +120,15 @@ Do not copy a forcing term or acoustic mechanism from a physically different sce
 6. **Pinning has hysteresis.** Starting and continuing motion are different states.
 7. **Runoff evolves downstream.** A rivulet collects water, widens and generally moves more readily as mass increases.
 8. **Multiple water scales may use multiple representations.** Thin film, pinned bead, bulk drop and rivulet need not share one primitive.
-9. **Rain intensity changes the entire system.** Count, size spectrum, impact energy, surface coverage, runoff density and sound respond together.
-10. **Rendering derives from water geometry.** Refraction/highlights follow simulated water thickness/shape.
-11. **Audio is simulation output.** Sound must respond to rain impacts, local wetness, surface flux and water leaving the pane.
-12. **Privacy is strict.** Local photos/camera remain local; no capture/upload/recording.
+9. **Rain intensity changes the entire system.** Count, size spectrum, impact energy, surface coverage, runoff density, atmospheric visibility and sound respond together.
+10. **Rendering derives from physical state.** Refraction/highlights follow simulated water; atmospheric veil follows rain intensity and scene distance.
+11. **Audio is simulation output.** Sound responds to rain impacts, wetness, surface flux and water leaving the pane.
+12. **Heavy-rain visibility is depth-aware.** The far forest degrades much more than the near ground.
+13. **Privacy is strict.** Local photos/camera remain local; no capture/upload/recording.
 
 ---
 
-## Required physics state
+## Required surface-water state
 
 Conceptually maintain:
 
@@ -130,17 +140,15 @@ Conceptually maintain:
 
 A hybrid solver may retain thick-drop/front objects, but they are proxies for connected liquid bodies and must carry mass/connectivity.
 
-Use a continuum height/film representation everywhere, with adaptive/macroscopic structures only where useful.
-
 ---
 
 ## Incoming rain model
 
-Two distinct domains:
+Keep two distinct domains:
 
 ### A. Airborne rain outside the pane
 
-Optical ambience only. Garg–Nayar-inspired appearance may be used.
+Optical atmosphere. Individual nearby streaks and distant accumulated rain are different scales.
 
 ### B. Impacts on the pane
 
@@ -154,28 +162,15 @@ Each impact should expose at least:
 - local water thickness before impact
 - local wetness before impact
 
-The impact event is a shared source for **both** visual physics and impact audio.
-
-Do not create independent random audio impacts unrelated to the visual/simulated rain process.
+The impact event is shared by visual physics and impact audio. Do not create independent fake audio impacts unrelated to the simulated rain process.
 
 ---
 
-## Impact response
+## Impact / pinning / merge contracts
 
-1. contact / inertial spreading
-2. surface-force takeover
-3. relaxed attached state
-4. possible immediate join into existing water
+Significant impacts must pass through contact/spreading, capillary/retraction behavior, and then an attached/merged state; they cannot appear as already-relaxed circles.
 
-Full splash/breakup can be deferred, but significant impacts cannot appear instantaneously relaxed.
-
----
-
-## Contact angle / pinning contract
-
-Do not implement only `if radius > threshold: move`.
-
-Use hysteretic state:
+Use hysteretic pinning rather than only `if radius > threshold: move`:
 
 ```text
 drive = gravity_along_glass * mobile_mass + transient_impact_momentum
@@ -187,10 +182,6 @@ moving -> pinned only when drive < repin_threshold
 
 with `depin_threshold > repin_threshold`.
 
----
-
-## Coalescence / merging contract
-
 Required merge modes:
 
 - head-head
@@ -198,46 +189,23 @@ Required merge modes:
 - body-body
 - impact-body
 
-On contact:
+On contact, form a neck/bridge, transfer mass continuously, damp capillary oscillation and resolve connected topology. Two contacting rivulets must not remain unrelated parallel lines.
 
-- form a neck/bridge,
-- transfer mass continuously,
-- damp capillary oscillation,
-- conserve mass approximately,
-- conserve momentum approximately where meaningful,
-- resolve into one connected body/front where appropriate.
-
-Two rivulets that contact must not continue forever as unrelated lines.
-
-Normal slow coalescence should **not** automatically emit a cartoon `pop` sound. Only sufficiently energetic/large merge events may create a subtle wet transient.
+Normal slow coalescence should not automatically emit a cartoon `pop`.
 
 ---
 
 ## Rivulet contract
 
-A rivulet is a connected thickness field/body, not a drawn stroke.
+A rivulet is connected simulated water, not a drawn stroke. It should have variable width, collect impacts/beads, leave residual wetness, merge with neighbors and respond mainly to gravity.
 
-It should have variable width, collect impact water/beads, leave residual wetness, merge with neighbors and respond mainly to gravity.
-
-Downstream growth comes from mass flux, not a visual size multiplier.
-
-### Rivulet acoustics
-
-A smooth thin rivulet is usually acoustically quiet. Do not continuously play a fake “running water” sound for every visible stream.
-
-Runoff audio becomes significant mainly when:
-
-- rain is heavy enough for sheet/rivulet turbulence,
-- high surface-water flux exists,
-- water reaches/impacts the pane boundary,
-- large/fast moving water intersects other water,
-- many impacts strike existing wet film.
+A smooth thin rivulet is usually acoustically quiet. Runoff audio becomes significant mainly with high surface-water flux, turbulent/sheet-like flow, energetic intersections or water reaching the pane boundary.
 
 ---
 
-## Gravity
+## Gravity — preserve real-device behavior
 
-Reuse the field-tested Fog Mirror DeviceMotion mapping. Do not redesign it unless a real-device regression is demonstrated.
+Reuse the field-tested DeviceMotion mapping. Do not redesign gravity unless a real-device regression is demonstrated.
 
 Golden behavior:
 
@@ -246,53 +214,59 @@ Golden behavior:
 - left edge physically down -> left
 - nearly flat -> small in-plane gravity
 
-Use the known-good `DeviceMotionEvent.accelerationIncludingGravity` mapping. The sensor read itself is still frozen.
+Use the known-good `DeviceMotionEvent.accelerationIncludingGravity` sensor read.
 
-**Device evidence has required a display-orientation rotation.** DeviceMotion reports in a frame fixed to the hardware; Rainpane relayouts on `orientationchange`; so past that point the two disagree and the water runs the wrong way.
+Current Rainpane additionally corrects display orientation because the simulation relayouts on `orientationchange`. The important device finding is that CoreMotion axes are portrait-based while `screen.orientation.angle` is measured from the device's natural orientation, which can be landscape on iPad. Do not replace the existing `rotation()` logic with a bare `screen.orientation.angle` rotation.
 
-The trap, which cost one wrong fix on-device: **the two frames are measured from different reference orientations.** CoreMotion's axes are fixed with +y toward the top of the device *in portrait*, on every iOS device. `screen.orientation.angle` is measured from the device's **natural** orientation — portrait on a phone, **landscape on an iPad**. An iPad in portrait therefore reports 90, and rotating by the angle at face value breaks the one orientation that already worked (portrait ran sideways).
-
-So `rotation()` derives which angle value *means* portrait on this device from the viewport's shape, and measures from there. It is the identity in portrait on every device, so the frozen mapping is untouched where it was verified. Do not replace it with a bare `screen.orientation.angle`. `rp-orient.mjs` checks all four display orientations on both device families:
-
-Confirmed on device, all four readings, including the unlocked landscape case the harness cannot generate for itself:
+Confirmed device behavior included:
 
 ```text
-locked upright        angle  90  portrait-primary       turn   0  -> down
-locked, right down    angle  90  portrait-primary       turn   0  -> right
-locked, left down     angle  90  portrait-primary       turn   0  -> left
-unlocked, turned      angle 180  landscape-secondary    turn 270  -> down
+locked upright        -> down
+locked, right down    -> right
+locked, left down     -> left
+unlocked, turned      -> down relative to the newly rotated display
 ```
 
-A rotation-locked display never rotates, so the correction is a no-op and gravity points at whichever screen edge is physically lowest — sideways water is then correct, not a bug, and `displayLocked()` surfaces the difference.
+A rotation-locked display should keep gravity tied to the physically lowest screen edge.
 
-`window.orientation` is the iOS-before-16.4 fallback and counts the same rotation the other way round.
-
-Fog Mirror's `src/orientation.js` has the same defect and the same relayout; it has not been changed.
-
-Fog Mirror's `src/orientation.js` has the same defect and the same `orientationchange` relayout; it has not been changed.
+Do not modify gravity as part of audio or visibility work.
 
 ---
 
 ## Rendering contract
 
-Pipeline:
+Read `VISIBILITY_SPEC.md` before modifying atmospheric/background rendering.
+
+Preferred render order:
 
 1. background image / camera / built-in scene
-2. airborne rain layer
-3. water-thickness normals
-4. background refraction/distortion
-5. meniscus/contact-line shading
-6. partial Fresnel/specular highlights
-7. impact/coalescence deformation
-8. UI
+2. **depth-aware atmospheric rain visibility / airlight / distant-light halo**
+3. airborne rain layer
+4. water-thickness normals
+5. glass-water refraction/distortion of the already rain-degraded background
+6. meniscus/contact-line shading
+7. partial Fresnel/specular highlights
+8. impact/coalescence deformation
+9. UI
 
-Do not render full outlines, black disconnected trails, identical circles or constant-width runoff lines.
+### Hard Part 3 rules
+
+- Heavy rain must reduce **far-background** visibility.
+- The near lower ground/path close to the viewer must remain substantially clearer than the deep forest.
+- Do not use one uniform fullscreen blur.
+- Do not use one flat gray/white overlay.
+- Do not infer arbitrary-photo depth purely from screen y.
+- Distant selected lamps may gain subtle rain/mist halos; near highlights must not receive the same treatment.
+- Atmospheric veil and glass water are separate systems and must be independently diagnosable.
+- The built-in forest scene should use an authored `depthMask`, `nearGroundProtectionMask`, and sparse light mask/positions.
+
+Do not render glass water as full outlines, black disconnected trails, identical circles or constant-width runoff lines.
 
 ---
 
 ## Rain intensity
 
-The user sees one perceptual control, but internally intensity changes:
+The user sees one perceptual rain control, but internally intensity changes:
 
 - total mass flux
 - impact event rate
@@ -301,11 +275,13 @@ The user sees one perceptual control, but internally intensity changes:
 - pane wet fraction
 - connected runoff probability
 - airborne streak density
+- **far-scene atmospheric extinction / visibility**
+- **distant-light halo strength**
 - ambient-rain acoustic density/spectrum
 - dry/wet glass impact mixture
 - runoff acoustic activity
 
-Do not implement intensity as only `spawnRate`, only visual opacity, or only audio gain.
+Do not implement intensity as only `spawnRate`, only visual opacity, only fog opacity, or only audio gain.
 
 ---
 
@@ -313,56 +289,40 @@ Do not implement intensity as only `spawnRate`, only visual opacity, or only aud
 
 Read `AUDIO_SPEC.md` before editing `audio.js`.
 
-### Required architecture
+Required conceptual layers:
 
-At minimum separate:
+1. exterior rain ambience
+2. dry-glass impact transients
+3. wet-glass/film impact transients
+4. heavy runoff/sheet-water texture
+5. boundary/edge-drain events
 
-1. **Exterior rain ambience** — continuous environmental bed.
-2. **Dry-glass impact transients** — most audible while pane is relatively dry.
-3. **Wet-glass/film impact transients** — increasingly dominant as local `h`/`wet` rise.
-4. **Heavy runoff/sheet-water texture** — driven by actual surface flux, mostly heavy/storm conditions.
-5. **Boundary/edge-drain events** — driven by water mass exiting the pane.
+### Device-tested audio constraints
 
-Optional later:
+These findings came from real-device listening and should not be casually undone:
 
-- wind
-- lightning/thunder
-- quiet interior room tone
-
-### Density and timbre, from device evidence
-
-Two findings that are not tuning and should not be undone:
-
-- **Voice at most ~40 taps a second.** Beyond that separate impacts fuse anyway, and what a higher cap produces is a machine-gun of transients that was reported as "a lot of little explosions". Energy past that ceiling belongs to the texture.
-- **The impact is a splash with a pane under it, not a struck plate.** Two device reports bracket this. A bandpass Q of 3.4 at 2.5 kHz came back as "little explosions"; raising Q to 11 came back as "like castanets" — it fixed the harshness by turning the click into a note. Both modelled a hard, point-like, elastic strike, which is a fingernail, not a raindrop. Most of what you hear is the splash: broadband, low, a few milliseconds. Hence 1150 Hz at Q 2.2, decays of 6-22 ms, and the splash carrying the tap rather than garnishing it. Do not "improve" this by sharpening the resonance.
-- **The contact must be low-passed, not high-passed.** A water drop is soft and its contact lasts hundreds of microseconds, so it cannot radiate strongly above a few kHz. An earlier highpass at 4.2 kHz carrying more level than the ring was both the harshest choice available and physically backwards.
-- **Choose which drops to voice by the square root of energy, not by energy.** Weighting by energy outright makes nearly every voiced tap a big drop, so they all arrive at one prominence — a percussion instrument, not rain — and it double-counts, since loudness is already set by energy in `tapParams`.
-
-Crest factor is the measurable proxy: 12.8 at heavy rain before, 5.4 after.
-
-### Hard audio rules
-
-- Audio must be coupled to simulation events/state.
-- Do not schedule a separate fake rain-impact process when the simulation already emits impacts.
-- Do not play one audio voice per physical impact at high rain rates; cluster/bin dense impacts into short windows.
-- Do not use generic faucet `plink` samples for glass impacts.
-- Do not make every drop merge audible.
-- Do not make every visible rivulet emit a looping stream sample.
+- Voice at most roughly **40 discrete taps/s**; denser energy belongs in texture rather than machine-gun transients.
+- The impact should sound like a **splash with a pane under it**, not a struck plate/castanet.
+- Avoid sharpening a narrow resonant note to make impacts "clearer"; that was perceptually wrong.
+- Contact energy should be low-passed rather than dominated by a strong high-frequency click.
+- Choose voiced drops with approximately square-root-of-energy weighting rather than energy weighting so all voiced events do not become large percussion hits.
 - Dry and wet glass must not sound identical.
-- Runoff volume/activity must depend on surface-water flux and exiting mass, not directly on the rain slider alone.
-- Spatialization/panning should derive from impact x-position where practical.
-- Audio must obey browser user-gesture/autoplay rules and have an immediate mute control.
-- Pause/suspend expensive scheduling when hidden.
+- Runoff sound depends on simulated flux/exiting mass, not directly on rain-slider gain.
 
-### Preferred synthesis strategy
+Hard audio rules:
 
-Use a **procedural + sample hybrid**:
+- couple audio to simulation events/state,
+- do not schedule a separate fake impact process,
+- do not play one voice per physical impact in dense rain,
+- do not use generic faucet `plink` samples,
+- do not make every merge audible,
+- do not make every rivulet emit a looping stream sample,
+- spatialize/pan from impact x-position where practical,
+- obey browser autoplay/user-gesture rules,
+- provide immediate mute,
+- suspend expensive scheduling when hidden.
 
-- a small number of long ambience beds or granular ambient sources,
-- procedural short transients for dense impacts,
-- a few real glass/wet impact recordings for timbral variation,
-- randomized filtering/gain/decay/pan within physically plausible ranges,
-- clustered event synthesis for storm density.
+Preferred approach: procedural + sample hybrid with ambience beds, procedural dense transients, a few real glass/wet variations, physically plausible randomization and clustered storm synthesis.
 
 ---
 
@@ -374,31 +334,27 @@ Modes:
 2. local image
 3. optional live camera
 
-Local images remain local. Camera is view-only and must stop on hide/exit.
+Local images remain local. Camera is view-only and must stop on hide/exit. No microphone is required.
 
-No microphone is required for Rainpane.
+For arbitrary local images/camera, do not pretend to know exact depth. Part 3 full depth-aware behavior is required first for the built-in forest scene; arbitrary media should use conservative approximations until a privacy-safe depth solution exists.
 
 ---
 
 ## Shipping
 
-Bump `BUILD` in `src/app.js`, the `?v=` on every import in `src/*.js`, and the
-one on the script tag in `index.html` — all to the same value — on every ship.
-GitHub Pages plus Safari's module cache will otherwise serve a device the
-previous build while the fix sits live on the server, and the diagnostics will
-report the new code's intentions while the old code runs. This has already cost
-two rounds of debugging an already-fixed bug. The build stamp is shown in the
-`i` panel so a report can be tied to a specific build.
+Bump `BUILD` in `src/app.js`, the `?v=` on every import in `src/*.js`, and the script version in `index.html` to the same value on every ship. GitHub Pages + Safari module caching has previously served stale code and caused false debugging conclusions.
+
+The build stamp should remain visible in the info/diagnostic panel.
 
 ---
 
 ## Performance philosophy
 
-Do not prematurely simplify physics or audio solely because a model sounds expensive. Measure on current iPhone/iPad first.
+Do not prematurely simplify physics, audio or atmospheric rendering solely because a model sounds expensive. Measure on current iPhone/iPad first.
 
-Allowed optimizations after profiling include lower-resolution grids, active-region updates, WebGL/WebGPU passes, clustered impact audio, voice pooling and offline/precomputed noise buffers.
+Allowed optimizations after profiling include lower-resolution grids, active-region updates, WebGL/WebGPU passes, pre-authored depth/protection/light masks, low-resolution atmospheric noise, clustered impact audio, voice pooling and precomputed noise buffers.
 
-Never replace correct merge/topology or state-coupled audio with unrelated particles/loops merely to gain FPS.
+Never replace correct merge/topology, state-coupled audio, or depth-aware visibility with unrelated particles/loops/fullscreen blur merely to gain FPS without measurement.
 
 ---
 
@@ -411,6 +367,7 @@ rainpane/
   AGENTS.md
   SPEC.md
   AUDIO_SPEC.md
+  VISIBILITY_SPEC.md
   src/
     app.js
     scene.js
@@ -420,16 +377,18 @@ rainpane/
     flows.js
     gravity.js
     render.js
+    visibility.js
     audio.js
 ```
 
 - `rain.js` — rainfall process / Marshall–Palmer-style sampling / airborne events
-- `impact.js` — impact spreading/deformation/deposition initialization and impact event payload
+- `impact.js` — impact spreading/deformation/deposition and impact-event payload
 - `surface.js` — thickness, momentum/flux, wetness, pinning, topology maps
-- `flows.js` — optional macroscopic connected bodies/fronts, merge bookkeeping
-- `gravity.js` — copied/adapted known-good Fog Mirror mapping only
-- `render.js` — normals/refraction/implicit-surface shading
-- `audio.js` — state-coupled ambience/impact/runoff/edge audio as specified in `AUDIO_SPEC.md`
+- `flows.js` — optional connected bodies/fronts and merge bookkeeping
+- `gravity.js` — proven mobile gravity mapping
+- `render.js` — water normals/refraction/implicit-surface shading and composition
+- `visibility.js` — Part 3 depth-aware transmittance, airlight, rain accumulation and selected distant-light halos
+- `audio.js` — state-coupled ambience/impact/runoff/edge audio per `AUDIO_SPEC.md`
 
 ---
 
@@ -456,7 +415,21 @@ A build is not acceptable if any are false:
 17. Runoff audio responds to simulated water flux.
 18. Water leaving the pane can drive occasional boundary/drain sound.
 19. Muting audio stops all Rainpane sound immediately.
-20. User media never leaves the device.
+20. Heavy/storm rain clearly reduces **far-background** visibility.
+21. Far trees degrade before the near foreground.
+22. The near lower path/ground remains substantially clearer than the deep forest in heavy rain.
+23. Atmospheric visibility is not implemented as one uniform fullscreen blur/fog overlay.
+24. Selected distant lamps gain subtle rain/mist halos while near highlights remain comparatively crisp.
+25. Glass droplets refract the atmospherically degraded background rather than bypassing Part 3.
+26. User media never leaves the device.
+
+---
+
+## Work sequencing
+
+Current work may remain focused on audio. **Do not interrupt a stable audio implementation solely because `VISIBILITY_SPEC.md` was added.**
+
+Part 3 should begin after the current audio work reaches a stable checkpoint. When implementing it, do not redesign gravity, water physics or audio in the same change unless required by a demonstrated integration bug.
 
 ---
 
@@ -469,8 +442,10 @@ Can wait unless they fall out naturally:
 - physically exact splash fragmentation
 - exact structural modal analysis of a real window pane
 - binaural room acoustics
+- full volumetric meteorological simulation
+- automatic metric-depth reconstruction for arbitrary user photos
 - weather API integration
 - meteorological certification
 - multiplayer
 
-The goal is a physically coherent, perceptually convincing rain-on-glass simulation whose sound and image arise from the same underlying rain/water process.
+The goal is a physically coherent, perceptually convincing rain-on-glass simulation whose water, atmosphere and sound arise from the same underlying rain process.
