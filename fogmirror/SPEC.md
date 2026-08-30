@@ -39,6 +39,14 @@ ty = -a.y / |a|
 
 without an additional `screen.orientation` rotation.
 
+**Amendment.** That remains true of the sensor read, which is unchanged. A
+rotation of the *result* into the page's own frame was added later, because the
+page relayouts on `orientationchange` while the sensor does not; it is the
+identity in portrait. See the amendment in `AGENTS.md` and `PHYSICS.md` §3 —
+in particular, it must not be a bare `screen.orientation.angle` rotation, since
+that angle is measured from the device's natural orientation, which is landscape
+on an iPad.
+
 Expected tested behavior:
 
 - upright device -> water runs screen-down
@@ -552,7 +560,7 @@ Recommended responsibilities:
 
 ```text
 camera.js       front camera lifecycle
-orientation.js  frozen validated physical gravity mapping
+orientation.js  frozen validated physical gravity mapping + display rotation
 input.js        pointer/touch paths and gesture velocity
 condensation.js fog + water height + wetness + water transport
 droplets.js     active flow heads + mass + pinning + merge + flow ID

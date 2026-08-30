@@ -61,6 +61,24 @@ On the tested iPad this gives the correct physical directions:
 
 Do not switch to `DeviceOrientationEvent` merely because it looks theoretically cleaner. Do not add a second screen-orientation transform. Do not infer axis signs from documentation when the existing mapping has already been empirically validated on the target hardware.
 
+**Amendment (display rotation).** The rule above still holds for the *sensor
+read*: no second transform is applied to `accelerationIncludingGravity`, and the
+mapping is byte-identical to the golden commit. What Fog Mirror now does in
+addition is rotate the *answer* into the frame the page is laid out in, because
+the simulation relayouts on `orientationchange` and the sensor does not — past
+that point the two are in different frames and the water runs the wrong way
+across the picture. In portrait the rotation is the identity, so the verified
+behaviour is untouched exactly where it was verified.
+
+The important device finding, and the reason the obvious version is wrong:
+CoreMotion axes are portrait-based on every iOS device, while
+`screen.orientation.angle` is measured from the device's natural orientation,
+which is landscape on an iPad — so an iPad held upright reports 90, not 0. **Do
+not replace the existing `rotation()` logic with a bare `screen.orientation.angle`
+rotation.** `tools/orientation.mjs` covers this and includes a negative control
+showing that the bare version makes the world direction wander 180° on an iPad.
+
+
 Gravity may expose debug data, but debug code must not change the vector calculation.
 
 ---
@@ -371,7 +389,7 @@ No claim of actual humidity sensing.
 Recommended modules:
 
 - `camera.js` — camera lifecycle only
-- `orientation.js` — **frozen validated gravity implementation**
+- `orientation.js` — **frozen validated gravity implementation**, plus the display rotation (see the amendment above)
 - `input.js` — touch/pointer path and gesture velocity
 - `condensation.js` — fog/water/wetness fields and water transport
 - `droplets.js` — active flow heads, mass, merge, pinning, flow IDs, connected trails
