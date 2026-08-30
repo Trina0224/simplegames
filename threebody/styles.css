@@ -46,6 +46,22 @@ html, body { height: 100%; margin: 0; background: #05070c; color: var(--ink);
 }
 .caution[hidden] { display: none; }
 
+/* Mission context. Deliberately NOT styled like the readout: ARTEMIS_DEMO_SPEC.md
+   acceptance test 4 wants published reference values visibly distinguished from
+   simulated ones, and the surest way to do that is for them not to look alike.
+   The simulated line is monospaced like every other measured number on the page;
+   the NASA line is not, because it was not measured here. */
+.context {
+  margin: 7px 0 0 !important; padding: 6px 9px;
+  border: 1px solid rgba(126, 206, 164, 0.30); border-radius: 9px;
+  background: rgba(126, 206, 164, 0.07);
+  color: #b8e6cd !important; font-size: 12px !important; line-height: 1.5;
+  white-space: pre-wrap;
+}
+.context[hidden] { display: none; }
+.context b { color: #d7f4e4; font-weight: 600; }
+.context .sim { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #eaf6ef; }
+
 .note { margin-top: 7px !important; color: var(--accent) !important; font-size: 12px !important; }
 
 /* Width in `ch`, because the content is monospace and its longest ordinary line

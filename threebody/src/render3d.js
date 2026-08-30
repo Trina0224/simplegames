@@ -20,9 +20,9 @@
 //                       the 3D orbit projects into the planar geometry -- except
 //                       it is visible from every angle, not only from the top.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830k';
-import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830k';
-import { spriteHandle } from './render.js?v=20260830k';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830m';
+import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830m';
+import { spriteHandle } from './render.js?v=20260830m';
 
 // Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
 // screen pixels. The planar view inflates them because the whole Earth-Moon
@@ -143,6 +143,29 @@ export class Scene3D {
     this.resize();
   }
 
+  /**
+   * Zoom about a point on the SCREEN, keeping whatever is there where it is.
+   *
+   * The wheel handler used to zoom about the scene centre, on the reasoning that
+   * "the point under the pointer" is a whole line through an orthographic scene
+   * and choosing a depth for it would be a guess. That reasoning is about picking
+   * a model point, and this needs no model point: keeping a screen point fixed is
+   * a shift within the projection plane, which is exactly what panByPixels does,
+   * and no depth enters it.
+   *
+   * It matters because fitSpatial deliberately puts the orbit ABOVE the scene
+   * centre -- the controls cover the bottom of the canvas -- so a zoom about the
+   * centre pushed the orbit off the top of the screen. Seven wheel clicks in on a
+   * fitted view left an empty canvas.
+   */
+  zoomAt(px, py, factor) {
+    const before = this.span;
+    this.zoomBy(factor);
+    const k = before / this.span;          // what the zoom actually did, after clamping
+    if (k === 1) return;
+    this.panByPixels(-(px - this.w / 2) * (k - 1), -(py - this.h / 2) * (k - 1));
+  }
+
   /** Pan across the screen plane, so dragging moves what is under the finger. */
   panByPixels(dxPx, dyPx) {
     const b = this.basis();
@@ -155,7 +178,7 @@ export class Scene3D {
 
   draw(view) {
     const { ctx } = this;
-    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite } = view;
+    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite, compare } = view;
     this.resize();
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -182,6 +205,29 @@ export class Scene3D {
       ctx.lineWidth = 1;
       this._path(P, whole, frame, (i) => whole.zs[i]);
       ctx.stroke();
+    }
+
+    // --- a second orbit, for comparison --------------------------------------
+    //
+    // Drawn in its own colour and never in the trajectory's, because it is a
+    // different trajectory and the whole point of the demo is telling them apart.
+    // Same equations, same integrator, same frame -- so this is a comparison
+    // within one model rather than an illustration laid over one.
+    if (compare && compare.run && compare.run.n > 1) {
+      ctx.strokeStyle = 'rgba(255, 196, 92, 0.45)';
+      ctx.lineWidth = 1.2;
+      this._path(P, compare.run, frame, (i) => compare.run.zs[i]);
+      ctx.stroke();
+      if (compare.head) {
+        const q = P(compare.head[0], compare.head[1], compare.head[2]);
+        ctx.fillStyle = 'rgba(255, 214, 130, 0.95)';
+        ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
+        if (compare.label) {
+          ctx.fillStyle = 'rgba(255, 214, 130, 0.8)';
+          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+          ctx.fillText(compare.label, q[0] + 7, q[1] - 5);
+        }
+      }
     }
 
     // --- the ground track: the orbit flattened onto z = 0 --------------------
@@ -469,8 +515,21 @@ export class Scene3D {
     ctx.stroke();
     ctx.fillStyle = 'rgba(170, 190, 214, 0.62)';
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.fillText(nice >= 1000 ? `${(nice / 1000).toFixed(nice >= 10000 ? 0 : 1)} 000 km` : `${nice.toFixed(0)} km`, 16, y - 8);
+    ctx.fillText(scaleLabel(nice), 16, y - 8);
   }
+}
+
+/**
+ * A scale-bar label, thousands-separated.
+ *
+ * Exported because it was wrong for two years' worth of zoom levels and nothing
+ * could see it: the old version divided by a thousand and appended " 000", which
+ * is right for 50 000 and nonsense for 5 000 -- it drew "5.0 000 km". Only spans
+ * with a round figure of ten thousand kilometres or more were ever correct, and
+ * those are the ones a default fit lands on, so it took zooming in to find.
+ */
+export function scaleLabel(km) {
+  return `${km.toLocaleString('en-US').replace(/,/g, ' ')} km`;
 }
 
 export { EARTH_RADIUS, MOON_RADIUS };

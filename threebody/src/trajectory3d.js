@@ -11,9 +11,9 @@
 // physical radius (rule 9). A projected 2D distance would let a spacecraft pass
 // straight through the Moon as long as it did so from above.
 
-import { Dopri5 } from './integrator.js?v=20260830k';
-import { deriv3, jacobi3 } from './cr3bp3d.js?v=20260830k';
-import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830k';
+import { Dopri5 } from './integrator.js?v=20260830m';
+import { deriv3, jacobi3 } from './cr3bp3d.js?v=20260830m';
+import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830m';
 
 // The planar solver's defaults, deliberately, so a 3D run of a planar state is
 // asked for the same accuracy rather than a quietly different one.

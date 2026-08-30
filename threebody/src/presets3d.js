@@ -11,7 +11,8 @@
 // integrator tolerance, the Jacobi drift and the step counts recorded. They are
 // here and they are re-measured by validate.mjs section 13 rather than trusted.
 
-import { MU } from './constants.js?v=20260830k';
+import { MU } from './constants.js?v=20260830m';
+import { ARTEMIS3D } from './artemis.js?v=20260830m';
 
 export const PRESETS3D = [
   {
@@ -71,10 +72,15 @@ export const PRESETS3D = [
  * out-of-plane excursion against a 21 971 km span in x, a perilune 5 675 km above
  * the Moon's surface, and an apolune of 77 696 km.
  *
- * This is ideal Earth-Moon CR3BP. It is not Gateway: Gateway's NRHO has a
- * perilune near 3 200 km and a period of 6.56 days in a 9:2 lunar resonance, and
- * reproducing that would need an ephemeris model this project does not have.
- * The spec says not to claim operational fidelity, so this claims none.
+ * This is ideal Earth-Moon CR3BP, and it is not Gateway's orbit -- but for a
+ * narrower reason than this comment used to give. It said reproducing Gateway's
+ * geometry "would need an ephemeris model this project does not have", and that
+ * turned out to be wrong: the same family, continued past the fold the branch was
+ * stopping at, passes straight through 6.5 days and a 1 500 km near pass. See
+ * GATEWAY_NRHO in artemis.js. What still needs an ephemeris is the OPERATIONAL
+ * orbit -- the 9:2 synodic resonance is a resonance with the real Sun-Earth-Moon
+ * system, and station keeping is what holds it. The spec says not to claim
+ * operational fidelity, so this claims none.
  */
 export const NRHO3D = {
   id: 'nrho-l2',
@@ -157,6 +163,6 @@ export const LISSAJOUS3D = [
   },
 ];
 
-export const ALL3D = [...PRESETS3D, NRHO3D, ...LISSAJOUS3D];
+export const ALL3D = [...PRESETS3D, NRHO3D, ...LISSAJOUS3D, ...ARTEMIS3D];
 export const byId3d = (id) => ALL3D.find((p) => p.id === id) || null;
 export { MU };

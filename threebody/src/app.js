@@ -6,24 +6,25 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830k';
-import { jacobi } from './cr3bp.js?v=20260830k';
-import { lagrangePoints } from './lagrange.js?v=20260830k';
-import { propagate } from './trajectory.js?v=20260830k';
-import { zeroVelocityCurves } from './zvc.js?v=20260830k';
-import { planTransfer } from './targeting.js?v=20260830k';
-import { PRESETS, byId } from './presets.js?v=20260830k';
-import { Scene } from './render.js?v=20260830k';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830k';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830k';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830k';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830k';
-import { propagate3 } from './trajectory3d.js?v=20260830k';
-import { jacobi3 } from './cr3bp3d.js?v=20260830k';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830k';
-import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830k';
-import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830k';
-import { advance, resumeFrom } from './playback.js?v=20260830k';
+import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830m';
+import { jacobi } from './cr3bp.js?v=20260830m';
+import { lagrangePoints } from './lagrange.js?v=20260830m';
+import { propagate } from './trajectory.js?v=20260830m';
+import { zeroVelocityCurves } from './zvc.js?v=20260830m';
+import { planTransfer } from './targeting.js?v=20260830m';
+import { PRESETS, byId } from './presets.js?v=20260830m';
+import { Scene } from './render.js?v=20260830m';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830m';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830m';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830m';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830m';
+import { propagate3 } from './trajectory3d.js?v=20260830m';
+import { jacobi3 } from './cr3bp3d.js?v=20260830m';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830m';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830m';
+import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830m';
+import { advance, resumeFrom } from './playback.js?v=20260830m';
+import { ARTEMIS3D, GATEWAY_NRHO, LOW_LUNAR, NASA_REFERENCE } from './artemis.js?v=20260830m';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -32,7 +33,7 @@ import { advance, resumeFrom } from './playback.js?v=20260830k';
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830k';
+const STAMP = '20260830m';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -46,7 +47,9 @@ const ui = {
   target: el('target'), plan: el('plan'), execute: el('execute'), fit: el('fit'),
   free: el('free'), launch: el('launch'), cancel: el('cancel'), zeroV: el('zeroV'),
   launchbar: el('launchbar'), aim: el('aim'), hint: document.querySelector('.hint'),
-  caution: el('caution'),
+  caution: el('caution'), artemis: el('artemis'), artemisbar: el('artemisbar'),
+  artemisRead: el('artemisRead'), cmpLlo: el('cmpLlo'),
+  seekNear: el('seekNear'), seekFar: el('seekFar'),
   spatial: el('spatial'), spatialbar: el('spatialbar'), preset3d: el('preset3d'),
   viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
   plane: el('plane'), track: el('track'),
@@ -121,7 +124,7 @@ const LAUNCH3_MS_PER_PX = 8;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830k', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830m', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -499,6 +502,76 @@ function updateCaution(run) {
   return c;
 }
 
+// --- Artemis mission context -------------------------------------------------
+//
+// The one rule ARTEMIS_DEMO_SPEC.md returns to over and over: a published
+// program figure and a measured one must never be mistakable for each other.
+// So they are never in the same sentence, never in the same typeface, and the
+// measured line always says where it came from.
+
+/** The LLO comparison run, propagated once and kept while it is being shown. */
+let lloRun = null;
+
+/** Where the selected orbit is closest to and furthest from the Moon. */
+function passes3(run) {
+  let near = 0, far = 0, lo = Infinity, hi = 0;
+  for (let i = 0; i < run.xs.length; i += 1) {
+    const d = Math.hypot(run.xs[i] - MOON_X, run.ys[i], run.zs[i]);
+    if (d < lo) { lo = d; near = i; }
+    if (d > hi) { hi = d; far = i; }
+  }
+  return { near: run.ts[near], far: run.ts[far], lowKm: lo * DU_KM, highKm: hi * DU_KM };
+}
+
+function updateArtemis(p, run) {
+  const on = !!(p && (p.artemis || p.capstone));
+  ui.artemis.hidden = !on;
+  ui.artemisbar.hidden = !on;
+  if (!on) { lloRun = null; return; }
+
+  const ref = p.capstone ? NASA_REFERENCE.capstone : NASA_REFERENCE.gateway;
+  const m = p.measured;
+  const pass = passes3(run);
+  // Measured from the run on screen, not read back out of the stored record --
+  // the stored figures come from one period and this is three, so if they ever
+  // disagreed it would be visible here rather than hidden behind a field name.
+  ui.artemisRead.textContent = `near ${(pass.lowKm - MOON_RADIUS_KM).toFixed(0)} km   `
+    + `far ${(pass.highKm / 1000).toFixed(1)} thousand km   ${(p.period * TU_DAYS).toFixed(2)} d`
+    + (ui.cmpLlo.checked
+      ? `   against ${LOW_LUNAR.measured.periodHours.toFixed(2)} h, `
+        + `${LOW_LUNAR.measured.revsPerGateway.toFixed(0)} revolutions to its one`
+      : '');
+
+  ui.artemis.innerHTML = '';
+  const line = (label, text, sim) => {
+    const b = document.createElement('b');
+    b.textContent = label + ' ';
+    const span = document.createElement('span');
+    if (sim) span.className = 'sim';
+    span.textContent = text;
+    ui.artemis.appendChild(b);
+    ui.artemis.appendChild(span);
+    ui.artemis.appendChild(document.createTextNode('\n'));
+  };
+  line('simulated CR3BP member', `${m.periodDays.toFixed(3)} d   `
+    + `near pass ${m.nearKm.toFixed(0)} km   far pass ${m.apoluneKm.toFixed(0)} km`, true);
+  line(p.capstone ? 'NASA CAPSTONE reference' : 'NASA Gateway reference',
+    `about ${ref.periodDays} d, about ${ref.nearKm.toLocaleString('en-US')} km at the near pass `
+    + `and about ${ref.farKm.toLocaleString('en-US')} km at the far one`);
+  ui.artemis.appendChild(document.createTextNode(
+    'Earth–Moon CR3BP educational model; the mission context is real, the trajectory is '
+    + 'not an operational ephemeris. This member was selected from the continued halo '
+    + 'family by period — it was not shaped to match the reference figures.'));
+
+  if (ui.cmpLlo.checked) {
+    // Same integrator, same equations, same frame -- so the comparison is one
+    // model throughout and needs no "illustration only" label.
+    const r = propagate3(LOW_LUNAR.state, p.duration,
+      { sample: p.duration / 12000, absTol: 1e-13, relTol: 1e-13 });
+    lloRun = { ...r, n: r.xs.length };
+  } else lloRun = null;
+}
+
 function load3(p) {
   if (p && p.family && p.index === undefined) {
     // an entry from the menu: start at whatever the slider is showing
@@ -517,6 +590,7 @@ function load3(p) {
   const r = propagate3(p.state, p.duration, { sample: p.duration / 6000, absTol: 1e-13, relTol: 1e-13 });
   run3 = { ...r, n: r.xs.length };
   run3.closest = updateCaution(r);
+  updateArtemis(p, r);
   clock3 = 0;
   playing = true;
   ui.play.textContent = 'Pause';
@@ -530,6 +604,19 @@ function load3(p) {
       + `${altText(alt)}   ${(p.period * TU_DAYS).toFixed(2)} d`;
   }
   fitSpatial();
+}
+
+ui.cmpLlo.addEventListener('change', () => { if (preset3) updateArtemis(preset3, run3); });
+
+// One tap to each end of the orbit. ARTEMIS_DEMO_SPEC.md F: seek the extrema
+// MEASURED from the trajectory on screen, never a predetermined timestamp --
+// which also means these keep working when the family member changes.
+for (const [btn, which] of [[ui.seekNear, 'near'], [ui.seekFar, 'far']]) {
+  btn.addEventListener('click', () => {
+    if (!run3) return;
+    clock3 = passes3(run3)[which];
+    playing = false; ui.play.textContent = 'Play';
+  });
 }
 
 ui.famSlider.addEventListener('input', () => {
@@ -547,6 +634,16 @@ function fitSpatial() {
   }
   // include the Moon, so the orbit is always seen in its place rather than alone
   lo[0] = Math.min(lo[0], MOON_X - 0.04); hi[0] = Math.max(hi[0], MOON_X + 0.04);
+  // An Artemis demo makes a claim about L1 and L2 -- that the orbit is NOT parked
+  // at one of them -- so the frame has to contain them for the claim to be
+  // checkable. Without this the default fit cropped L2 out of the picture while
+  // the blurb said it was drawn.
+  if (preset3 && (preset3.artemis || preset3.capstone)) {
+    for (const n of ['L1', 'L2']) {
+      const q = POINTS.find((v) => v.name === n);
+      if (q) { lo[0] = Math.min(lo[0], q.x - 0.02); hi[0] = Math.max(hi[0], q.x + 0.02); }
+    }
+  }
   const centre = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
   const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
   // The controls panel covers the bottom of the canvas, so the usable height is
@@ -644,6 +741,20 @@ function updateEditor3Readout() {
   }
 }
 
+/** Where the comparison orbit is at the same instant, by the same interpolation. */
+function lloAt(t) {
+  if (!lloRun) return null;
+  const ts = lloRun.ts;
+  if (t <= ts[0]) return [lloRun.xs[0], lloRun.ys[0], lloRun.zs[0]];
+  if (t >= ts[lloRun.n - 1]) t = ts[lloRun.n - 1];
+  let lo = 0, hi = lloRun.n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ts[m] <= t) lo = m; else hi = m; }
+  const f = (t - ts[lo]) / Math.max(1e-15, ts[hi] - ts[lo]);
+  return [lloRun.xs[lo] + (lloRun.xs[hi] - lloRun.xs[lo]) * f,
+          lloRun.ys[lo] + (lloRun.ys[hi] - lloRun.ys[lo]) * f,
+          lloRun.zs[lo] + (lloRun.zs[hi] - lloRun.zs[lo]) * f];
+}
+
 function render3() {
   scene3d.resize();
   const st = state3At(clock3);
@@ -656,6 +767,7 @@ function render3() {
                           n: Math.max(2, st.index + 1) } : null,
     whole: run3 ? { xs: run3.xs, ys: run3.ys, zs: run3.zs, ts: run3.ts, n: run3.n } : null,
     head: st ? st.s : null,
+    compare: lloRun ? { run: lloRun, label: '100 km lunar orbit', head: lloAt(clock3) } : null,
     showPlane: ui.plane.checked, showTrack: ui.track.checked,
     sprite: spriteHandle(),
     edit: ed3.active
@@ -709,7 +821,14 @@ function render3() {
 
 // ---------------------------------------------------------------- controls
 
-for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Periodic — near-rectilinear', [NRHO3D]], ['Quasi-periodic — Lissajous', LISSAJOUS3D], ['The whole family', FAMILY_ENTRIES]]) {
+for (const [label, list] of [['Periodic — halo', PRESETS3D],
+  ['Periodic — near-rectilinear', [NRHO3D]],
+  ['Quasi-periodic — Lissajous', LISSAJOUS3D],
+  ['The whole family', FAMILY_ENTRIES],
+  // Separately grouped and named, so nobody has to guess which entries are
+  // orbit families and which are mission context. ARTEMIS_DEMO_SPEC.md asks
+  // for exactly that, and for the word Artemis to stay visible.
+  ['Artemis demos — mission context', ARTEMIS3D]]) {
   // Grouped, and labelled by what they ARE. A Lissajous sitting in the same flat
   // list as a halo would be read as another orbit; it is not an orbit at all.
   const g = document.createElement('optgroup');
@@ -822,7 +941,11 @@ const SPATIAL_HINT = 'Drag to orbit the camera; pinch or scroll to zoom; two fin
 function setSpatial(on) {
   spatial = on;
   ui.spatialbar.hidden = !on;
-  if (!on) { ui.familybar.hidden = true; ui.caution.hidden = true; ed3.end(); setEditing3(false); }
+  if (!on) {
+    ui.familybar.hidden = true; ui.caution.hidden = true;
+    ui.artemis.hidden = true; ui.artemisbar.hidden = true; lloRun = null;
+    ed3.end(); setEditing3(false);
+  }
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
   // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
   // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so
@@ -1153,7 +1276,7 @@ ui.canvas.addEventListener('pointermove', (e) => {
     const dist = Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1]));
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     if (spatial) {
-      scene3d.zoomBy(dist / pinch.dist);
+      scene3d.zoomAt(mid[0], mid[1], dist / pinch.dist);
       scene3d.panByPixels(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
     } else {
       scene.zoomAt(mid[0], mid[1], dist / pinch.dist);
@@ -1272,10 +1395,10 @@ ui.canvas.addEventListener('wheel', (e) => {
   // the exponential keeps both feeling like the same control
   const factor = Math.min(2.2, Math.max(0.45,
     Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016))));
-  // 3D zooms about the scene centre rather than the cursor: under an orthographic
-  // camera "the point under the pointer" is a whole line through the scene, and
-  // picking a depth for it would be a guess that moves the view sideways.
-  if (spatial) scene3d.zoomBy(factor); else scene.zoomAt(p[0], p[1], factor);
+  // Both views zoom about the cursor. See Scene3D.zoomAt for why the 3D one can:
+  // keeping a SCREEN point fixed under an orthographic camera is a shift in the
+  // projection plane and needs no depth at all.
+  if (spatial) scene3d.zoomAt(p[0], p[1], factor); else scene.zoomAt(p[0], p[1], factor);
 }, { passive: false });
 
 ui.canvas.addEventListener('dblclick', (e) => {

@@ -21,8 +21,8 @@
 //    the last preview and the launch. The spec allows another epoch convention
 //    if it is documented; this is the one, and this is why.
 
-import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830k';
-import { jacobi } from './cr3bp.js?v=20260830k';
+import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830m';
+import { jacobi } from './cr3bp.js?v=20260830m';
 
 /** How far ahead a preview looks. Long enough to show the character of the
  *  orbit -- a capture, a loop, an escape -- without making the drag wait. */

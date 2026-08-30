@@ -11,26 +11,28 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830k';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830k';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830k';
-import { Dopri5 } from '../src/integrator.js?v=20260830k';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830k';
-import { PRESETS } from '../src/presets.js?v=20260830k';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830k';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830k';
-import { displayToRotating } from '../src/display.js?v=20260830k';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830k';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830k';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830k';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830k';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830k';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830k';
-import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830k';
-import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830k';
-import { advance, resumeFrom } from '../src/playback.js?v=20260830k';
-import { toInertial } from '../src/frames.js?v=20260830k';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830k';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830m';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830m';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830m';
+import { Dopri5 } from '../src/integrator.js?v=20260830m';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830m';
+import { PRESETS } from '../src/presets.js?v=20260830m';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830m';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830m';
+import { displayToRotating } from '../src/display.js?v=20260830m';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830m';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830m';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830m';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830m';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830m';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830m';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830m';
+import { GATEWAY_NRHO, CAPSTONE_NRHO, LOW_LUNAR, NASA_REFERENCE, ARTEMIS3D } from '../src/artemis.js?v=20260830m';
+import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830m';
+import { advance, resumeFrom } from '../src/playback.js?v=20260830m';
+import { scaleLabel } from '../src/render3d.js?v=20260830m';
+import { toInertial } from '../src/frames.js?v=20260830m';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830m';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -847,6 +849,16 @@ console.log('\n18. Playback stops when the trajectory did');
     !flat.playing && flat.t === halo.ts[2],
     `t held at ${flat.t}, playing ${flat.playing}`);
 
+  // Found by zooming in on the Artemis comparison orbit: at every span whose
+  // round figure is 1 000, 2 000 or 5 000 km the scale bar read "5.0 000 km".
+  // It had been that way since the bar was written, and only the spans a default
+  // fit happens to land on were ever right.
+  check('the scale bar labels every span it can draw',
+    [100, 500, 1000, 2000, 5000, 10000, 50000, 200000]
+      .every((v) => /^[0-9 ]+ km$/.test(scaleLabel(v)) &&
+        Number(scaleLabel(v).replace(/[^0-9]/g, '')) === v),
+    [1000, 5000, 50000].map(scaleLabel).join(', ') + ' -- the old one drew "5.0 000 km"');
+
   check('and Play on a finished run starts it over rather than doing nothing',
     resumeFrom(hitMoon.ts[2], hitMoon) === 0 && resumeFrom(0.8, hitMoon) === 0.8,
     'at the end -> 0; part-way through -> unchanged');
@@ -927,6 +939,121 @@ console.log('\n19. A fold is the end of a parameterisation, not of a family');
     `period match ${byT.d.toFixed(3)} d, near-pass match ${byPeri.d.toFixed(3)} d, ` +
     `far-pass match ${byApo.d.toFixed(3)} d -- all within ` +
     `${(Math.max(byT.d, byPeri.d, byApo.d) - Math.min(byT.d, byPeri.d, byApo.d)).toFixed(3)} d of each other`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n20. The Artemis demos are context on a real orbit, not a drawing of one');
+{
+  // ARTEMIS_DEMO_SPEC.md's acceptance list, made checkable. The ones about the UI
+  // are checked as far as data can check them; the rest are measurements.
+  const gw = GATEWAY_NRHO;
+  const c = closure(gw);
+  const g = lunarGeometry(gw);
+
+  // 1 and 2: a real corrected/continued CR3BP trajectory, not an elongated halo
+  // drawn to look like the diagrams.
+  check('the Gateway-like member is a genuinely periodic CR3BP orbit',
+    c.error < 1e-9 && c.run.relDrift < 1e-11 && c.run.status === 'ok',
+    `closure ${c.error.toExponential(2)}, Jacobi drift ${c.run.relDrift.toExponential(2)}, ` +
+    `${c.run.accepted} steps, ${c.run.rejected} rejected, residual ${gw.residual.toExponential(1)}`);
+  check('and it reports the C it stores', Math.abs(jacobi3(gw.state, MU) - gw.C) < 1e-9,
+    `stored ${gw.C.toFixed(9)}, measured ${jacobi3(gw.state, MU).toFixed(9)}`);
+
+  // 3: every reported figure is measured from the simulated trajectory.
+  const off = Math.max(
+    Math.abs(g.perilune * DU_KM - gw.measured.periluneKm),
+    Math.abs(g.apolune * DU_KM - gw.measured.apoluneKm),
+    Math.abs(gw.period * TU_DAYS - gw.measured.periodDays) * 1000);
+  check('every figure it displays is measured from that trajectory', off < 0.2,
+    `re-measuring perilune, apolune and period reproduces the stored values to ` +
+    `${off.toExponential(1)}`);
+
+  // 4: NASA reference values are visibly distinguished -- structurally, they are
+  // in a different object, and no measured field may be copied from one.
+  const ref = NASA_REFERENCE.gateway;
+  check('the published figures are kept apart from the measured ones, and differ',
+    gw.measured.periodDays !== ref.periodDays &&
+      Math.round(gw.measured.nearKm) !== ref.nearKm &&
+      Math.round(gw.measured.apoluneKm) !== ref.farKm,
+    `simulated ${gw.measured.periodDays.toFixed(4)} d / ${gw.measured.nearKm.toFixed(0)} km / ` +
+    `${gw.measured.apoluneKm.toFixed(0)} km against published ${ref.periodDays} / ${ref.nearKm} / ` +
+    `${ref.farKm} -- close, and not equal, which is what "not fitted" looks like`);
+  check('and it lands close enough to be worth calling Gateway-like',
+    Math.abs(gw.measured.periodDays - ref.periodDays) < 0.2 &&
+      Math.abs(gw.measured.nearKm - ref.nearKm) < 400 &&
+      Math.abs(gw.measured.apoluneKm - ref.farKm) < 4000,
+    `period within ${Math.abs(gw.measured.periodDays - ref.periodDays).toFixed(3)} d, ` +
+    `near pass within ${Math.abs(gw.measured.nearKm - ref.nearKm).toFixed(0)} km, ` +
+    `far pass within ${Math.abs(gw.measured.apoluneKm - ref.farKm).toFixed(0)} km`);
+
+  // 5: the CAPSTONE demo must not claim to be flight ephemeris. It is the same
+  // orbit as the Gateway one, deliberately and visibly.
+  check('the CAPSTONE demo is the same family member, and says so rather than claiming ephemeris',
+    CAPSTONE_NRHO.state.every((v, i) => v === gw.state[i]) &&
+      /not reconstructed flight ephemeris/.test(CAPSTONE_NRHO.blurb),
+    `identical state and period; blurb calls it a "CAPSTONE-like CR3BP demonstration"`);
+
+  // 6: the orbit is the same physical orbit under any camera or frame. The camera
+  // cannot touch the state at all -- it is not passed one -- so the checkable
+  // version is the frame transform, which is what actually moves numbers.
+  const run = propagate3(gw.state, gw.period, { sample: gw.period / 2000, absTol: 1e-13, relTol: 1e-13 });
+  let worstBack = 0;
+  for (let i = 0; i < run.xs.length; i += 97) {
+    const st = [run.xs[i], run.ys[i], run.zs[i], run.vxs[i], run.vys[i], run.vzs[i]];
+    const back = toRotating3(...toInertial3(...st, run.ts[i]), run.ts[i]);
+    for (let k = 0; k < 6; k += 1) worstBack = Math.max(worstBack, Math.abs(back[k] - st[k]));
+  }
+  check('it is the same orbit in every frame it can be shown in', worstBack < 1e-14,
+    `rotating -> inertial -> rotating over the whole orbit, worst component ${worstBack.toExponential(1)}`);
+
+  // 8: the low lunar orbit's provenance. The spec allows a two-body illustration
+  // if labelled; this is not one, and the check is that the same integrator that
+  // flies everything else flies it.
+  const llo = propagate3(LOW_LUNAR.state, GATEWAY_NRHO.period,
+    { sample: GATEWAY_NRHO.period / 12000, absTol: 1e-13, relTol: 1e-13 });
+  let lo = Infinity, hi = 0;
+  for (let i = 0; i < llo.xs.length; i += 1) {
+    const d = Math.hypot(llo.xs[i] - MOON_X, llo.ys[i], llo.zs[i]);
+    lo = Math.min(lo, d); hi = Math.max(hi, d);
+  }
+  check('the comparison orbit is flown by the same model, and stays a low lunar orbit',
+    llo.status === 'ok' && (lo * DU_KM - MOON_RADIUS * DU_KM) > 90 &&
+      (hi * DU_KM - MOON_RADIUS * DU_KM) < 110,
+    `${LOW_LUNAR.measured.revsPerGateway.toFixed(1)} revolutions in one Gateway orbit at ` +
+    `${(lo * DU_KM - MOON_RADIUS * DU_KM).toFixed(1)}-${(hi * DU_KM - MOON_RADIUS * DU_KM).toFixed(1)} km, ` +
+    `status "${llo.status}" -- the ${((hi - lo) * DU_KM).toFixed(1)} km of wander is the CR3BP ` +
+    `perturbation, measured rather than assumed away`);
+
+  // and the initial condition is the circular one it claims to be, which is the
+  // part that failed silently first time: dropping the Moon's own orbital
+  // velocity from the frame conversion launched it at 62% of circular speed and
+  // it fell into the Moon inside a tenth of a revolution.
+  const rr = LOW_LUNAR.state[0] - MOON_X;
+  const want = Math.sqrt(MU / rr);
+  check('and its initial condition really is circular about the Moon',
+    Math.abs((LOW_LUNAR.state[4] + rr) - want) < 1e-12,
+    `rotating vy ${LOW_LUNAR.state[4].toFixed(9)} + r restores ` +
+    `${(LOW_LUNAR.state[4] + rr).toFixed(9)} against sqrt(mu/r) = ${want.toFixed(9)} ` +
+    `(${(want * DU_KM / (TU_DAYS * 86400)).toFixed(4)} km/s)`);
+
+  // 10: nothing here may be called a rendezvous. There is no moving-target
+  // targeting in this build, so there must be no demo claiming one either.
+  check('nothing claims a rendezvous, because nothing here can do one',
+    !ARTEMIS3D.some((p) => /rendezvous|docking/i.test(`${p.name} ${p.blurb || ''}`)),
+    `${ARTEMIS3D.length} Artemis presets, none of them a rendezvous -- ` +
+    `moving-target 3D targeting is out of scope for this build`);
+
+  // 11: the labels come off without touching the physics. Structurally: an
+  // Artemis preset is an ordinary preset plus context, so stripping the context
+  // fields must leave a trajectory that flies identically.
+  const bare = { state: gw.state.slice(), period: gw.period };
+  const a = propagate3(bare.state, bare.period, { sample: bare.period / 500, absTol: 1e-13, relTol: 1e-13 });
+  const b2 = propagate3(gw.state, gw.period, { sample: gw.period / 500, absTol: 1e-13, relTol: 1e-13 });
+  check('the Artemis labels can be removed without changing the physics',
+    a.xs.every((v, i) => v === b2.xs[i]) && a.status === b2.status,
+    `state and period alone reproduce the run exactly -- the context is ${
+      Object.keys(gw).filter((k) => !['state', 'period', 'duration', 'C'].includes(k)).length
+    } fields of text and measurement hung off it`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

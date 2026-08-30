@@ -9,8 +9,8 @@
 // the product say something true rather than treating all five as parking
 // spots: the collinear three are saddles and the triangular two are not.
 
-import { MU } from './constants.js?v=20260830k';
-import { gradOmega, omega } from './cr3bp.js?v=20260830k';
+import { MU } from './constants.js?v=20260830m';
+import { gradOmega, omega } from './cr3bp.js?v=20260830m';
 
 /**
  * dOmega/dx along the x-axis. Written separately from gradOmega because on the
