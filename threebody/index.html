@@ -48,6 +48,16 @@
     <button id="plan" class="pill ghost">Plan burn</button>
     <button id="execute" class="pill" disabled>Execute</button>
     <button id="free" class="pill ghost" aria-pressed="false">Free launch</button>
+    <button id="spatial" class="pill ghost" aria-pressed="false">3D</button>
+  </div>
+  <div class="row" id="spatialbar" hidden>
+    <label>Orbit <select id="preset3d"></select></label>
+    <button id="viewTop" class="pill ghost">Top</button>
+    <button id="viewSide" class="pill ghost">Side</button>
+    <button id="viewEnd" class="pill ghost">End</button>
+    <button id="viewObl" class="pill ghost">Oblique</button>
+    <label class="check"><input id="plane" type="checkbox" checked> z = 0 plane</label>
+    <label class="check"><input id="track" type="checkbox" checked> ground track</label>
   </div>
   <div class="row" id="launchbar" hidden>
     <button id="launch" class="pill">Launch</button>

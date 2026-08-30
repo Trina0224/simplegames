@@ -58,6 +58,9 @@ wobbles about it.
   stay the subject of the picture; that was wrong for this curve, which you turn
   on deliberately and then have to be able to see. Warm also puts it as far from
   the cyan trajectory as the colour wheel allows.
+- **3D** switches to the spatial problem: a real six-state `[x, y, z, vx, vy, vz]`
+  and two numerically corrected halo orbits. Drag to orbit the camera; **Top**,
+  **Side**, **End** and **Oblique** are fixed projections.
 - **Free launch** hands the initial condition to you. Drag the spacecraft to
   place it, drag the yellow handle to aim and set the speed, watch the dashed
   preview, and press Launch when it looks interesting. Crashes and escapes are
@@ -107,6 +110,13 @@ re-integrating anything.
 | `src/frames.js` | rotating ↔ inertial, the transform the validation suite checks |
 | `src/display.js` | the three display frames, and the inverse Free Launch needs |
 | `src/freelaunch.js` | the candidate being edited, and what makes it invalid |
+| `src/cr3bp3d.js` | the six-state equations. The planar problem is a subspace of them |
+| `src/trajectory3d.js` | spatial propagation, and the `y = 0` section the corrector shoots to |
+| `src/frames3d.js` | the same three frames, extended to six states |
+| `src/halo.js` | Richardson seed, differential correction, continuation |
+| `src/presets3d.js` | the corrected halos, with the provenance to regenerate them |
+| `src/render3d.js` | the orthographic camera. Presentation only |
+| `tools/halo.mjs` | regenerates the halo family from nothing |
 | `assets/spacecraft-v1.png` | the sprite. Presentation only; the version is in the name |
 | `src/zvc.js` | zero-velocity curves from the live Jacobi constant |
 | `src/targeting.js` | shooting for a burn that arrives |
@@ -145,6 +155,80 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### 3D: a halo, corrected into existence
+
+Phase 1 of the spatial phase, in the order `THREE_D_AGENT.md` sets out: six-state
+equations, planar regression, frame round-trips, a Richardson seed, differential
+correction, closure validation, continuation, then the viewer. The numerical
+orbit existed before anything was drawn.
+
+**The planar problem is an invariant subspace, exactly.** `∂Ω/∂z` carries a
+factor of `z`, so a state that starts in the plane cannot leave it — measured,
+`z` and `vz` stay *identically* zero over a full horseshoe period, and the
+six-state equations agree with the planar ones to 0. The two propagators do not
+take identical steps (the error norm is an RMS over the state width, and two
+exact zeros change it), so agreement is shown by refinement rather than by an
+equality that would be luck:
+
+```text
+tolerance   1e-9       1e-11      1e-13
+horseshoe   96.69 m -> 15.48 m -> 0.23 m
+```
+
+The integrator became width-generic to carry six components. `THREE_D_SPEC.md` 3
+allows a shared utility only if the 2D suite is unchanged in result, so that is
+what was checked: the planar suite's output before and after is identical
+character for character.
+
+**Why a halo needs a third-order seed** when the 2D horseshoe needed none: near a
+collinear point the in-plane and out-of-plane motions have *different*
+frequencies, so a linear seed traces a Lissajous figure that never closes. They
+only resonate at finite amplitude, through the constraint `l₁Ax² + l₂Az² + Δ = 0`.
+That relation is the reason halo orbits exist and it cannot come from linear
+theory. Richardson supplies it; the seed is never displayed.
+
+The corrector states its assumptions, as `THREE_D_RESEARCH.md` requires:
+
+| | |
+|---|---|
+| assumed | symmetry about the x–z plane: two perpendicular crossings, half a period apart |
+| fixed | `z₀`, the amplitude the family is continued in |
+| corrected | `x₀` and `vy₀` |
+| section | the next `y = 0` crossing after `t = 0` |
+| residual | `(vx, vz)` there, driven to zero |
+
+The Legendre coefficients come out at published Earth–Moon values (L1 γ =
+0.150934, c₂ = 5.147595, λ = 2.334386), which is the first sign the seed is right.
+The sign convention of the expansion's x axis differs by text and getting it
+wrong is silent — the seed still *looks* like a halo — so it was settled by
+measurement: `+1` converges in 4 iterations at both points, `-1` needs 8 at L1
+and fails outright at L2.
+
+Continuation needed a **secant predictor**. Holding `x₀` and `vy₀` while stepping
+`z₀` works while the family is flat and stops the moment it curves; at L1 it
+survived exactly two steps. Extrapolating along the family instead costs nothing
+and gets 20 of 20 members out to `z₀` = 38 440 km.
+
+Both presets store **full double precision, not a tidy twelve decimals**. A halo
+is unstable — that is what makes it need correcting — so truncating the state is
+not a rounding, it is a different orbit: measured, 12 decimals costs a factor of
+122 in closure at L1 and 705 at L2. The 2D horseshoe taught the same lesson at
+1.8e5 per period.
+
+The viewer is orthographic, which `THREE_D_RESEARCH.md` argues for and which has
+a specific reason: under perspective the apparent size of a loop depends on how
+far away it is, so you cannot judge whether the far side of a halo matches the
+near side. Two things make the out-of-plane motion legible — the `z = 0` grid,
+and the **ground track**: the orbit projected straight down onto that plane, plus
+a dropline under the spacecraft. That is the projection check `SPEC.md` 6 asks
+for, except visible from every angle rather than only from the top.
+
+**`Side` turned out to be the least useful of the three projections.** Along a
+halo, `x` and `z` co-vary, so the x–z view collapses to nearly a straight line —
+74 px wide against 177 tall on the L1 preset. Physically correct, visually
+useless. Hence **End**, looking down the Earth–Moon line, where the loop opens
+out and the z excursion is the thing you are looking at.
 
 ### Free launch: your initial condition, their equations
 
@@ -390,6 +474,14 @@ how it looks, and it drives nothing.
 | Launch | uses exactly the state the preview was drawn from |
 | a 60-step drag | preview settles on the state actually held, nothing queued |
 | the sprite | reaches no numerical module — 10 of them checked for it |
+| **L1 halo** | `[0.8245886263759395, 0, 0.065, 0, 0.17657533043323353, 0]`, T = 2.7674202404692116 TU |
+| | C = 3.1411548908811935, residual 1.0e-14, closes 6.4e-13, drift 5.5e-14, 380 steps / 0 rejected, tol 1e-13, max \|z\| 24 986 km |
+| **L2 halo** | `[1.1044958584642677, 0, 0.045, 0, 0.22115577335987788, 0]`, T = 3.3777355930591972 TU |
+| | C = 3.133250450207309, residual 2.2e-15, closes 1.1e-12, drift 2.5e-14, 425 steps / 0 rejected, tol 1e-13, max \|z\| 25 810 km |
+| halo topology under tightening | period stable to 9 figures across 1e-9 … 1e-14; max \|z\| moves 0.0000 km |
+| northern vs southern halo | exact mirrors — every component agrees with z negated, to 0 |
+| the 3D camera | orbit, zoom and pan leave the run identical |
+| entering and leaving 3D | the 2D run is identical |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
 | collision | detected against the physical radius, not the drawn one |

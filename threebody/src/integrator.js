@@ -37,26 +37,34 @@ const D1 = -12715105075 / 11282082432, D3 = 87487479700 / 32700410799;
 const D4 = -10690763975 / 1880347072, D5 = 701980252875 / 199316789632;
 const D6 = -1453857185 / 822651844, D7 = 69997945 / 29380423;
 
-const N = 4;
+// How many components a state has. Four for the planar problem, six for the
+// spatial one. THREE_D_SPEC.md 3 allows a shared numerical utility only if the
+// 2D regression suite is unchanged in result, so this is a width and nothing
+// else: the tableau, the error test, the step controller and the dense output
+// are the same arithmetic in the same order, and the planar suite's output is
+// compared character for character across the change.
+const N_DEFAULT = 4;
 
 export class Dopri5 {
   /**
    * @param f      (t, y) -> dy/dt, writing into a fresh array
    * @param absTol absolute error per component
    * @param relTol error relative to the component's own size
+   * @param dim    state width; 4 (planar) unless the caller says otherwise
    */
-  constructor(f, { absTol = 1e-12, relTol = 1e-12, minStep = 1e-12, maxStep = 1 } = {}) {
+  constructor(f, { absTol = 1e-12, relTol = 1e-12, minStep = 1e-12, maxStep = 1, dim = N_DEFAULT } = {}) {
     this.f = f;
     this.absTol = absTol;
     this.relTol = relTol;
     this.minStep = minStep;
     this.maxStep = maxStep;
+    this.dim = dim;
     this.accepted = 0;
     this.rejected = 0;
-    this.k = Array.from({ length: 7 }, () => new Float64Array(N));
-    this.tmp = new Float64Array(N);
-    this.y1 = new Float64Array(N);
-    this.cont = Array.from({ length: 5 }, () => new Float64Array(N));
+    this.k = Array.from({ length: 7 }, () => new Float64Array(dim));
+    this.tmp = new Float64Array(dim);
+    this.y1 = new Float64Array(dim);
+    this.cont = Array.from({ length: 5 }, () => new Float64Array(dim));
   }
 
   /**
@@ -73,6 +81,7 @@ export class Dopri5 {
    */
   step(t, y, h) {
     const { f, k } = this;
+    const N = this.dim;
     const [k1, k2, k3, k4, k5, k6, k7] = k;
     const tmp = this.tmp, y1 = this.y1;
 
@@ -144,6 +153,7 @@ export class Dopri5 {
   }
 
   _buildInterpolant(y0, y1, h) {
+    const N = this.dim;
     const [k1, , k3, k4, k5, k6, k7] = this.k;
     const [c0, c1, c2, c3, c4] = this.cont;
     for (let i = 0; i < N; i++) {
@@ -158,6 +168,7 @@ export class Dopri5 {
 
   /** The state at fraction `th` through the step just taken, into `out`. */
   interpolate(th, out) {
+    const N = this.dim;
     const [c0, c1, c2, c3, c4] = this.cont;
     const s = 1 - th;
     for (let i = 0; i < N; i++) {

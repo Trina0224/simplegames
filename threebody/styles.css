@@ -61,6 +61,11 @@ html, body { height: 100%; margin: 0; background: #05070c; color: var(--ink);
 }
 .controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .controls .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+/* `display: flex` on an author rule beats the browser's own `[hidden]`, so a row
+   marked hidden stayed on screen -- the Free Launch bar has been visible since
+   the day it shipped, and the 3D bar would have been too. The attribute has to
+   be honoured explicitly wherever display is set. */
+.controls .row[hidden] { display: none; }
 select, input[type="range"] { accent-color: var(--accent); }
 select {
   background: rgba(255,255,255,0.06); color: var(--ink); border: 1px solid var(--line);

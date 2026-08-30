@@ -12,7 +12,7 @@
 
 import { readFileSync } from 'node:fs';
 import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830h';
-import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830h';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830h';
 import { lagrangePoints } from '../src/lagrange.js?v=20260830h';
 import { Dopri5 } from '../src/integrator.js?v=20260830h';
 import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830h';
@@ -21,6 +21,11 @@ import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830h';
 import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830h';
 import { displayToRotating } from '../src/display.js?v=20260830h';
 import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830h';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830h';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830h';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830h';
+import { richardsonSeed, correctHalo, closure, haloFamily } from '../src/halo.js?v=20260830h';
+import { PRESETS3D } from '../src/presets3d.js?v=20260830h';
 import { toInertial } from '../src/frames.js?v=20260830h';
 import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830h';
 
@@ -458,6 +463,109 @@ console.log('\n12. Free Launch is a user-written initial condition, nothing more
   }
   check('no sprite or screen size can reach the physics', leaks.length === 0,
     leaks.length ? leaks.join(', ') : `${numerical.length} numerical modules checked`);
+}
+
+console.log('\n13. The spatial problem contains the planar one, and closes a halo');
+{
+  // THREE_D_SPEC.md 8. Item 1 first, because everything else rests on it: the
+  // planar problem is an INVARIANT SUBSPACE, and exactly so -- dOmega/dz carries
+  // a factor of z, so a state that starts in the plane cannot leave it.
+  let wEq = 0, wZ = 0;
+  for (const [x, y] of [[0.5, 0.3], [-1.2, 0.4], [1.05, -0.02], [0.8, 0.6]]) {
+    wEq = Math.max(wEq, Math.abs(omega3(x, y, 0) - omega(x, y)));
+    const g3 = gradOmega3(x, y, 0), g2 = gradOmega(x, y);
+    wEq = Math.max(wEq, Math.abs(g3[0] - g2[0]), Math.abs(g3[1] - g2[1]));
+    wZ = Math.max(wZ, Math.abs(g3[2]));
+    const s = [x, y, 0.2, -0.4];
+    wEq = Math.max(wEq, Math.abs(jacobi3(lift(s)) - jacobi(s)));
+    const d3 = deriv3(0, lift(s));
+    wZ = Math.max(wZ, Math.abs(d3[2]), Math.abs(d3[5]));
+  }
+  check('the six-state equations reduce to the planar ones at z = 0', wEq === 0 && wZ === 0,
+    `equations off by ${wEq}, out-of-plane terms exactly ${wZ}`);
+
+  // ...and the propagators agree, with the difference falling as both tighten.
+  // They do not take identical STEPS -- the error norm is an RMS over the state
+  // width and two exact zeros change it -- so agreement is shown by refinement,
+  // not by an equality that would be luck.
+  const p = PRESETS.find((q) => q.id === 'horseshoe');
+  const gaps = [];
+  for (const tol of [1e-9, 1e-11, 1e-13]) {
+    const a = propagate(p.state, p.duration, { sample: 0.05, absTol: tol, relTol: tol });
+    const b = propagate3(lift(p.state), p.duration, { sample: 0.05, absTol: tol, relTol: tol });
+    let w = 0, z = 0;
+    for (let i = 0; i < Math.min(a.xs.length, b.xs.length); i += 1) {
+      w = Math.max(w, Math.hypot(a.xs[i] - b.xs[i], a.ys[i] - b.ys[i]));
+      z = Math.max(z, Math.abs(b.zs[i]), Math.abs(b.vzs[i]));
+    }
+    gaps.push([tol, w, z]);
+  }
+  check('a planar state stays exactly planar under the 3D propagator',
+    gaps.every(([, , z]) => z === 0), 'z and vz identically zero over a full horseshoe period');
+  check('and the 2D/3D difference falls as both tolerances tighten',
+    gaps[2][1] < gaps[1][1] && gaps[1][1] < gaps[0][1],
+    gaps.map(([t, w]) => `${t.toExponential(0)}: ${(w * DU_KM * 1000).toFixed(2)} m`).join('  ->  '));
+
+  // 3. six-state frame round trip
+  let rt = 0, zKeep = 0;
+  for (const t of [0, 0.4, 3.7, 21.9]) {
+    for (const st of [[0.85, 0.12, 0.04, -0.1, 0.42, 0.09], [-1.2, 0.3, -0.15, 0.2, -0.3, 0.02]]) {
+      const back = toRotating3(...toInertial3(...st, t), t);
+      for (let i = 0; i < 6; i += 1) rt = Math.max(rt, Math.abs(back[i] - st[i]));
+      const d = displayState3(...st, t, 'earth');
+      zKeep = Math.max(zKeep, Math.abs(d[2] - st[2]), Math.abs(d[5] - st[5]));
+    }
+  }
+  check('rotating -> inertial -> rotating returns the six-state', rt < 1e-14,
+    `worst component off by ${rt.toExponential(1)}`);
+  check('z and vz survive every frame untouched', zKeep === 0,
+    'Earth stays in the reference plane, so subtracting it cannot move z');
+
+  // 4, 5, 6, 8, 10: the halo presets themselves
+  for (const h of PRESETS3D) {
+    const o = { state: h.state, period: h.period };
+    const c = closure(o);
+    check(`${h.id} closes after one period`, c.error < 1e-10,
+      `closure ${c.error.toExponential(2)}, Jacobi drift ${c.run.relDrift.toExponential(2)}, ` +
+      `${c.run.accepted} steps, ${c.run.rejected} rejected`);
+    check(`${h.id} is genuinely out of plane`, c.zMax > 0.05 && h.state[2] !== 0,
+      `max |z| ${(c.zMax * DU_KM).toFixed(0)} km from a real z in the state, not a renderer offset`);
+    // tightening must not move the topology
+    const loose = closure(o, { absTol: 1e-9, relTol: 1e-9 });
+    check(`${h.id} keeps its shape at a looser tolerance`,
+      Math.abs(loose.zMax - c.zMax) * DU_KM < 1 && Math.abs(loose.run.C0 - c.run.C0) < 1e-9,
+      `max |z| differs by ${(Math.abs(loose.zMax - c.zMax) * DU_KM).toFixed(4)} km, C by ${Math.abs(loose.run.C0 - c.run.C0).toExponential(1)}`);
+    check(`${h.id} reports the C it stores`, Math.abs(jacobi3(h.state, MU) - h.C) < 1e-9,
+      `stored ${h.C.toFixed(9)}, measured ${jacobi3(h.state, MU).toFixed(9)}`);
+  }
+
+  // 6: the corrector converges to the noise floor rather than to a fixed count
+  const seed = richardsonSeed('L1', 0.02, {});
+  const tight = correctHalo(seed.state, { tol: 1e-14 });
+  check('correction converges to the numerical noise floor', tight.residual < 1e-13,
+    `residual ${tight.residual.toExponential(2)} in ${tight.iterations} iterations`);
+
+  // 7: the mirror pair
+  const n = correctHalo(richardsonSeed('L1', 0.02, { northern: true }).state, {});
+  const s2 = correctHalo(richardsonSeed('L1', 0.02, { northern: false }).state, {});
+  const mir = Math.max(Math.abs(n.state[0] - s2.state[0]), Math.abs(n.state[2] + s2.state[2]),
+    Math.abs(n.state[4] - s2.state[4]), Math.abs(n.period - s2.period));
+  check('northern and southern halos are exact mirrors', mir === 0,
+    `every component agrees with z negated, to ${mir}`);
+
+  // 8: collision is a 3D distance
+  const over = propagate3([MOON_X, 0, MOON_RADIUS * 0.5, 0, 0, 0], 0.4, { sample: 0.001 });
+  check('collision uses 3D distance, not the planar projection', over.status === 'impact: Moon',
+    `released ${(MOON_RADIUS * 0.5 * DU_KM).toFixed(0)} km above the Moon's centre: "${over.status}"`);
+
+  // continuation, not hand-tuning
+  const list = [];
+  for (let a = 0.005; a <= 0.0651; a += 0.005) list.push(+a.toFixed(4));
+  const fam = haloFamily('L1', list, {});
+  const got = fam.filter(Boolean);
+  check('the L1 family continues rather than being hand-picked',
+    got.length === list.length && got[got.length - 1].residual < 1e-10,
+    `${got.length} of ${list.length} members corrected, last residual ${got[got.length - 1].residual.toExponential(1)}`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

@@ -90,6 +90,9 @@ if (typeof Image !== 'undefined') {
   img.src = new URL(SPRITE_SRC, import.meta.url).href;
 }
 
+/** The 3D scene draws the same craft; one image, loaded once, shared. */
+export const spriteHandle = () => sprite;
+
 export class Scene {
   constructor(canvas) {
     this.canvas = canvas;

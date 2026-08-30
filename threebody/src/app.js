@@ -6,7 +6,7 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830h';
+import { MU, TU_DAYS, DU_KM, MOON_X, vuToMs, msToVu } from './constants.js?v=20260830h';
 import { jacobi } from './cr3bp.js?v=20260830h';
 import { lagrangePoints } from './lagrange.js?v=20260830h';
 import { propagate } from './trajectory.js?v=20260830h';
@@ -16,7 +16,11 @@ import { PRESETS, byId } from './presets.js?v=20260830h';
 import { Scene } from './render.js?v=20260830h';
 import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830h';
 import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830h';
-import { EDITOR_HIT_PX } from './render.js?v=20260830h';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830h';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830h';
+import { propagate3 } from './trajectory3d.js?v=20260830h';
+import { jacobi3 } from './cr3bp3d.js?v=20260830h';
+import { PRESETS3D, byId3d } from './presets3d.js?v=20260830h';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -39,6 +43,9 @@ const ui = {
   target: el('target'), plan: el('plan'), execute: el('execute'), fit: el('fit'),
   free: el('free'), launch: el('launch'), cancel: el('cancel'), zeroV: el('zeroV'),
   launchbar: el('launchbar'), aim: el('aim'), hint: document.querySelector('.hint'),
+  spatial: el('spatial'), spatialbar: el('spatialbar'), preset3d: el('preset3d'),
+  viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
+  plane: el('plane'), track: el('track'),
   readout: el('readout'), note: el('note'), title: el('title'), blurb: el('blurb'),
   panel: document.querySelector('.controls'),
   diag: el('diag'),
@@ -82,6 +89,18 @@ const editor = new FreeLaunch();
 // would. Chosen so a comfortable 300 px drag spans 0 to about 1.8 km/s, which
 // covers escape, capture and the interesting failures.
 const LAUNCH_MS_PER_PX = 6;
+
+// ---------------------------------------------------------------- 3D mode
+//
+// A second scene over the same canvas, not a second app. THREE_D_SPEC.md 3 is
+// that 3D must not destabilise the validated 2D core, so the planar mode keeps
+// its own Scene, its own presets and its own run; entering 3D swaps which of the
+// two is drawn and which run is playing, and leaves the other exactly as it was.
+const scene3d = new Scene3D(ui.canvas);
+let spatial = false;
+let run3 = null;          // { xs, ys, zs, vxs, vys, vzs, ts, n, ... }
+let clock3 = 0;
+let preset3 = null;
 
 // ---------------------------------------------------------------- solving
 
@@ -230,6 +249,15 @@ function frameLoop(ms) {
   requestAnimationFrame(frameLoop);
   const dt = Math.min(0.05, (ms - (frameLoop.last || ms)) / 1000);
   frameLoop.last = ms;
+  if (spatial) {
+    if (playing && run3) {
+      clock3 += dt * speedDaysPerSec / TU_DAYS;
+      // a halo is periodic: let it keep going round rather than stopping
+      if (clock3 >= run3.ts[run3.n - 1]) clock3 = 0;
+    }
+    render3();
+    return;
+  }
   if (playing && run) {
     clock += dt * speedDaysPerSec / TU_DAYS;
     if (clock >= run.ts[run.n - 1]) { clock = run.ts[run.n - 1]; playing = false; ui.play.textContent = 'Play'; }
@@ -346,7 +374,112 @@ function updateEditorReadout() {
   ].join('\n');
 }
 
+// ---------------------------------------------------------------- 3D playback
+
+function load3(p) {
+  preset3 = p;
+  ui.title.textContent = p.name;
+  ui.blurb.textContent = p.blurb;
+  ui.note.textContent = 'integrating…';
+  // Three periods, so the orbit is seen to CLOSE rather than merely to be drawn
+  // once. A halo that did not repeat would be obvious here.
+  const r = propagate3(p.state, p.duration, { sample: p.duration / 6000, absTol: 1e-13, relTol: 1e-13 });
+  run3 = { ...r, n: r.xs.length };
+  clock3 = 0;
+  playing = true;
+  ui.play.textContent = 'Pause';
+  ui.note.textContent = p.expect ? 'expect: ' + p.expect : '';
+  fitSpatial();
+}
+
+/** Frame the orbit from its own extent, so a bigger halo is not cropped. */
+function fitSpatial() {
+  if (!run3) { scene3d.setView({ ...VIEWS.oblique, span: 1.6, centre: [0.9, 0, 0] }); return; }
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  const cols = [run3.xs, run3.ys, run3.zs];
+  for (let a = 0; a < 3; a += 1) {
+    for (const v of cols[a]) { if (v < lo[a]) lo[a] = v; if (v > hi[a]) hi[a] = v; }
+  }
+  // include the Moon, so the orbit is always seen in its place rather than alone
+  lo[0] = Math.min(lo[0], MOON_X - 0.04); hi[0] = Math.max(hi[0], MOON_X + 0.04);
+  const centre = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  // The controls panel covers the bottom of the canvas, so the usable height is
+  // not the canvas height. Fitting to the whole canvas puts a third of the orbit
+  // behind the panel, which is a fit that does not fit.
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  scene3d.setView({ ...VIEWS.oblique, span: extent * 1.9 * (vr.height / usable), centre });
+  // ...and then slide the scene up into the band that is actually visible.
+  // Scaling the span alone makes the orbit small enough to fit but still centres
+  // it on the canvas, which is half behind the panel.
+  scene3d.resize();
+  scene3d.panByPixels(0, -(vr.height / 2 - usable / 2));
+}
+
+function state3At(t) {
+  if (!run3 || run3.n < 2) return null;
+  const ts = run3.ts;
+  const last = ts[run3.n - 1];
+  const u = Math.max(0, Math.min(last, t));
+  let lo = 0, hi = run3.n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ts[m] <= u) lo = m; else hi = m; }
+  const span = ts[hi] - ts[lo] || 1;
+  const f = (u - ts[lo]) / span;
+  const at = (a) => a[lo] + (a[hi] - a[lo]) * f;
+  return { t: u, index: hi,
+    s: [at(run3.xs), at(run3.ys), at(run3.zs), at(run3.vxs), at(run3.vys), at(run3.vzs)] };
+}
+
+function render3() {
+  scene3d.resize();
+  const st = state3At(clock3);
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  scene3d.draw({
+    avoid: { left: pr.left - vr.left, top: pr.top - vr.top },
+    frame, t: clock3, points: POINTS,
+    trail: run3 && st ? { xs: run3.xs, ys: run3.ys, zs: run3.zs, ts: run3.ts,
+                          n: Math.max(2, st.index + 1) } : null,
+    whole: run3 ? { xs: run3.xs, ys: run3.ys, zs: run3.zs, ts: run3.ts, n: run3.n } : null,
+    head: st ? st.s : null,
+    showPlane: ui.plane.checked, showTrack: ui.track.checked,
+    sprite: spriteHandle(),
+  });
+
+  if (!run3 || !st) return;
+  const C = jacobi3(st.s, MU);
+  const drift = Math.abs(C - run3.C0);
+  ui.readout.textContent = [
+    `t        ${(clock3 * TU_DAYS).toFixed(2)} days   (${clock3.toFixed(3)} TU)`,
+    `position ${st.s[0].toFixed(5)}, ${st.s[1].toFixed(5)}, ${st.s[2].toFixed(5)} DU`,
+    `speed    ${vuToMs(Math.hypot(st.s[3], st.s[4], st.s[5])).toFixed(1)} m/s   z ${(st.s[2] * DU_KM).toFixed(0)} km`,
+    `C0       ${run3.C0.toFixed(9)}`,
+    `C now    ${C.toFixed(9)}`,
+    // Two drifts, and they are different measurements. `drift` is computed from
+    // the state being DISPLAYED, which is interpolated between samples, so it
+    // carries that interpolation's own error -- about 1e-7 here. `sim drift` is
+    // what the solver actually held, 5e-14. Showing only the first would be the
+    // diagnostics reporting their own arithmetic instead of the integrator's,
+    // which is the mistake RESEARCH.md records from the 2D readout; showing only
+    // the second would hide what is on screen. The planar readout names both for
+    // the same reason.
+    `drift    ${drift.toExponential(2)} shown   sim ${run3.relDrift.toExponential(2)}`,
+    `solver   ${run3.accepted} steps, ${run3.rejected} rejected   closes ${preset3.closure.toExponential(1)}`,
+    `frame    ${FRAME_LABEL[frame] || frame}`,
+    `status   period ${preset3.period.toFixed(6)} TU, residual ${preset3.residual.toExponential(1)}`,
+    `build    ${BUILD}`,
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------- controls
+
+for (const p of PRESETS3D) {
+  const o = document.createElement('option');
+  o.value = p.id; o.textContent = p.name;
+  ui.preset3d.appendChild(o);
+}
 
 for (const p of PRESETS) {
   const o = document.createElement('option');
@@ -386,7 +519,10 @@ ui.play.addEventListener('click', () => {
   playing = !playing;
   ui.play.textContent = playing ? 'Pause' : 'Play';
 });
-ui.reset.addEventListener('click', () => choosePreset(ui.preset.value));
+ui.reset.addEventListener('click', () => {
+  if (spatial) { load3(preset3); return; }
+  choosePreset(ui.preset.value);
+});
 
 // --- free launch ------------------------------------------------------------
 
@@ -428,6 +564,36 @@ function cancelFreeLaunch() {
   setEditing(false);
   choosePreset(ui.preset.value);       // put back what was there before
 }
+
+// --- 3D mode ----------------------------------------------------------------
+
+function setSpatial(on) {
+  spatial = on;
+  ui.spatialbar.hidden = !on;
+  ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
+  // The planar controls that have no 3D meaning yet. THREE_D_SPEC.md 4 puts 3D
+  // burns, targeting, free launch and zero-velocity surfaces outside Phase 1, so
+  // they are switched off rather than left to do something undefined.
+  for (const b of [ui.preset, ui.plan, ui.target, ui.free, ui.zvc, ui.vel, ui.fit]) b.disabled = on;
+  ui.execute.disabled = on || !pending;
+  ui.hint.textContent = on
+    ? 'Drag to orbit the camera; pinch or scroll to zoom; two fingers to pan. Top is the planar projection, End looks down the Earth–Moon line where the out-of-plane loop opens out. The dashed line under the spacecraft is its height above z = 0.'
+    : NORMAL_HINT;
+  if (on) {
+    if (editor.active) cancelFreeLaunch();
+    load3(byId3d(ui.preset3d.value) || PRESETS3D[0]);
+  } else {
+    run3 = null;
+    choosePreset(ui.preset.value);
+  }
+}
+
+ui.spatial.addEventListener('click', () => setSpatial(!spatial));
+ui.preset3d.addEventListener('change', () => load3(byId3d(ui.preset3d.value)));
+ui.viewTop.addEventListener('click', () => scene3d.setView(VIEWS.top));
+ui.viewSide.addEventListener('click', () => scene3d.setView(VIEWS.side));
+ui.viewEnd.addEventListener('click', () => scene3d.setView(VIEWS.end));
+ui.viewObl.addEventListener('click', () => scene3d.setView(VIEWS.oblique));
 
 ui.free.addEventListener('click', () => {
   if (editor.active) cancelFreeLaunch(); else beginFreeLaunch();
@@ -533,6 +699,10 @@ ui.canvas.addEventListener('pointerdown', (e) => {
   }
   if (pointers.size > 2) return;
 
+  // In 3D one finger orbits the camera. There is nothing to burn or place yet --
+  // Phase 1 is deliberately look-only -- so the gesture is unambiguous.
+  if (spatial) { gesture = 'orbit'; pinch = { last: p }; return; }
+
   // While editing, the spacecraft and the aim handle take priority over
   // everything except zoom -- and the in-flight drag-to-burn gesture is off,
   // because "drag the craft" would mean two different things at once.
@@ -561,12 +731,23 @@ ui.canvas.addEventListener('pointermove', (e) => {
   const p = canvasPoint(e);
   pointers.set(e.pointerId, p);
 
+  if (gesture === 'orbit' && spatial) {
+    scene3d.orbitBy(p[0] - pinch.last[0], p[1] - pinch.last[1]);
+    pinch.last = p;
+    return;
+  }
+
   if (gesture === 'pinch' && pointers.size >= 2) {
     const [a, b] = [...pointers.values()];
     const dist = Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1]));
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    scene.zoomAt(mid[0], mid[1], dist / pinch.dist);
-    scene.panByPixels(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    if (spatial) {
+      scene3d.zoomBy(dist / pinch.dist);
+      scene3d.panByPixels(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    } else {
+      scene.zoomAt(mid[0], mid[1], dist / pinch.dist);
+      scene.panByPixels(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    }
     pinch = { dist, mid };
     return;
   }
@@ -625,6 +806,7 @@ ui.canvas.addEventListener('pointermove', (e) => {
 
 function endPointer(e) {
   const had = gesture;
+  if (had === 'orbit') { pointers.delete(e.pointerId); gesture = null; pinch = null; return; }
   if (had === 'place' || had === 'aim') {
     pointers.delete(e.pointerId);
     gesture = null;
@@ -675,11 +857,16 @@ ui.canvas.addEventListener('wheel', (e) => {
   const p = canvasPoint(e);
   // trackpads send small continuous deltas and mice send large discrete ones;
   // the exponential keeps both feeling like the same control
-  const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016));
-  scene.zoomAt(p[0], p[1], Math.min(2.2, Math.max(0.45, factor)));
+  const factor = Math.min(2.2, Math.max(0.45,
+    Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016))));
+  // 3D zooms about the scene centre rather than the cursor: under an orthographic
+  // camera "the point under the pointer" is a whole line through the scene, and
+  // picking a depth for it would be a guess that moves the view sideways.
+  if (spatial) scene3d.zoomBy(factor); else scene.zoomAt(p[0], p[1], factor);
 }, { passive: false });
 
 ui.canvas.addEventListener('dblclick', (e) => {
+  if (spatial) { fitSpatial(); return; }
   const p = canvasPoint(e);
   const h = headScreen();
   if (h && Math.hypot(p[0] - h.screen[0], p[1] - h.screen[1]) <= HIT_PX) return;
@@ -756,5 +943,7 @@ window.threebody = {
   get clock() { return clock; }, get frame() { return frame; },
   // for the acceptance checks: the candidate and where its handles are
   editor, editorHandles,
+  // 3D, for the acceptance checks
+  scene3d, get run3() { return run3; }, get clock3() { return clock3; }, fitSpatial,
   get intendedView() { return currentView; },
 };

@@ -1,0 +1,352 @@
+// render3d.js — an orthographic look at a six-state history.
+//
+// Orthographic on purpose. THREE_D_RESEARCH.md argues for it and the reason is
+// specific: under perspective the apparent size of a loop depends on how far
+// away it is, so you cannot judge whether the far side of a halo is the same
+// width as the near side. Orthographically you can, and judging orbit shape is
+// the entire job. Perspective would look better and tell you less.
+//
+// The camera is azimuth, elevation, centre and span, and it is presentation
+// only -- THREE_D_AGENT.md rule 8. It receives states; it never makes them.
+//
+// The two things that make out-of-plane motion legible, and they matter more
+// than the shading:
+//
+//   the z = 0 grid      something to be above and below. Without a reference
+//                       plane a tilted loop just looks like a loop.
+//   the ground track    the orbit projected straight down onto that plane, plus
+//                       a dropline from the spacecraft. This is what SPEC.md 6
+//                       asks for when it says a user should be able to check how
+//                       the 3D orbit projects into the planar geometry -- except
+//                       it is visible from every angle, not only from the top.
+
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830h';
+import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830h';
+
+// Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
+// screen pixels. The planar view inflates them because the whole Earth-Moon
+// system is in frame and Earth is three pixels at true scale; a halo view is
+// zoomed into a region 0.15 DU across, where the Moon's real 1737 km is already
+// 27 px and the inflated radius would swallow the orbit. Same rule, opposite
+// consequence: the marker must stay a marker.
+const BODY_MIN_PX = 3;
+const BODY_MAX_PX = 90;
+export const MIN_SPAN3 = 0.05;
+export const MAX_SPAN3 = 14;
+
+/** The named viewpoints. Azimuth and elevation in degrees. */
+// The three orthogonal projections halo work is normally read in, plus a tilt.
+//
+// `side` looking along -y turns out to be the LEAST useful of the three for a
+// halo: x and z co-vary along the orbit, so the x-z projection collapses to
+// nearly a straight line. Measured on the L1 preset, it is 74 px wide against
+// 177 tall. That is physically correct and visually useless, which is why `end`
+// exists -- looking along the Earth-Moon line, where the out-of-plane loop opens
+// out and the z excursion is the thing you are looking at.
+export const VIEWS = {
+  // x to the right, y up: lands exactly on the 2D picture
+  top: { az: -90, el: 90 },
+  // x right, z up, looking along -y
+  side: { az: -90, el: 0 },
+  // y right, z up, looking down the Earth-Moon line: the halo's own loop
+  end: { az: 0, el: 0 },
+  // enough tilt to read the plane as a plane
+  oblique: { az: -62, el: 26 },
+};
+
+export class Scene3D {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.w = 1; this.h = 1; this.dpr = 1; this.scale = 1;
+    this.span = 1.6;
+    this.centre = [0.9, 0, 0];
+    this.az = VIEWS.oblique.az;
+    this.el = VIEWS.oblique.el;
+  }
+
+  resize() {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1;
+    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
+      this.canvas.width = Math.round(w * dpr);
+      this.canvas.height = Math.round(h * dpr);
+    }
+    this.w = w; this.h = h; this.dpr = dpr;
+    this.scale = Math.min(w, h) / this.span;
+  }
+
+  /** The camera basis. `fwd` points from the scene toward the viewer. */
+  basis() {
+    const a = (this.az * Math.PI) / 180, e = (this.el * Math.PI) / 180;
+    const ca = Math.cos(a), sa = Math.sin(a), ce = Math.cos(e), se = Math.sin(e);
+    const fwd = [ce * ca, ce * sa, se];
+    const right = [-sa, ca, 0];
+    const up = [
+      fwd[1] * right[2] - fwd[2] * right[1],
+      fwd[2] * right[0] - fwd[0] * right[2],
+      fwd[0] * right[1] - fwd[1] * right[0],
+    ];
+    return { fwd, right, up };
+  }
+
+  /** World -> screen, plus the depth that decides what is drawn in front. */
+  project(x, y, z, b = this.basis()) {
+    const dx = x - this.centre[0], dy = y - this.centre[1], dz = z - this.centre[2];
+    const sx = dx * b.right[0] + dy * b.right[1] + dz * b.right[2];
+    const sy = dx * b.up[0] + dy * b.up[1] + dz * b.up[2];
+    const d = dx * b.fwd[0] + dy * b.fwd[1] + dz * b.fwd[2];
+    return [this.w / 2 + sx * this.scale, this.h / 2 - sy * this.scale, d];
+  }
+
+  setView({ az, el, span, centre }) {
+    if (Number.isFinite(az)) this.az = az;
+    if (Number.isFinite(el)) this.el = Math.max(-89.9, Math.min(89.9, el));
+    if (Number.isFinite(span)) this.span = Math.max(MIN_SPAN3, Math.min(MAX_SPAN3, span));
+    if (centre) this.centre = centre.slice();
+  }
+
+  orbitBy(dxPx, dyPx) {
+    this.az -= dxPx * 0.4;
+    this.el = Math.max(-89.9, Math.min(89.9, this.el + dyPx * 0.35));
+  }
+
+  zoomBy(factor) {
+    this.span = Math.max(MIN_SPAN3, Math.min(MAX_SPAN3, this.span / factor));
+    this.resize();
+  }
+
+  /** Pan across the screen plane, so dragging moves what is under the finger. */
+  panByPixels(dxPx, dyPx) {
+    const b = this.basis();
+    const k = 1 / this.scale;
+    for (let i = 0; i < 3; i += 1) {
+      this.centre[i] -= dxPx * k * b.right[i];
+      this.centre[i] += dyPx * k * b.up[i];
+    }
+  }
+
+  draw(view) {
+    const { ctx } = this;
+    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite } = view;
+    this.resize();
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.w, this.h);
+    ctx.fillStyle = '#04060b';
+    ctx.fillRect(0, 0, this.w, this.h);
+    const b = this.basis();
+    const P = (x, y, z) => this.project(x, y, z, b);
+
+    // --- the reference plane ------------------------------------------------
+    if (showPlane) this._plane(P);
+
+    const bod = bodies3(t, frame);
+
+    // --- the whole orbit, faintly ------------------------------------------
+    //
+    // A halo is periodic, and the point of showing one is that it CLOSES. Drawing
+    // only the part flown so far means the closure is visible for one frame and
+    // then playback wraps and the evidence is gone. The complete propagated path
+    // stays under the travelled one, so the loop is always there to be checked
+    // against -- and it is the same integrated history, not a second curve.
+    if (whole && whole.n > 1) {
+      ctx.strokeStyle = 'rgba(120, 180, 240, 0.22)';
+      ctx.lineWidth = 1;
+      this._path(P, whole, frame, (i) => whole.zs[i]);
+      ctx.stroke();
+    }
+
+    // --- the ground track: the orbit flattened onto z = 0 --------------------
+    if (showTrack && whole && whole.n > 1) {
+      ctx.strokeStyle = 'rgba(120, 170, 220, 0.30)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 5]);
+      this._path(P, whole, frame, () => 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // --- the primaries, drawn behind or in front by their own depth ---------
+    const drawBodies = (wantFront) => {
+      for (const [name, p, r, fill, rim] of [
+        ['Earth', bod.earth, EARTH_RADIUS, '#2a5f96', 'rgba(120, 180, 240, 0.5)'],
+        ['Moon', bod.moon, MOON_RADIUS, '#8f949c', 'rgba(200, 205, 215, 0.5)'],
+      ]) {
+        const q = P(p[0], p[1], p[2]);
+        if ((q[2] >= 0) !== wantFront) continue;
+        const rad = Math.max(BODY_MIN_PX, Math.min(BODY_MAX_PX, r * this.scale));
+        const g = ctx.createRadialGradient(q[0] - rad * 0.3, q[1] - rad * 0.3, rad * 0.1, q[0], q[1], rad);
+        g.addColorStop(0, fill);
+        g.addColorStop(1, 'rgba(10, 16, 26, 1)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(q[0], q[1], rad, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = rim; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(q[0], q[1], rad, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(200, 214, 232, 0.72)';
+        ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillText(name, q[0] + rad + 6, q[1] + 4);
+      }
+    };
+    drawBodies(false);
+
+    // --- the equilibria ------------------------------------------------------
+    if (points) {
+      ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      for (const p of points) {
+        const [px, py, pz] = displayPos3(p.x, p.y, 0, t, frame);
+        const q = P(px, py, pz);
+        const un = p.unstable;
+        ctx.strokeStyle = un ? 'rgba(226, 148, 106, 0.55)' : 'rgba(126, 206, 164, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (un) {
+          ctx.moveTo(q[0] - 3.4, q[1] - 3.4); ctx.lineTo(q[0] + 3.4, q[1] + 3.4);
+          ctx.moveTo(q[0] + 3.4, q[1] - 3.4); ctx.lineTo(q[0] - 3.4, q[1] + 3.4);
+        } else ctx.arc(q[0], q[1], 3.8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = un ? 'rgba(226, 160, 120, 0.62)' : 'rgba(140, 214, 176, 0.62)';
+        ctx.fillText(p.name, q[0] + 6, q[1] - 5);
+      }
+    }
+
+    // --- the trajectory ------------------------------------------------------
+    if (trail && trail.n > 1) {
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(96, 190, 255, 0.10)';
+      ctx.lineWidth = 5;
+      this._path(P, trail, frame, (i) => trail.zs[i]);
+      ctx.stroke();
+      // brightening toward now, and the near side drawn heavier than the far
+      const N = trail.n, step = Math.max(1, Math.floor(N / 2400));
+      let prev = null;
+      for (let i = 0; i < N; i += step) {
+        const [x, y, z] = frame === 'rotating'
+          ? [trail.xs[i], trail.ys[i], trail.zs[i]]
+          : displayPos3(trail.xs[i], trail.ys[i], trail.zs[i], trail.ts[i], frame);
+        const q = P(x, y, z);
+        if (prev) {
+          const age = i / N;
+          const near = Math.max(0, Math.min(1, 0.5 + q[2] / this.span));
+          ctx.strokeStyle = `rgba(150, 222, 255, ${(0.16 + 0.8 * age * age) * (0.45 + 0.55 * near)})`;
+          ctx.lineWidth = 1.2 + 1.4 * near;
+          ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+        }
+        prev = q;
+      }
+    }
+
+    drawBodies(true);
+
+    // --- the spacecraft, and its dropline to the plane -----------------------
+    if (head) {
+      const [x, y, z, vx, vy, vz] = displayState3(
+        head[0], head[1], head[2], head[3], head[4], head[5], t, frame);
+      const q = P(x, y, z);
+      const foot = P(x, y, 0);
+      ctx.strokeStyle = 'rgba(150, 222, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(foot[0], foot[1]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(150, 222, 255, 0.5)';
+      ctx.beginPath(); ctx.arc(foot[0], foot[1], 2, 0, Math.PI * 2); ctx.fill();
+
+      const halo = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 16);
+      halo.addColorStop(0, 'rgba(180, 236, 255, 0.32)');
+      halo.addColorStop(1, 'rgba(180, 236, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 16, 0, Math.PI * 2); ctx.fill();
+
+      // the sprite points along the screen projection of the velocity
+      const vq = P(x + vx * 0.02, y + vy * 0.02, z + vz * 0.02);
+      const ang = Math.atan2(vq[1] - q[1], vq[0] - q[0]);
+      if (sprite && sprite.ok) {
+        ctx.save();
+        ctx.translate(q[0], q[1]);
+        ctx.rotate(ang + Math.PI / 2);
+        const box = 13 / (181 / 256);
+        ctx.drawImage(sprite.img, -box / 2, -box / 2, box, box);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#f2fbff';
+        ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    this._scaleBar(view.avoid);
+    ctx.restore();
+  }
+
+  /** One polyline through the trail, with z chosen by the caller. */
+  _path(P, trail, frame, zOf) {
+    const { ctx } = this;
+    const N = trail.n, step = Math.max(1, Math.floor(N / 2400));
+    ctx.beginPath();
+    for (let i = 0; i < N; i += step) {
+      const [x, y, z] = frame === 'rotating'
+        ? [trail.xs[i], trail.ys[i], zOf(i)]
+        : displayPos3(trail.xs[i], trail.ys[i], zOf(i), trail.ts[i], frame);
+      const q = P(x, y, z);
+      if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]);
+    }
+  }
+
+  /**
+   * The z = 0 grid.
+   *
+   * Spaced by a round number of kilometres and centred on the Earth-Moon line,
+   * so it reads as a measured floor rather than as decoration. Faded with
+   * distance from the middle so it frames the scene instead of fighting it.
+   */
+  _plane(P) {
+    const { ctx } = this;
+    // A round step near a sixth of what is on screen, so the grid stays a grid
+    // at every zoom instead of becoming one line across the view or a solid wash.
+    const want = this.span / 6;
+    const pow = Math.pow(10, Math.floor(Math.log10(want)));
+    const stepDu = [1, 2, 5, 10].map((k) => k * pow)
+      .reduce((a, c) => (Math.abs(c - want) < Math.abs(a - want) ? c : a));
+    const n = Math.ceil(this.span / stepDu) + 2;
+    const cx = Math.round(this.centre[0] / stepDu) * stepDu;
+    const cy = Math.round(this.centre[1] / stepDu) * stepDu;
+    ctx.lineWidth = 1;
+    for (let i = -n; i <= n; i += 1) {
+      for (const [a, bb] of [
+        [[cx + i * stepDu, cy - n * stepDu], [cx + i * stepDu, cy + n * stepDu]],
+        [[cx - n * stepDu, cy + i * stepDu], [cx + n * stepDu, cy + i * stepDu]],
+      ]) {
+        const p1 = P(a[0], a[1], 0), p2 = P(bb[0], bb[1], 0);
+        const fade = 1 - Math.abs(i) / (n + 1);
+        ctx.strokeStyle = `rgba(110, 150, 200, ${0.055 * fade + 0.012})`;
+        ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+      }
+    }
+    // the Earth-Moon line itself, a touch brighter: the scene's own axis
+    const a = P(-0.4, 0, 0), b2 = P(1.6, 0, 0);
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.16)';
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.stroke();
+  }
+
+  _scaleBar(avoid) {
+    const { ctx } = this;
+    const wantKm = this.span * 0.22 * DU_KM;
+    const pow = Math.pow(10, Math.floor(Math.log10(wantKm)));
+    const nice = [1, 2, 5, 10].map((k) => k * pow)
+      .reduce((a, c) => (Math.abs(c - wantKm) < Math.abs(a - wantKm) ? c : a));
+    const px = (nice / DU_KM) * this.scale;
+    const y = avoid && 16 + px + 10 > avoid.left ? avoid.top - 14 : this.h - 22;
+    ctx.strokeStyle = 'rgba(170, 190, 214, 0.42)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(16, y); ctx.lineTo(16 + px, y);
+    ctx.moveTo(16, y - 4); ctx.lineTo(16, y + 4);
+    ctx.moveTo(16 + px, y - 4); ctx.lineTo(16 + px, y + 4);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(170, 190, 214, 0.62)';
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText(nice >= 1000 ? `${(nice / 1000).toFixed(nice >= 10000 ? 0 : 1)} 000 km` : `${nice.toFixed(0)} km`, 16, y - 8);
+  }
+}
+
+export { EARTH_RADIUS, MOON_RADIUS };
