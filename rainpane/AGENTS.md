@@ -237,6 +237,14 @@ Do not modify gravity as part of audio or visibility work.
 
 Read `VISIBILITY_SPEC.md` before modifying atmospheric/background rendering.
 
+### Visibility findings — do not undo these
+
+- **The built-in scene's depth is measured, not styled.** Its nine lanterns are one physical object at nine distances, so apparent size measures distance. A fitted ground plane `z = 1/(v - 0.389)` reproduces their sizes to ~10%. `tools/make-visibility-mask.py` regenerates the masks; edit that, not the PNG.
+- **Never take screen height for depth.** This scene's overhanging canopy sits at the top of the frame at depth 0.04 while the sky gap beside it is 0.98. A height model fogs the nearest thing in frame.
+- **Lamps are found by blown-out warm cores, with wet-path reflections discarded** (a reflection sits directly under a brighter source in the same column). Haloing every bright pixel is forbidden and the foreground is full of bright reflections.
+- **A halo must be wide and strong enough to survive its own cause.** Scattered light is added exactly where extinction removes it; at strength 0.55 with a tight mask the ring around a far lamp measured *darker* than with no veil at all.
+- **The veil is computed inside `scene()`**, at the refracted sample coordinate, so drops refract an already-veiled background. Applying it after refraction leaves the distance undistorted behind every drop.
+
 Preferred render order:
 
 1. background image / camera / built-in scene

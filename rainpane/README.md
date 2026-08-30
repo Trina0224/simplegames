@@ -311,6 +311,98 @@ thresholds get set from those numbers, not guessed. There is also no sample
 layer: `AGENTS.md` prefers a procedural/sample hybrid, and this build is pure
 synthesis by request.
 
+## Seeing through rain
+
+Heavy rain does not make a window blurry. It makes *distance* hard to see, because
+the optical path through rainy air gets longer the further away a thing is. So
+the deep forest is swallowed while the path at your feet stays sharp. This is
+Part 3, specified in [`VISIBILITY_SPEC.md`](VISIBILITY_SPEC.md), and it is
+atmosphere *outside* the pane — nothing to do with the water on the glass.
+
+### The depth is measured, not invented
+
+A flat photograph has no geometry, and the spec asks for an authored depth mask
+rather than a pretence of one. But this scene turned out to contain its own
+ruler: nine lanterns, all roughly the same physical object, so their apparent
+size on screen measures their distance — size goes as 1/z.
+
+Fitting a ground plane `z = 1/(v - v_horizon)` to their measured core areas puts
+the horizon at **v = 0.389**, and that one fitted number then predicts the
+remaining lanterns' sizes to within about ten per cent. Everything the lanterns
+cannot speak for — the canopy above the horizon, the vegetation flanking the
+path, which pixels count as near ground — is authored by hand in
+[`tools/make-visibility-mask.py`](tools/make-visibility-mask.py), as code rather
+than as a binary somebody has to trust.
+
+The result, and the middle two rows are the whole point:
+
+| | depth | |
+|---|---|---|
+| near path, bottom of frame | 0.01 | |
+| **near canopy, top-left corner** | **0.04** | overhanging leaves, the closest thing in frame |
+| **sky gap, top-centre** | **0.98** | almost the same screen height, fifty metres further |
+| left trunks, mid frame | 0.20 | |
+| far lanterns | 0.53 | |
+| deep forest centre | 1.00 | |
+
+A model that took screen height for distance would fog those overhanging leaves
+along with the deep forest. That is why §5 forbids it, and this scene is exactly
+the case it forbids it for.
+
+### Finding the lamps without haloing every bright pixel
+
+§8 says distant lamps get halos and near reflections do not. The wet path is
+covered in bright reflections, so they had to be told apart: lanterns have
+blown-out warm cores, and a reflection sits directly beneath a brighter source
+in the same narrow column. That leaves nine lanterns from seventy-two bright
+blobs.
+
+### What it does at each intensity
+
+Contrast kept, against no veil at all — measured, with the glass dry so that only
+the atmosphere is being tested:
+
+| region | Drizzle | Rain | Heavy | Storm | Downpour |
+|---|---|---|---|---|---|
+| near path | 1.00 | 1.00 | 1.00 | 1.00 | **1.00** |
+| near canopy | 1.00 | 1.00 | 1.00 | 1.00 | 0.98 |
+| mid path | 1.00 | 1.00 | 0.98 | 0.93 | 0.81 |
+| far lanterns | 1.00 | 0.98 | 0.91 | 0.75 | 0.46 |
+| deep forest | 1.00 | 0.95 | 0.77 | 0.49 | **0.28** |
+| sky gap | 1.00 | 0.95 | 0.78 | 0.48 | **0.13** |
+
+Halo brightness added in a ring just outside each lamp:
+
+| | Rain | Heavy | Storm | Downpour |
+|---|---|---|---|---|
+| far lantern | +0.006 | +0.031 | +0.081 | **+0.170** |
+| near lantern | +0.000 | +0.000 | +0.001 | **+0.002** |
+
+### Two things that were structural
+
+**The halo was cancelling itself.** Scattered lamp light is added in exactly the
+place the extinction is taking light away, and at first the two came out level:
+the ring around a far lamp measured *darker* with the veil on than with it off.
+A halo also has to be wide — a tight mask puts the added light precisely where
+it is being removed. Widening the mask and raising the strength to 1.15 gives
+the numbers above, where the far lamp gains eighty-five times what the near one
+does.
+
+**The veil belongs inside `scene()`, not over it.** Refraction is implemented by
+offsetting the sample coordinate, so a veil applied afterwards would leave the
+distance undistorted behind every drop. Sampled inside, a drop refracts a
+background that is already softened by distant rain — which is the render order
+the spec asks for, and it costs nothing extra.
+
+### Turning it off
+
+Tap the diagnostics readout. The veil has to be separable from the glass water
+to be judged at all, so it is, and `veil on/off` shows in the panel with the
+current extinction.
+
+The 2D fallback path has no veil: it exists so the physics can still be judged
+where WebGL will not run, and it has no scene refraction either.
+
 ## Which way is down
 
 The Fog Mirror DeviceMotion mapping was copied verbatim and is still frozen, but
