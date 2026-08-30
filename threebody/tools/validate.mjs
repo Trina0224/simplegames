@@ -10,14 +10,14 @@
 // repository has no package.json — the application itself needs no build step
 // and this suite does not change that.
 
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js';
-import { omega, jacobi, deriv } from '../src/cr3bp.js';
-import { lagrangePoints } from '../src/lagrange.js';
-import { Dopri5 } from '../src/integrator.js';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js';
-import { PRESETS } from '../src/presets.js';
-import { toInertial } from '../src/frames.js';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830d';
+import { omega, jacobi, deriv } from '../src/cr3bp.js?v=20260830d';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830d';
+import { Dopri5 } from '../src/integrator.js?v=20260830d';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830d';
+import { PRESETS } from '../src/presets.js?v=20260830d';
+import { toInertial } from '../src/frames.js?v=20260830d';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830d';
 
 let failures = 0;
 const check = (name, ok, detail) => {

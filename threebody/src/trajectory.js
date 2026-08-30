@@ -11,9 +11,9 @@
 // a few bisections, which is what makes the differential corrector below able to
 // converge at all.
 
-import { Dopri5 } from './integrator.js';
-import { deriv, jacobi, omega } from './cr3bp.js';
-import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js';
+import { Dopri5 } from './integrator.js?v=20260830d';
+import { deriv, jacobi, omega } from './cr3bp.js?v=20260830d';
+import { MU, EARTH_RADIUS, MOON_RADIUS, EARTH_X, MOON_X } from './constants.js?v=20260830d';
 
 const DEFAULT = { absTol: 1e-11, relTol: 1e-11, maxStep: 0.05 };
 

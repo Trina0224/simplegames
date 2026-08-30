@@ -6,17 +6,26 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js';
-import { jacobi } from './cr3bp.js';
-import { lagrangePoints } from './lagrange.js';
-import { propagate } from './trajectory.js';
-import { zeroVelocityCurves } from './zvc.js';
-import { planTransfer } from './targeting.js';
-import { PRESETS, byId } from './presets.js';
-import { Scene } from './render.js';
-import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js';
+import { MU, TU_DAYS, DU_KM, vuToMs, msToVu } from './constants.js?v=20260830d';
+import { jacobi } from './cr3bp.js?v=20260830d';
+import { lagrangePoints } from './lagrange.js?v=20260830d';
+import { propagate } from './trajectory.js?v=20260830d';
+import { zeroVelocityCurves } from './zvc.js?v=20260830d';
+import { planTransfer } from './targeting.js?v=20260830d';
+import { PRESETS, byId } from './presets.js?v=20260830d';
+import { Scene } from './render.js?v=20260830d';
+import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js?v=20260830d';
 
-const BUILD = '20260830c';
+// The build stamp is compared against this module's own URL rather than simply
+// declared, because the thing it is there to catch is the browser having served
+// something other than what was published. STAMP is what this file was built as
+// and tools/stamp.mjs keeps it in step with every import; the query is what the
+// browser actually asked for. When they agree the readout says so in one word.
+// When they do not, the readout says that instead of quietly reporting a version
+// that is not running -- which is the failure this whole mechanism exists for.
+const STAMP = '20260830d';
+const LOADED = new URL(import.meta.url).searchParams.get('v');
+const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
 const el = (id) => document.getElementById(id);
 // what the co-orbital region needs; presets that live somewhere smaller say so
@@ -48,7 +57,7 @@ let currentView = { ...DEFAULT_VIEW };
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830d', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {

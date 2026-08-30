@@ -15,7 +15,8 @@ The design requirements are external and are not authored here:
 
 ```sh
 python3 -m http.server 8000      # then open /threebody/
-node --experimental-default-type=module threebody/tools/validate.mjs
+node --experimental-default-type=module threebody/tools/validate.mjs   # the physics
+node --experimental-default-type=module threebody/tools/stamp.mjs      # the build stamp
 ```
 
 ## Using it
@@ -99,6 +100,7 @@ re-integrating anything.
 | `src/app.js` | the clock and the controls |
 | `tools/validate.mjs` | the suite below |
 | `tools/horseshoe.mjs` | regenerates the horseshoe family from nothing |
+| `tools/stamp.mjs` | puts one `?v=` on every module reference, and checks it |
 
 ### How the app is put together
 
@@ -127,6 +129,46 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### Why every import carries a `?v=`
+
+Safari caches ES modules hard, and GitHub Pages serves them with a lifetime of
+its own. Rainpane lost an afternoon to that once: a bug was fixed, pushed, and
+still reproduced on the device, because the browser was running the old file. A
+version on the URL makes a new build a new URL, and there is then nothing to
+serve from the cache.
+
+It has to be *every* reference, and that is the part worth being careful about.
+Versioning only the entry point buys a **worse** failure than versioning nothing:
+a fresh `app.js` beside a cached `cr3bp.js` is a mixed build, which behaves like
+neither version and reports the new one. An import map in the HTML would cover
+the page, but not the worker — a worker does not get the page's import map, and
+`worker.js` imports `trajectory.js`, so the solver is exactly the half that would
+be left able to go stale. Hence the version lives in the source:
+
+```sh
+node ... tools/stamp.mjs 20260901a   # set it everywhere
+node ... tools/stamp.mjs             # check it, exit 1 if mixed
+```
+
+Check mode is the one that earns its keep. It fails if any local module reference
+is missing a version or disagrees with the rest — the *bumped eleven files out of
+twelve* mistake, which is otherwise silent and produces exactly the mixed build
+described above. It names the file that was left behind rather than listing the
+forty-three that are right.
+
+The readout's `build` line is not a constant either. `app.js` compares the stamp
+it was built with against the `?v=` the browser actually requested, and when they
+disagree it says so:
+
+```text
+build    20260830d — but loaded as 20260828a, so the page is cached
+```
+
+That is the one case a version string cannot fix by itself: `index.html` can be
+cached too, and a stale page asks for stale modules perfectly consistently. So
+the app reports it instead of quietly claiming to be a version it is not
+running — which is the whole failure this mechanism exists for.
 
 ### What is physical about the bodies, and what is decoration
 
@@ -170,6 +212,8 @@ how it looks, and it drives nothing.
 | L1–L5 in that frame | the same subtraction, to 0 ulp |
 | cycling all three frames | leaves the state bit-identical |
 | a gestured burn | returns to rotating coordinates, off by 1.7e-18 VU |
+| module requests on load | 17, all versioned, 0 bare — the worker's four included |
+| stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
 | collision | detected against the physical radius, not the drawn one |
 

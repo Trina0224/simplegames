@@ -9,10 +9,10 @@
 // rather than solved, because with time free the problem is underdetermined and
 // the answer would be an arbitrary point on a curve of solutions.
 
-import { MU } from './constants.js';
-import { jacobi } from './cr3bp.js';
-import { propagate } from './trajectory.js';
-import { vuToMs } from './constants.js';
+import { MU } from './constants.js?v=20260830d';
+import { jacobi } from './cr3bp.js?v=20260830d';
+import { propagate } from './trajectory.js?v=20260830d';
+import { vuToMs } from './constants.js?v=20260830d';
 
 function endPoint(state, T, mu) {
   const r = propagate(state, T, { mu, sample: T, absTol: 1e-11, relTol: 1e-11 });
