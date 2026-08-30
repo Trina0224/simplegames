@@ -17,8 +17,8 @@
 // reason, and the enlarged radius never reaches the physics: collision is tested
 // against the real one in trajectory.js, which cannot see this file.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830m';
-import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830m';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830n';
+import { displayPos, displayState, displayBodies, displayPoints } from './display.js?v=20260830n';
 
 const EARTH_DRAW = 0.055;
 const MOON_DRAW = 0.030;

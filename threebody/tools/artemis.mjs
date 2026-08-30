@@ -23,10 +23,13 @@
 // a "circular" orbit is itself measured rather than assumed away.
 
 import { writeFileSync } from 'node:fs';
-import { MU, DU_KM, TU_DAYS, MOON_X, MOON_RADIUS_KM, MOON_RADIUS } from '../src/constants.js?v=20260830m';
-import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830m';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830m';
-import { jacobi3 } from '../src/cr3bp3d.js?v=20260830m';
+import { MU, DU_KM, TU_DAYS, MOON_X, MOON_RADIUS_KM, MOON_RADIUS } from '../src/constants.js?v=20260830n';
+import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830n';
+import { FAMILY3D } from '../src/family3d.js?v=20260830n';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830n';
+import { jacobi3 } from '../src/cr3bp3d.js?v=20260830n';
+import { planRendezvous3 } from '../src/targeting3d.js?v=20260830n';
+import { EARTH_X } from '../src/constants.js?v=20260830n';
 
 // --- what NASA publishes, kept apart from anything measured here ------------
 // ARTEMIS_DEMO_SPEC.md: "Program facts are labels/context, not inputs to the
@@ -95,6 +98,55 @@ console.error(`LLO: T ${(lloPeriod * TU_DAYS * 24).toFixed(3)} h, `
   + `${(gw.m.period / lloPeriod).toFixed(1)} revolutions per Gateway orbit, `
   + `altitude ${(lloLo * DU_KM - MOON_RADIUS_KM).toFixed(1)}-${(lloHi * DU_KM - MOON_RADIUS_KM).toFixed(1)} km, `
   + `status ${lloRun.status}`);
+
+// --- where the Gateway-like member sits on the browsable family --------------
+//
+// The family slider carries 30 members sampled from 3087, so the Gateway-like
+// orbit is not one of them -- it falls between two. The nearest is found here and
+// how near it is is recorded, so the app can say "the family member closest to
+// Gateway" and be believed rather than implying the two are the same orbit.
+let famIndex = 0;
+for (let i = 1; i < FAMILY3D.L2.length; i += 1) {
+  if (Math.abs(FAMILY3D.L2[i].period - gw.m.period)
+      < Math.abs(FAMILY3D.L2[famIndex].period - gw.m.period)) famIndex = i;
+}
+const famNear = FAMILY3D.L2[famIndex];
+console.error(`nearest browsable family member: index ${famIndex} of ${FAMILY3D.L2.length}, `
+  + `T ${(famNear.period * TU_DAYS).toFixed(4)} d against ${gw.days.toFixed(4)}, `
+  + `perilune ${famNear.periluneKm.toFixed(0)} km against ${(gw.g.perilune * DU_KM).toFixed(0)}`);
+
+// --- the Orion approach ------------------------------------------------------
+//
+// A departure state and a burn that reaches Gateway WHERE IT WILL BE. Both were
+// found by search, not chosen: a grid over distance from Earth, out-of-plane
+// height, speed as a fraction of the local circular one, and departure epoch,
+// each scanned over fourteen flight times, keeping the cheapest that converged.
+// The grid is written down here rather than described, so the claim is checkable.
+//
+//   distance   180 000 .. 280 000 km from Earth
+//   height     0 .. 40 000 km above the plane
+//   speed      0.80 .. 0.95 of the local circular speed about the Earth
+//   epoch      0 .. 1.5 TU into Gateway's orbit
+//
+// The winner is a state 280 000 km out and 40 000 km above the plane at 95% of
+// circular -- a plausible cislunar approach, and NOT an Artemis IV trajectory:
+// nothing here is a reconstruction of an operational mission.
+const ORION_R = 280000 / DU_KM;
+const ORION_Z = 40000 / DU_KM;
+const ORION_FRAC = 0.95;
+const ORION_EPOCH = 0.5;
+const orionX = EARTH_X + ORION_R;
+const orionVy = Math.sqrt((1 - MU) / ORION_R) * ORION_FRAC - orionX;
+const orionState = [orionX, 0, ORION_Z, 0, orionVy, 0];
+
+const rv = planRendezvous3(orionState, ORION_EPOCH, {
+  state: gw.m.state, period: gw.m.period,
+}).best;
+if (!rv) throw new Error('the Orion departure state no longer reaches Gateway');
+console.error(`Orion: dv ${rv.dvTotalMs.toFixed(1)} m/s `
+  + `(${rv.dv1Ms.toFixed(1)} + ${rv.dv2Ms.toFixed(1)}), tof ${(rv.timeOfFlight * TU_DAYS).toFixed(3)} d, `
+  + `${rv.kind}, miss ${(rv.posErr * DU_KM * 1000).toFixed(3)} m, `
+  + `rel speed after ${rv.relSpeedAfter.toExponential(2)}`);
 
 const num = (v) => (Number.isInteger(v) ? String(v) : String(v));
 const src = `// artemis.js -- GENERATED. Do not edit by hand.
@@ -217,8 +269,79 @@ export const LOW_LUNAR = {
     + 'then propagated by the same CR3BP integrator as everything else',
 };
 
-export const ARTEMIS3D = [GATEWAY_NRHO, CAPSTONE_NRHO];
+/**
+ * Where the Gateway-like member falls on the browsable L2 family.
+ *
+ * The slider samples 30 of 3087 members, so this is the NEAREST one, not the same
+ * one, and the gap is recorded so nothing has to pretend otherwise.
+ */
+export const GATEWAY_ON_FAMILY = {
+  point: 'L2',
+  index: ${famIndex},
+  of: ${FAMILY3D.L2.length},
+  periodDays: ${+(famNear.period * TU_DAYS).toFixed(4)},
+  periluneKm: ${+famNear.periluneKm.toFixed(1)},
+  periodGapDays: ${+Math.abs(famNear.period * TU_DAYS - gw.days).toFixed(4)},
+  periluneGapKm: ${+Math.abs(famNear.periluneKm - gw.g.perilune * DU_KM).toFixed(1)},
+};
+
+/**
+ * Orion's departure state, and the approach that reaches Gateway from it.
+ *
+ * The stored solution is what tools/artemis.mjs got by scanning; the app's "Plan
+ * approach" button re-runs the same scan live and must reproduce it. That is the
+ * point of storing it at all -- a canned answer nobody can re-derive is a claim,
+ * and this one is a measurement anyone can repeat.
+ *
+ * Concept, not reconstruction: ARTEMIS_DEMO_SPEC.md E says a concept
+ * demonstration and not an Artemis IV operational trajectory, and the departure
+ * state above is a search result, not a mission plan.
+ */
+export const ORION_DEPARTURE = {
+  id: 'artemis-orion',
+  name: 'Artemis — Orion to Gateway (concept)',
+  rendezvous: true,
+  state: [${orionState.map(String).join(', ')}],
+  epoch: ${ORION_EPOCH},
+  search: {
+    fromEarthKm: ${280000}, heightKm: ${40000}, circularFraction: ${ORION_FRAC},
+    note: 'cheapest of a grid over 180 000-280 000 km, 0-40 000 km height, '
+      + '0.80-0.95 of circular, and four departure epochs, each scanned over '
+      + 'fourteen flight times',
+  },
+  solution: {
+    dv1: [${rv.dv1.map(String).join(', ')}],
+    dv1Mag: ${rv.dv1Mag},
+    dv2: [${rv.dv2.map(String).join(', ')}],
+    dv2Mag: ${rv.dv2Mag},
+    dvTotal: ${rv.dvTotal},
+    timeOfFlight: ${rv.timeOfFlight},
+    posErr: ${rv.posErr},
+    relSpeedBefore: ${rv.relSpeedBefore},
+    relSpeedAfter: ${rv.relSpeedAfter},
+    kind: '${rv.kind}',
+    status: '${rv.status}',
+    iterations: ${rv.iterations},
+  },
+  measured: {
+    dvTotalMs: ${+rv.dvTotalMs.toFixed(2)},
+    dv1Ms: ${+rv.dv1Ms.toFixed(2)},
+    dv2Ms: ${+rv.dv2Ms.toFixed(2)},
+    tofDays: ${+(rv.timeOfFlight * TU_DAYS).toFixed(4)},
+    missM: ${+(rv.posErr * DU_KM * 1000).toFixed(4)},
+    relSpeedBeforeMs: ${+(rv.relSpeedBefore * DU_KM / (TU_DAYS * 86400) * 1000).toFixed(2)},
+  },
+  blurb: 'Gateway is not a place, it is a state in motion — so "reach Gateway" means '
+    + 'being where Gateway WILL be, moving how Gateway will be moving. Orion departs '
+    + 'from cislunar space, and the solver aims at Gateway\\'s position at the arrival '
+    + 'instant, not at where it sits now. Position alone would be an intercept; the '
+    + 'second burn at arrival is what makes it a rendezvous.',
+  expect: '${rv.kind}: ${rv.dvTotalMs.toFixed(0)} m/s over ${(rv.timeOfFlight * TU_DAYS).toFixed(2)} days, '
+    + 'miss ${(rv.posErr * DU_KM * 1000).toFixed(1)} m',
+};
+
+export const ARTEMIS3D = [GATEWAY_NRHO, CAPSTONE_NRHO, ORION_DEPARTURE];
 `;
 
-writeFileSync(new URL('../src/artemis.js?v=20260830m', import.meta.url), src);
+writeFileSync(new URL('../src/artemis.js?v=20260830n', import.meta.url), src);
 console.error('wrote src/artemis.js');

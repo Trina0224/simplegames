@@ -77,6 +77,19 @@ wobbles about it.
 - L1, L2 and L3 are drawn as crosses because nothing rests there; L4 and L5 as
   rings because things can.
 
+The **Artemis demos** group in the 3D orbit menu is mission context laid over
+that same physics, and never a substitute for it:
+
+| demo | what to do with it |
+|---|---|
+| **Gateway-like NRHO** | **Near pass** and **Far pass** seek the measured extrema and frame each one. **NRHO / LLO / Both** compares it with a 100 km lunar orbit — *Both* keeps this orbit's framing and magnifies the Moon in a bubble, because at one scale the low orbit is a dot. |
+| **CAPSTONE NRHO** | The same orbit, deliberately. CAPSTONE flew a pathfinder for the family Gateway is planned for, so showing a second, slightly different curve would be inventing a difference. |
+| **halo → NRHO family** | Drag the slider from a small halo to a near-rectilinear one and watch it become the other. The Gateway-like orbit is drawn alongside; at member 24 they lie on top of each other. |
+| **Orion to Gateway (concept)** | An approach to a target that is *moving*. **Plan approach** re-solves it live — fourteen flight times, about two seconds — and reproduces the stored answer. **Arrival** frames the moment it is about. |
+
+Every panel keeps the published NASA figures and the simulated ones apart, in
+different typefaces, with the measured line saying where it came from.
+
 ### Which gesture is which
 
 Decided by where the pointer went down, not by what it did afterwards — so a
@@ -428,11 +441,112 @@ spacecraft launched at 62% of circular speed. It is a one-symbol slip that reads
 correctly and is caught only by flying it — which is why the suite now checks the
 initial condition against √(μ/r) directly rather than trusting the derivation.
 
-Out of scope in this build and labelled as such: the Orion-to-Gateway rendezvous
-demo, which needs targeting against a **moving** state and would be an intercept
-at best without relative-velocity matching; and any lunar south-pole orientation
-cue, because the CR3BP has no model of the Moon's rotation and drawing one would
-be inventing a fact.
+Still out of scope, and for a reason rather than for lack of time: any lunar
+south-pole orientation cue, because the CR3BP has no model of the Moon's rotation
+and drawing one would be inventing a fact. (The Orion-to-Gateway demo *was* on
+this list; the moving-target targeting it needed is now built — see *Reaching
+something that is going somewhere*.)
+
+### Two orbits, two scales, one truth
+
+The low-lunar-orbit comparison was physically right and visually useless. A 100 km
+lunar orbit is 3474 km across; the Gateway-like NRHO is 141 000 km. Framed
+together the low orbit is a two-pixel dot, which is **true** and teaches nothing.
+
+The two ways to fix that picture are both lies — shrink the NRHO, or inflate the
+low orbit — so instead the same arrays are drawn twice, at two scales, and the
+magnification is printed on the second one. **NRHO / LLO / Both**: the first two
+frame whichever orbit is the subject, and *Both* keeps the NRHO's own framing and
+adds a magnified circle over the Moon, labelled `×58 on the Moon`. Nothing is
+rescaled and there is no second integration — it is one propagated array, one
+camera angle, two projections.
+
+The scale contrast is stated in the units a reader can hold at once, all three
+measured rather than quoted:
+
+```text
+LLO 1.96 h/orbit   NRHO 6.50 d/orbit   79 LLO revolutions to one NRHO
+```
+
+Two things that had to be fixed to make it readable at all. **The comparison orbit
+was drawn under the Moon**, so half of it disappeared into the disc and the rest
+read as two disconnected slivers on the limb. Paths are now split by depth
+relative to the body — far half before the Moon, near half after — which is what
+makes it look like an orbit going *round* something. And **the magnified bubble's
+first home was the top right**, which is exactly where the diagnostics panel is:
+it drew correctly and entirely behind it, for one build.
+
+### Reaching something that is going somewhere
+
+`targeting.js` aims at L1–L5, which sit still in the rotating frame. Gateway does
+not, and `ARTEMIS_DEMO_SPEC.md` is blunt about what that changes: *"Do not target
+a frozen marker. The terminal condition must compare the spacecraft state with
+Gateway's state at the same future time."*
+
+Measured, that is not a technicality. Over the 8.7-day approach Gateway travels
+**18 600 km** — six times its own perilune radius. Aiming at where it is at
+departure would miss by that.
+
+`targeting3d.js` is three unknowns (the burn's components) against three residuals
+(the arrival position error), Newton on a finite-difference Jacobian, damped
+because near a close approach the Jacobian goes nearly singular and an undamped
+step lands the next guess inside the Moon. The target state comes from
+`targetAt`, which reduces the epoch modulo the orbit's period — and that is the
+*accurate* choice, not a shortcut: an NRHO is violently unstable, so flying one
+period from a state that closes to 6e-11 beats flying ten and amplifying the last
+bits of it. Checked: the two agree to under a metre.
+
+**Position matched is an intercept.** One impulse cannot match velocity too, so
+the arrival burn is a second impulse computed against the target's velocity *at
+arrival* — the frozen-target mistake in its other form would use its velocity at
+departure, which on an NRHO near perilune is most of its speed wrong. The word
+comes from `classify`, which sees only the two measured residuals, so there is no
+path through the code that returns `rendezvous` without both:
+
+```text
+rendezvous — position and velocity matched
+  relative position 0.9 m
+  relative speed at arrival 288.1 m/s, 2.6e-8 m/s after the arrival burn
+  281.1 m/s departure + 288.1 m/s arrival = 569.2 m/s over 8.69 days
+```
+
+`docking` is not used at all, and not because of a tolerance: nothing here models
+attitude, ports or contact dynamics, so the word has nothing to attach to.
+
+The departure state was searched for, not chosen — a grid over distance from
+Earth, height above the plane, speed as a fraction of the local circular one, and
+departure epoch, each scanned over fourteen flight times, keeping the cheapest
+that converged. The grid is written into `tools/artemis.mjs` rather than
+described, and the app's **Plan approach** button re-runs the same scan live and
+reproduces the stored answer to the last digit. That is the point of storing it:
+a canned answer nobody can re-derive is a claim, and this one is a measurement.
+
+The planar lesson had to be re-learned in three dimensions, so it was built in
+from the start: `propagate3` stops early on impact and its terminal state is then
+wherever it stopped, and differencing *that* against a target near a body produces
+a small number. Only an arc with status `ok` that ran the full flight time may be
+scored. Aimed deliberately at the Moon's own centre, the solver refuses rather
+than reporting an excellent miss onto its surface.
+
+One thing measured and worth stating plainly. The approach costs **569 m/s** in
+total, and a real Gateway insertion is nearer 450. That gap is not a defect in the
+solver — it is what a two-impulse direct transfer from a state chosen by grid
+search costs, against a mission trajectory shaped by low-energy dynamics and
+months of optimisation. The demo does not optimise, and does not claim to.
+
+### Halo → NRHO, as one continuous thing
+
+The Artemis family view has **no curves of its own**. It is `FAMILY3D.L2` — the
+same 30 members the ordinary slider browses — with the Gateway-like orbit drawn
+alongside in amber. Drag from member 1 to member 30 and a small halo around L2
+grows, leans over and goes near-rectilinear, passing through the Gateway-like
+orbit on the way down; at member 24 the blue curve and the amber one lie on top of
+each other.
+
+They are not the same orbit, and the panel says so rather than letting the picture
+imply it: the slider samples 30 of the family's 3087 members, so the nearest one
+differs by 0.048 days and 129 km. Naming it *the closest the slider comes* costs a
+sentence and buys the reader the truth.
 
 ### Saying what the model does not contain
 
@@ -871,6 +985,15 @@ how it looks, and it drives nothing.
 | Gateway-like member, by period | T = 6.5001 d, near pass 1 345 km, far pass 70 858 km, closure 6.1e-11 |
 | the same member, by near pass | 6.5582 d — and by far pass, 6.3568 d; three published figures, one orbit |
 | the 100 km comparison orbit | 1.963 h, 79.5 revolutions per Gateway orbit, altitude 99.9–100.1 km |
+| its Jacobi drift over 238 revolutions | 1.5e-10 relative, status ok |
+| near/far pass against a 100x denser search | perilune to 0.0 m and 0.0 s; apolune likewise |
+| the three-point refinement, at 97 samples/orbit | 5.3 km out becomes 0.0 km out |
+| Gateway's travel during the Orion approach | 18 600 km — six times its own perilune radius |
+| the Orion approach | 569.2 m/s = 281.1 departure + 288.1 arrival, over 8.69 days |
+| its arrival, re-flown at 1e-13 | 0.9 m of position, 2.6e-8 m/s of relative speed after the arrival burn |
+| the same arrival before the second burn | 288.1 m/s — an intercept, and named one |
+| aimed deliberately at the Moon's centre | refused: infeasible, blocked by impact: Moon at t 0.011 |
+| the Gateway-like member on the browsable family | member 24 of 30, 0.048 d and 129 km away — the nearest, not the same |
 | the 3D height control | moves z and only z; a horizontal drag never disturbs vz |
 | a 3D burn | cannot move the spacecraft; reports Δv by component |
 | 3D Launch | uses exactly the previewed state — C0 identical to the candidate's C |
@@ -993,7 +1116,8 @@ else.
 2. Planar Lyapunov orbits and DRO; then 3D — halo, Lissajous, NRHO.
 3. Invariant-manifold transfers, which is what the targeting wants to grow into:
    the tubes are real conduits and cheaper than shooting at a point.
-4. 3D targeting against a **moving** state, which is what the Orion-to-Gateway
-   demo in `ARTEMIS_DEMO_SPEC.md` needs and the only reason it is not built:
-   Gateway is a destination in motion, and matching position alone is an
-   intercept, not a rendezvous.
+4. Two-body-to-three-body handover, so a departure can start in low Earth orbit
+   rather than at a cislunar state chosen by search. The Jacobian from LEO is
+   stiff enough that shooting alone will not do it.
+5. Continuous burns and finite thrust. Everything here is impulsive, which is a
+   real approximation and not a small one for a 288 m/s arrival.

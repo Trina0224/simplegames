@@ -28,6 +28,18 @@ The existing 2D implementation is the regression baseline. Do not rewrite it cas
 12. A diagnostic must answer the question its own label asks. A closest-approach figure for
     a run that ended in an impact says it hit; an elapsed-time figure says when the run
     actually stopped, not the span requested.
+13. A moving target is a full state at the arrival epoch, never a frozen position. Targeting
+    where something IS when the flight starts is a different problem with a different answer.
+    See `src/targeting3d.js`.
+14. Position matched is an intercept. `rendezvous` requires the relative VELOCITY driven to
+    zero as well, measured from the propagated arrival state, and no code path may produce
+    the word without both. Never `docking` at all — nothing here models attitude, ports or
+    contact dynamics.
+15. An event on a trajectory — a near pass, a far pass — is measured from that trajectory's
+    own samples. A stored timestamp is right for one orbit and silently wrong for every
+    other member the family slider can reach.
+16. Two orbits at different scales may be drawn twice, at two scales, with the magnification
+    stated. Neither may be rescaled to make a picture work.
 
 ## First implementation sequence
 

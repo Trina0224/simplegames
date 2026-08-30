@@ -118,4 +118,75 @@ export const LOW_LUNAR = {
     + 'then propagated by the same CR3BP integrator as everything else',
 };
 
-export const ARTEMIS3D = [GATEWAY_NRHO, CAPSTONE_NRHO];
+/**
+ * Where the Gateway-like member falls on the browsable L2 family.
+ *
+ * The slider samples 30 of 3087 members, so this is the NEAREST one, not the same
+ * one, and the gap is recorded so nothing has to pretend otherwise.
+ */
+export const GATEWAY_ON_FAMILY = {
+  point: 'L2',
+  index: 23,
+  of: 30,
+  periodDays: 6.5482,
+  periluneKm: 3210.9,
+  periodGapDays: 0.0481,
+  periluneGapKm: 128.8,
+};
+
+/**
+ * Orion's departure state, and the approach that reaches Gateway from it.
+ *
+ * The stored solution is what tools/artemis.mjs got by scanning; the app's "Plan
+ * approach" button re-runs the same scan live and must reproduce it. That is the
+ * point of storing it at all -- a canned answer nobody can re-derive is a claim,
+ * and this one is a measurement anyone can repeat.
+ *
+ * Concept, not reconstruction: ARTEMIS_DEMO_SPEC.md E says a concept
+ * demonstration and not an Artemis IV operational trajectory, and the departure
+ * state above is a search result, not a mission plan.
+ */
+export const ORION_DEPARTURE = {
+  id: 'artemis-orion',
+  name: 'Artemis — Orion to Gateway (concept)',
+  rendezvous: true,
+  state: [0.71625732282872, 0, 0.1040582726326743, 0, 0.39006494146646375, 0],
+  epoch: 0.5,
+  search: {
+    fromEarthKm: 280000, heightKm: 40000, circularFraction: 0.95,
+    note: 'cheapest of a grid over 180 000-280 000 km, 0-40 000 km height, '
+      + '0.80-0.95 of circular, and four departure epochs, each scanned over '
+      + 'fourteen flight times',
+  },
+  solution: {
+    dv1: [0.14868780775260965, 0.1735467727886951, -0.15186466275665247],
+    dv1Mag: 0.27438918038771093,
+    dv2: [0.1695817841732966, 0.22432549355559891, -0.00019150637435802476],
+    dv2Mag: 0.28121156671988623,
+    dvTotal: 0.5556007471075972,
+    timeOfFlight: 2,
+    posErr: 2.452989729604407e-9,
+    relSpeedBefore: 0.28121156671988623,
+    relSpeedAfter: 0,
+    kind: 'rendezvous',
+    status: 'ok',
+    iterations: 21,
+  },
+  measured: {
+    dvTotalMs: 569.24,
+    dv1Ms: 281.12,
+    dv2Ms: 288.11,
+    tofDays: 8.685,
+    missM: 0.9429,
+    relSpeedBeforeMs: 288.11,
+  },
+  blurb: 'Gateway is not a place, it is a state in motion — so "reach Gateway" means '
+    + 'being where Gateway WILL be, moving how Gateway will be moving. Orion departs '
+    + 'from cislunar space, and the solver aims at Gateway\'s position at the arrival '
+    + 'instant, not at where it sits now. Position alone would be an intercept; the '
+    + 'second burn at arrival is what makes it a rendezvous.',
+  expect: 'rendezvous: 569 m/s over 8.69 days, '
+    + 'miss 0.9 m',
+};
+
+export const ARTEMIS3D = [GATEWAY_NRHO, CAPSTONE_NRHO, ORION_DEPARTURE];

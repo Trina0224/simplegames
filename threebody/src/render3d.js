@@ -20,9 +20,9 @@
 //                       the 3D orbit projects into the planar geometry -- except
 //                       it is visible from every angle, not only from the top.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830m';
-import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830m';
-import { spriteHandle } from './render.js?v=20260830m';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830n';
+import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830n';
+import { spriteHandle } from './render.js?v=20260830n';
 
 // Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
 // screen pixels. The planar view inflates them because the whole Earth-Moon
@@ -178,7 +178,7 @@ export class Scene3D {
 
   draw(view) {
     const { ctx } = this;
-    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite, compare } = view;
+    const { frame, t, points, trail, whole, head, showPlane, showTrack, sprite, compare, inset } = view;
     this.resize();
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -213,21 +213,21 @@ export class Scene3D {
     // different trajectory and the whole point of the demo is telling them apart.
     // Same equations, same integrator, same frame -- so this is a comparison
     // within one model rather than an illustration laid over one.
-    if (compare && compare.run && compare.run.n > 1) {
-      ctx.strokeStyle = 'rgba(255, 196, 92, 0.45)';
-      ctx.lineWidth = 1.2;
-      this._path(P, compare.run, frame, (i) => compare.run.zs[i]);
+    // Amber and DASHED against the trajectory's solid blue. Colour alone would be
+    // the only thing separating them on a colour-blind reader's screen and on a
+    // printout, and these two curves are the whole point of the demo.
+    const compareStroke = (side) => {
+      ctx.save();
+      ctx.strokeStyle = side > 0 ? 'rgba(255, 196, 92, 0.85)' : 'rgba(255, 196, 92, 0.42)';
+      ctx.lineWidth = side > 0 ? 1.6 : 1.2;
+      ctx.setLineDash([5, 3]);
+      this._path(P, compare.run, frame, (i) => compare.run.zs[i], side,
+                 P(bodies3(t, frame).moon[0], bodies3(t, frame).moon[1], bodies3(t, frame).moon[2])[2]);
       ctx.stroke();
-      if (compare.head) {
-        const q = P(compare.head[0], compare.head[1], compare.head[2]);
-        ctx.fillStyle = 'rgba(255, 214, 130, 0.95)';
-        ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
-        if (compare.label) {
-          ctx.fillStyle = 'rgba(255, 214, 130, 0.8)';
-          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-          ctx.fillText(compare.label, q[0] + 7, q[1] - 5);
-        }
-      }
+      ctx.restore();
+    };
+    if (compare && compare.run && compare.run.n > 1) {
+      compareStroke(-1);              // the far half, before the bodies
     }
 
     // --- the ground track: the orbit flattened onto z = 0 --------------------
@@ -262,6 +262,24 @@ export class Scene3D {
       }
     };
     drawBodies(false);
+
+    // ...and the near half of the comparison orbit, over them
+    if (compare && compare.run && compare.run.n > 1) {
+      compareStroke(1);
+      if (compare.head) {
+        const q = P(compare.head[0], compare.head[1], compare.head[2]);
+        ctx.fillStyle = 'rgba(255, 214, 130, 0.95)';
+        ctx.beginPath(); ctx.arc(q[0], q[1], 3.4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (compare.label) {
+        const m = bodies3(t, frame).moon;
+        const q = compare.head ? P(compare.head[0], compare.head[1], compare.head[2])
+                               : P(m[0], m[1], m[2]);
+        ctx.fillStyle = 'rgba(255, 214, 130, 0.85)';
+        ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillText(compare.label, q[0] + 8, q[1] - 6);
+      }
+    }
 
     // --- the equilibria ------------------------------------------------------
     if (points) {
@@ -339,8 +357,91 @@ export class Scene3D {
 
     if (view.edit) this._editor3(view.edit, P, b);
 
+    if (inset) this._inset(inset, b, frame, t);
     this._scaleBar(view.avoid);
     ctx.restore();
+  }
+
+  /**
+   * A magnified circle over one part of the scene.
+   *
+   * It exists because the honest comparison is unwatchable at one scale. A 100 km
+   * lunar orbit is 3474 km across and the Gateway-like NRHO is 141 000 km; framed
+   * together the low orbit is a dot two pixels wide, which is TRUE and tells the
+   * reader nothing. Shrinking the NRHO or inflating the low orbit would fix the
+   * picture by lying about it, so instead the same trajectories are drawn twice,
+   * at two scales, and the magnification is stated on the bubble.
+   *
+   * Same camera angle, same frame, same propagated arrays -- only the centre and
+   * the scale differ. There is no second integration and no second geometry.
+   */
+  _inset(ins, b, frame, t) {
+    const { ctx } = this;
+    const { centre, span, radius, paths = [], marks = [], label } = ins;
+    const cx = ins.at ? ins.at[0] : this.w - radius - 18;
+    const cy = ins.at ? ins.at[1] : radius + 18;
+    const scale = (2 * radius) / span;
+    const P = (x, y, z) => {
+      const dx = x - centre[0], dy = y - centre[1], dz = z - centre[2];
+      return [
+        cx + (dx * b.right[0] + dy * b.right[1] + dz * b.right[2]) * scale,
+        cy - (dx * b.up[0] + dy * b.up[1] + dz * b.up[2]) * scale,
+        dx * b.fwd[0] + dy * b.fwd[1] + dz * b.fwd[2],
+      ];
+    };
+
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#070b14';
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+    // the Moon at its physical radius, which at this scale is a disc rather than
+    // the minimum-size dot the wide view has to draw it as
+    const bod = bodies3(t, frame);
+    const q = P(bod.moon[0], bod.moon[1], bod.moon[2]);
+    const rad = MOON_RADIUS * scale;
+    const g = ctx.createRadialGradient(q[0] - rad * 0.3, q[1] - rad * 0.3, rad * 0.1, q[0], q[1], rad);
+    g.addColorStop(0, '#8f949c'); g.addColorStop(1, 'rgba(10, 16, 26, 1)');
+
+    // Far halves first, then the Moon is already drawn, then near halves -- same
+    // depth split as the main view, so an orbit that goes round the Moon looks
+    // like it goes round the Moon rather than over it.
+    for (const side of [-1, 1]) {
+      for (const pa of paths) {
+        if (!pa.run || pa.run.n < 2) continue;
+        ctx.strokeStyle = side > 0 ? pa.color : (pa.far || pa.color);
+        ctx.lineWidth = (pa.width || 1.2) * (side > 0 ? 1 : 0.8);
+        ctx.globalAlpha = side > 0 ? 1 : 0.45;
+        if (pa.dash) ctx.setLineDash(pa.dash);
+        this._path(P, pa.run, frame, (i) => pa.run.zs[i], side, q[2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+      if (side < 0) {
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(q[0], q[1], rad, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(200, 205, 215, 0.5)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(q[0], q[1], rad, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    for (const m of marks) {
+      if (!m.at) continue;
+      const p = P(m.at[0], m.at[1], m.at[2]);
+      ctx.fillStyle = m.color;
+      ctx.beginPath(); ctx.arc(p[0], p[1], m.r || 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(170, 190, 214, 0.5)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
+    if (label) {
+      ctx.fillStyle = 'rgba(190, 208, 230, 0.8)';
+      ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, cx, cy + radius + 13);
+      ctx.textAlign = 'left';
+    }
   }
 
   /**
@@ -449,16 +550,23 @@ export class Scene3D {
   }
 
   /** One polyline through the trail, with z chosen by the caller. */
-  _path(P, trail, frame, zOf) {
+  _path(P, trail, frame, zOf, side = null, ref = 0) {
     const { ctx } = this;
     const N = trail.n, step = Math.max(1, Math.floor(N / 2400));
     ctx.beginPath();
+    let open = false;
     for (let i = 0; i < N; i += step) {
       const [x, y, z] = frame === 'rotating'
         ? [trail.xs[i], trail.ys[i], zOf(i)]
         : displayPos3(trail.xs[i], trail.ys[i], zOf(i), trail.ts[i], frame);
       const q = P(x, y, z);
-      if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]);
+      // `side`, when given, keeps only the half of the path on one side of a
+      // depth -- so an orbit that goes round a body can be drawn as two strokes,
+      // the far half before the body and the near half after it. Without that a
+      // 100 km lunar orbit vanishes into the Moon's disc for half its length and
+      // reads as two disconnected slivers on the limb.
+      if (side !== null && (side > 0 ? q[2] < ref : q[2] >= ref)) { open = false; continue; }
+      if (!open) { ctx.moveTo(q[0], q[1]); open = true; } else ctx.lineTo(q[0], q[1]);
     }
   }
 

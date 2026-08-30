@@ -11,28 +11,31 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830m';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830m';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830m';
-import { Dopri5 } from '../src/integrator.js?v=20260830m';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830m';
-import { PRESETS } from '../src/presets.js?v=20260830m';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830m';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830m';
-import { displayToRotating } from '../src/display.js?v=20260830m';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830m';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830m';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830m';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830m';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830m';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830m';
-import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830m';
-import { GATEWAY_NRHO, CAPSTONE_NRHO, LOW_LUNAR, NASA_REFERENCE, ARTEMIS3D } from '../src/artemis.js?v=20260830m';
-import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830m';
-import { advance, resumeFrom } from '../src/playback.js?v=20260830m';
-import { scaleLabel } from '../src/render3d.js?v=20260830m';
-import { toInertial } from '../src/frames.js?v=20260830m';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830m';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830n';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830n';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830n';
+import { Dopri5 } from '../src/integrator.js?v=20260830n';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830n';
+import { PRESETS } from '../src/presets.js?v=20260830n';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830n';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu, vuToMs } from '../src/constants.js?v=20260830n';
+import { displayToRotating } from '../src/display.js?v=20260830n';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830n';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830n';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830n';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830n';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, haloArc, lunarGeometry } from '../src/halo.js?v=20260830n';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830n';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830n';
+import { GATEWAY_NRHO, CAPSTONE_NRHO, LOW_LUNAR, NASA_REFERENCE, ARTEMIS3D,
+         ORION_DEPARTURE, GATEWAY_ON_FAMILY } from '../src/artemis.js?v=20260830n';
+import { extrema3 } from '../src/events3.js?v=20260830n';
+import { targetAt, endPoint3, solveRendezvous3, planRendezvous3, classify } from '../src/targeting3d.js?v=20260830n';
+import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830n';
+import { advance, resumeFrom } from '../src/playback.js?v=20260830n';
+import { scaleLabel } from '../src/render3d.js?v=20260830n';
+import { toInertial } from '../src/frames.js?v=20260830n';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830n';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -1036,12 +1039,21 @@ console.log('\n20. The Artemis demos are context on a real orbit, not a drawing 
     `${(LOW_LUNAR.state[4] + rr).toFixed(9)} against sqrt(mu/r) = ${want.toFixed(9)} ` +
     `(${(want * DU_KM / (TU_DAYS * 86400)).toFixed(4)} km/s)`);
 
-  // 10: nothing here may be called a rendezvous. There is no moving-target
-  // targeting in this build, so there must be no demo claiming one either.
-  check('nothing claims a rendezvous, because nothing here can do one',
-    !ARTEMIS3D.some((p) => /rendezvous|docking/i.test(`${p.name} ${p.blurb || ''}`)),
-    `${ARTEMIS3D.length} Artemis presets, none of them a rendezvous -- ` +
-    `moving-target 3D targeting is out of scope for this build`);
+  // 10: a demo may use the word only if its stored solution earns it, and no demo
+  // may use "docking" at all -- nothing here models attitude, ports or contact
+  // dynamics, so the term has nothing to attach to. This check used to read
+  // "nothing claims a rendezvous, because nothing here can do one"; the build can
+  // do one now, so the test became the stronger claim rather than being deleted.
+  const claims = ARTEMIS3D.filter((p) => /rendezvous/i.test(`${p.name} ${p.blurb || ''} ${p.expect || ''}`));
+  check('every preset that says "rendezvous" has a solution that earns the word',
+    claims.length > 0 && claims.every((p) =>
+      p.solution && p.solution.kind === 'rendezvous' &&
+      classify(p.solution.posErr, p.solution.relSpeedAfter) === 'rendezvous'),
+    `${claims.length} of ${ARTEMIS3D.length} presets use the word; each carries a solution ` +
+    `re-classified from its own measured residuals`);
+  check('and nothing anywhere claims a docking',
+    !ARTEMIS3D.some((p) => /docking/i.test(`${p.name} ${p.blurb || ''} ${p.expect || ''}`)),
+    'attitude, ports and contact dynamics are not modelled, so the word is not used');
 
   // 11: the labels come off without touching the physics. Structurally: an
   // Artemis preset is an ordinary preset plus context, so stripping the context
@@ -1054,6 +1066,210 @@ console.log('\n20. The Artemis demos are context on a real orbit, not a drawing 
     `state and period alone reproduce the run exactly -- the context is ${
       Object.keys(gw).filter((k) => !['state', 'period', 'duration', 'C'].includes(k)).length
     } fields of text and measurement hung off it`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n21. Near pass and far pass are found, not remembered');
+{
+  const run = propagate3(GATEWAY_NRHO.state, GATEWAY_NRHO.period,
+    { sample: GATEWAY_NRHO.period / 6000, absTol: 1e-13, relTol: 1e-13 });
+  run.n = run.xs.length;
+  const e = extrema3(run);
+
+  // Against a brute-force search at a hundred times the sampling, which is the
+  // only way to know the refinement helps rather than merely differing.
+  const dense = propagate3(GATEWAY_NRHO.state, GATEWAY_NRHO.period,
+    { sample: GATEWAY_NRHO.period / 600000, absTol: 1e-13, relTol: 1e-13 });
+  let lo = Infinity, hi = 0, tLo = 0, tHi = 0;
+  for (let i = 0; i < dense.xs.length; i += 1) {
+    const d = Math.hypot(dense.xs[i] - MOON_X, dense.ys[i], dense.zs[i]);
+    if (d < lo) { lo = d; tLo = dense.ts[i]; }
+    if (d > hi) { hi = d; tHi = dense.ts[i]; }
+  }
+  check('the near pass it reports is the trajectory\'s actual minimum',
+    Math.abs(e.low - lo) * DU_KM < 0.05 && Math.abs(e.near - tLo) * TU_DAYS * 24 * 60 < 1,
+    `${(e.lowKm).toFixed(3)} km at t ${e.near.toFixed(6)} against a 100x denser search's ` +
+    `${(lo * DU_KM).toFixed(3)} km at ${tLo.toFixed(6)} -- ` +
+    `${(Math.abs(e.low - lo) * DU_KM * 1000).toFixed(1)} m and ` +
+    `${(Math.abs(e.near - tLo) * TU_DAYS * 24 * 3600).toFixed(1)} s apart`);
+  check('and the far pass likewise',
+    Math.abs(e.high - hi) * DU_KM < 0.5 && Math.abs(e.far - tHi) * TU_DAYS * 24 * 60 < 2,
+    `${(e.highKm / 1000).toFixed(3)} thousand km at t ${e.far.toFixed(6)} against ` +
+    `${(hi * DU_KM / 1000).toFixed(3)} at ${tHi.toFixed(6)}`);
+
+  // The parabolic refinement must EARN its place: without it the answer is only
+  // as good as the sample spacing, and near perilune that is where the orbit is
+  // moving fastest.
+  // At the sampling the app uses, this orbit's perilune happens to land on the
+  // section itself, so the refinement has nothing to do there. Coarsen the run
+  // until the samples genuinely bracket the extremum and the correction is what
+  // is being measured.
+  const coarse = propagate3(GATEWAY_NRHO.state, GATEWAY_NRHO.period,
+    { sample: GATEWAY_NRHO.period / 97, absTol: 1e-13, relTol: 1e-13 });
+  coarse.n = coarse.xs.length;
+  const ec = extrema3(coarse);
+  // Measured at the FAR pass. Perilune sits on this orbit's y = 0 section, so it
+  // lands on sample zero at every sampling and there is nothing there to refine
+  // -- which is a property of where the corrector starts the orbit, not evidence
+  // about the refinement.
+  const rawKm = Math.hypot(coarse.xs[ec.farIndex] - MOON_X, coarse.ys[ec.farIndex],
+                           coarse.zs[ec.farIndex]) * DU_KM;
+  check('the three-point refinement beats taking the nearest sample',
+    Math.abs(ec.highKm - hi * DU_KM) < Math.abs(rawKm - hi * DU_KM) / 5,
+    `at 97 samples per orbit the nearest sample to apolune is ` +
+    `${Math.abs(rawKm - hi * DU_KM).toFixed(1)} km out; the parabola through it and its ` +
+    `neighbours is ${Math.abs(ec.highKm - hi * DU_KM).toFixed(1)} km out`);
+
+  // It has to keep working on a DIFFERENT orbit, which is the whole reason it is
+  // measured rather than stored.
+  const other = FAMILY3D.L2[4];
+  const r2 = propagate3(other.state, other.period,
+    { sample: other.period / 6000, absTol: 1e-13, relTol: 1e-13 });
+  r2.n = r2.xs.length;
+  const e2 = extrema3(r2);
+  check('and it follows the family slider rather than one stored orbit',
+    Math.abs(e2.lowKm - other.periluneKm) < 1 && Math.abs(e2.highKm - other.apoluneKm) < 2,
+    `family member 5 measures ${e2.lowKm.toFixed(1)} / ${(e2.highKm / 1000).toFixed(1)}k km ` +
+    `against its stored ${other.periluneKm.toFixed(1)} / ${(other.apoluneKm / 1000).toFixed(1)}k`);
+
+  // The bug that shipped: a caller holding the propagator's own record has no
+  // `n`, the loop never ran, and both extrema came back as sample zero.
+  const bare = { xs: run.xs, ys: run.ys, zs: run.zs, ts: run.ts };
+  const e3 = extrema3(bare);
+  check('a record without an explicit length still gets both extrema',
+    Math.abs(e3.high - e.high) < 1e-12 && e3.high > e3.low * 10,
+    `far pass ${(e3.highKm / 1000).toFixed(1)}k km, not the ${(e3.lowKm / 1000).toFixed(1)}k of sample zero`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n22. Targeting a moving state, and refusing to call an intercept a rendezvous');
+{
+  const gw = { state: GATEWAY_NRHO.state, period: GATEWAY_NRHO.period };
+
+  // The target is propagated, not frozen. Over one flight time Gateway moves far
+  // enough that aiming at where it is now would miss by most of its orbit.
+  const now = targetAt(gw, 0.5);
+  const later = targetAt(gw, 0.5 + ORION_DEPARTURE.solution.timeOfFlight);
+  const moved = Math.hypot(later[0] - now[0], later[1] - now[1], later[2] - now[2]) * DU_KM;
+  check('the target moves during the flight, by a distance that matters',
+    moved > 10000,
+    `Gateway travels ${(moved / 1000).toFixed(1)} thousand km between departure and arrival -- ` +
+    `aiming at where it is now would miss by that, which is ` +
+    `${(moved / (GATEWAY_NRHO.measured.nearKm + MOON_RADIUS * DU_KM)).toFixed(0)}x its own perilune radius`);
+
+  // Reducing modulo the period must agree with flying the long way, or the
+  // shortcut is a different answer wearing the same name.
+  const direct = propagate3(gw.state, gw.period + 0.37,
+    { sample: gw.period + 0.37, absTol: 1e-13, relTol: 1e-13 }).state;
+  const mod = targetAt(gw, gw.period + 0.37);
+  let worst = 0;
+  for (let i = 0; i < 6; i += 1) worst = Math.max(worst, Math.abs(direct[i] - mod[i]));
+  check('reducing the target epoch modulo the period agrees with flying it',
+    worst * DU_KM < 1,
+    `worst component ${(worst * DU_KM * 1000).toFixed(1)} m over one period plus 0.37 TU`);
+
+  // --- the stored solution, re-derived ------------------------------------
+  const sol = solveRendezvous3(ORION_DEPARTURE.state, ORION_DEPARTURE.epoch, gw,
+    ORION_DEPARTURE.solution.timeOfFlight);
+  check('the stored approach is reproducible from its inputs',
+    sol && sol.converged && Math.abs(sol.dvTotal - ORION_DEPARTURE.solution.dvTotal) < 1e-6,
+    `re-solved ${sol ? vuToMs(sol.dvTotal).toFixed(2) : '--'} m/s against a stored ` +
+    `${vuToMs(ORION_DEPARTURE.solution.dvTotal).toFixed(2)} m/s`);
+
+  // The two tolerances that decide the word, checked against the PROPAGATED
+  // arrival rather than the solver's own bookkeeping.
+  const departed = ORION_DEPARTURE.state.map((v, i) => (i < 3 ? v : v + sol.dv1[i - 3]));
+  const flown = propagate3(departed, sol.timeOfFlight,
+    { sample: sol.timeOfFlight, absTol: 1e-13, relTol: 1e-13 });
+  const goal = targetAt(gw, ORION_DEPARTURE.epoch + sol.timeOfFlight);
+  const dPos = Math.hypot(flown.state[0] - goal[0], flown.state[1] - goal[1], flown.state[2] - goal[2]);
+  const after = [3, 4, 5].map((k) => flown.state[k] + sol.dv2[k - 3]);
+  const dVel = Math.hypot(after[0] - goal[3], after[1] - goal[4], after[2] - goal[5]);
+  check('a reported rendezvous really does match position AND velocity',
+    sol.kind === 'rendezvous' && dPos * DU_KM * 1000 < 50 && vuToMs(dVel) < 1e-6,
+    `re-flown at 1e-13: position ${(dPos * DU_KM * 1000).toFixed(1)} m, relative speed after the ` +
+    `arrival burn ${vuToMs(dVel).toExponential(1)} m/s (before it, ${vuToMs(sol.relSpeedBefore).toFixed(1)} m/s)`);
+
+  // and the word is not available without both
+  check('one burn alone is an intercept, and is named one',
+    classify(sol.posErr, sol.relSpeedBefore) === 'intercept' &&
+      classify(sol.posErr, sol.relSpeedAfter) === 'rendezvous' &&
+      classify(1e-3, 0) === 'missed',
+    `the same arrival is "intercept" before the second burn and "rendezvous" after it; ` +
+    `a 384 km miss is neither`);
+
+  // --- a collision must not be able to score ------------------------------
+  //
+  // The planar version of this was a real bug: propagate stops early on impact,
+  // its terminal state is wherever it stopped, and differencing THAT against a
+  // target near a body produces a small number. Aimed at the Moon's own centre,
+  // an arc that ends on the surface would otherwise report an excellent miss.
+  const crash = [MOON_X - 0.02, 0, 0, 0, -0.2, 0];        // straight at the Moon
+  const e = endPoint3(crash, 4);
+  check('an arc that ends in a body is not reported as having arrived',
+    e.status === 'impact: Moon' && e.reached === false && e.t < 4,
+    `status "${e.status}" at t ${e.t.toFixed(3)} of 4 -- reached ${e.reached}`);
+
+  // and the solver must refuse it rather than score its terminal state
+  const intoMoon = { state: [MOON_X, 0, 0, 0, 0, 0], period: 1 };   // the Moon itself
+  const bad = solveRendezvous3(crash, 0, intoMoon, 4);
+  check('and the solver refuses a target it can only reach by hitting something',
+    bad !== null && bad.feasible === false && /impact/.test(bad.blocked || ''),
+    bad ? `refused: feasible ${bad.feasible}, blocked by "${bad.blocked}" at t ` +
+          `${(bad.blockedAt || 0).toFixed(3)}, kind "${bad.kind}"` : 'returned null');
+
+  // the scan must propagate that refusal rather than fall back on the least-bad
+  // colliding arc
+  const scan = planRendezvous3(crash, 0, intoMoon, { times: [1, 2, 3, 4] });
+  check('a scan of colliding flight times returns no transfer at all',
+    scan.best === null && scan.blocked.length > 0,
+    `${scan.tried} flight times, none feasible; blocked by ` +
+    `${scan.blocked.map(([w, n]) => `${n}x ${w}`).join(', ')}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n23. The comparison and the family view are the same physics, shown twice');
+{
+  // The LLO comparison must still be the CR3BP one, flown by the same integrator
+  // as everything else -- not a circle drawn beside it.
+  const llo = propagate3(LOW_LUNAR.state, GATEWAY_NRHO.period * 3,
+    { sample: GATEWAY_NRHO.period / 8000, absTol: 1e-13, relTol: 1e-13 });
+  llo.n = llo.xs.length;
+  const e = extrema3(llo);
+  const C0 = jacobi3(LOW_LUNAR.state, MU);
+  // A looser drift budget than a halo's, and for a stated reason: this is 238
+  // revolutions of a fast low orbit in the same wall-clock span as three of the
+  // NRHO, so there is two orders of magnitude more integration behind the number.
+  check('the comparison orbit is CR3BP, and holds its Jacobi constant',
+    llo.status === 'ok' && llo.relDrift < 1e-9 && Math.abs(C0 - LOW_LUNAR.C) < 1e-9,
+    `three Gateway periods = ${(GATEWAY_NRHO.period * 3 / LOW_LUNAR.period).toFixed(0)} ` +
+    `revolutions: status "${llo.status}", relative Jacobi drift ` +
+    `${llo.relDrift.toExponential(2)}, C ${C0.toFixed(9)} against a stored ${LOW_LUNAR.C.toFixed(9)}`);
+  check('and it is a LOW orbit for all of them, by measurement',
+    (e.lowKm - MOON_RADIUS * DU_KM) > 80 && (e.highKm - MOON_RADIUS * DU_KM) < 130,
+    `altitude stays between ${(e.lowKm - MOON_RADIUS * DU_KM).toFixed(1)} and ` +
+    `${(e.highKm - MOON_RADIUS * DU_KM).toFixed(1)} km about a nominal 100`);
+
+  // The scale contrast the demo exists to show, checked rather than asserted.
+  const ratio = GATEWAY_NRHO.period / LOW_LUNAR.period;
+  check('the revolution ratio it displays is the periods divided',
+    Math.abs(ratio - LOW_LUNAR.measured.revsPerGateway) < 0.01,
+    `${ratio.toFixed(2)} revolutions per Gateway orbit, ` +
+    `${(LOW_LUNAR.period * TU_DAYS * 24).toFixed(3)} h against ` +
+    `${(GATEWAY_NRHO.period * TU_DAYS).toFixed(3)} d`);
+
+  // The Artemis family view has no curves of its own: it is FAMILY3D.L2.
+  const g = GATEWAY_ON_FAMILY;
+  const m = FAMILY3D[g.point][g.index];
+  check('the family view highlights a real member of the browsable family',
+    g.index >= 0 && g.index < FAMILY3D[g.point].length &&
+      Math.abs(m.period * TU_DAYS - g.periodDays) < 1e-3,
+    `member ${g.index + 1} of ${g.of}, T ${(m.period * TU_DAYS).toFixed(4)} d`);
+  check('and it is the CLOSEST member to Gateway, not merely a nearby one',
+    FAMILY3D[g.point].every((x) =>
+      Math.abs(x.period - GATEWAY_NRHO.period) >= Math.abs(m.period - GATEWAY_NRHO.period) - 1e-15),
+    `nearest by ${g.periodGapDays.toFixed(4)} d and ${g.periluneGapKm.toFixed(0)} km -- ` +
+    `named as the nearest rather than as the same orbit, which it is not`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

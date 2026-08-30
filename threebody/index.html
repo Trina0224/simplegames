@@ -71,10 +71,19 @@
     <span id="aim3" class="aim"></span>
   </div>
   <div class="row" id="artemisbar" hidden>
-    <label class="check"><input id="cmpLlo" type="checkbox"> compare a 100 km lunar orbit</label>
+    <span class="seg" role="group" aria-label="comparison">
+      <button id="cmpNrho" class="pill ghost" aria-pressed="true">NRHO</button>
+      <button id="cmpLlo" class="pill ghost" aria-pressed="false">LLO</button>
+      <button id="cmpBoth" class="pill ghost" aria-pressed="false">Both</button>
+    </span>
     <button id="seekNear" class="pill ghost">Near pass</button>
     <button id="seekFar" class="pill ghost">Far pass</button>
     <span id="artemisRead" class="aim"></span>
+  </div>
+  <div class="row" id="rendezvousbar" hidden>
+    <button id="planRv" class="pill">Plan approach</button>
+    <button id="rvNear" class="pill ghost">Arrival</button>
+    <span id="rvRead" class="aim"></span>
   </div>
   <div class="row" id="familybar" hidden>
     <label>Member <input id="famSlider" type="range" min="0" max="33" step="1" value="0"></label>
@@ -89,6 +98,6 @@
   <p class="hint">Drag the spacecraft to burn — position does not change, velocity does. Drag anywhere else to pan; pinch or scroll to zoom; double-tap to fit. Or press Free launch and write the initial condition yourself.</p>
 </div>
 
-<script type="module" src="src/app.js?v=20260830m"></script>
+<script type="module" src="src/app.js?v=20260830n"></script>
 </body>
 </html>

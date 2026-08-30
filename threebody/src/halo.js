@@ -23,10 +23,10 @@
 // Richardson (1980), Celestial Mechanics 22(3), 241-253, DOI 10.1007/BF01229511.
 // Howell (1984), Celestial Mechanics 32, 53-71, DOI 10.1007/BF01358403.
 
-import { MU, MOON_X, MOON_RADIUS } from './constants.js?v=20260830m';
-import { lagrangePoints } from './lagrange.js?v=20260830m';
-import { jacobi3 } from './cr3bp3d.js?v=20260830m';
-import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830m';
+import { MU, MOON_X, MOON_RADIUS } from './constants.js?v=20260830n';
+import { lagrangePoints } from './lagrange.js?v=20260830n';
+import { jacobi3 } from './cr3bp3d.js?v=20260830n';
+import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830n';
 
 /**
  * The Legendre coefficients of the expansion about a collinear point.

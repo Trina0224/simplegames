@@ -6,25 +6,28 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830m';
-import { jacobi } from './cr3bp.js?v=20260830m';
-import { lagrangePoints } from './lagrange.js?v=20260830m';
-import { propagate } from './trajectory.js?v=20260830m';
-import { zeroVelocityCurves } from './zvc.js?v=20260830m';
-import { planTransfer } from './targeting.js?v=20260830m';
-import { PRESETS, byId } from './presets.js?v=20260830m';
-import { Scene } from './render.js?v=20260830m';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830m';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830m';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830m';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830m';
-import { propagate3 } from './trajectory3d.js?v=20260830m';
-import { jacobi3 } from './cr3bp3d.js?v=20260830m';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830m';
-import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830m';
-import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830m';
-import { advance, resumeFrom } from './playback.js?v=20260830m';
-import { ARTEMIS3D, GATEWAY_NRHO, LOW_LUNAR, NASA_REFERENCE } from './artemis.js?v=20260830m';
+import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830n';
+import { jacobi } from './cr3bp.js?v=20260830n';
+import { lagrangePoints } from './lagrange.js?v=20260830n';
+import { propagate } from './trajectory.js?v=20260830n';
+import { zeroVelocityCurves } from './zvc.js?v=20260830n';
+import { planTransfer } from './targeting.js?v=20260830n';
+import { PRESETS, byId } from './presets.js?v=20260830n';
+import { Scene } from './render.js?v=20260830n';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830n';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830n';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830n';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830n';
+import { propagate3 } from './trajectory3d.js?v=20260830n';
+import { jacobi3 } from './cr3bp3d.js?v=20260830n';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830n';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830n';
+import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830n';
+import { advance, resumeFrom } from './playback.js?v=20260830n';
+import { extrema3 } from './events3.js?v=20260830n';
+import { ARTEMIS3D, GATEWAY_NRHO, LOW_LUNAR, NASA_REFERENCE, GATEWAY_ON_FAMILY,
+         ORION_DEPARTURE } from './artemis.js?v=20260830n';
+import { planRendezvous3, targetAt } from './targeting3d.js?v=20260830n';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -33,7 +36,7 @@ import { ARTEMIS3D, GATEWAY_NRHO, LOW_LUNAR, NASA_REFERENCE } from './artemis.js
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830m';
+const STAMP = '20260830n';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -48,8 +51,11 @@ const ui = {
   free: el('free'), launch: el('launch'), cancel: el('cancel'), zeroV: el('zeroV'),
   launchbar: el('launchbar'), aim: el('aim'), hint: document.querySelector('.hint'),
   caution: el('caution'), artemis: el('artemis'), artemisbar: el('artemisbar'),
-  artemisRead: el('artemisRead'), cmpLlo: el('cmpLlo'),
+  artemisRead: el('artemisRead'),
+  cmpNrho: el('cmpNrho'), cmpLlo: el('cmpLlo'), cmpBoth: el('cmpBoth'),
   seekNear: el('seekNear'), seekFar: el('seekFar'),
+  rendezvousbar: el('rendezvousbar'), planRv: el('planRv'), rvNear: el('rvNear'),
+  rvRead: el('rvRead'),
   spatial: el('spatial'), spatialbar: el('spatialbar'), preset3d: el('preset3d'),
   viewTop: el('viewTop'), viewSide: el('viewSide'), viewEnd: el('viewEnd'), viewObl: el('viewObl'),
   plane: el('plane'), track: el('track'),
@@ -124,7 +130,7 @@ const LAUNCH3_MS_PER_PX = 8;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830m', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830n', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -404,18 +410,45 @@ const FAMILY_ENTRIES = FAMILY_POINTS.map((p) => ({
   id: `family-${p}`, name: `${p} family — browse`, point: p, family: p,
 }));
 
+/**
+ * The same L2 continuation, entered from the Artemis side.
+ *
+ * Not a second family and not a second set of curves: it is FAMILY3D.L2, the
+ * data the ordinary slider already browses, with a different framing and the
+ * Gateway-like orbit drawn alongside so the reader can watch a small halo turn
+ * into the thing NASA is putting a station on. ARTEMIS_DEMO_SPEC.md forbids
+ * hand-authored mission curves, and the way to keep that promise is to have no
+ * curve of its own at all.
+ */
+const ARTEMIS_FAMILY = {
+  id: 'artemis-family', name: 'Artemis — halo → NRHO family',
+  point: 'L2', family: 'L2', artemisFamily: true,
+};
+
 /** One member of a continued family, dressed as something load3 can play. */
-function familyMember(point, i) {
+function familyMember(point, i, artemis = false) {
   const list = FAMILY3D[point];
-  const m = list[Math.max(0, Math.min(list.length - 1, i))];
+  const idx = Math.max(0, Math.min(list.length - 1, i));
+  const m = list[idx];
+  const atGateway = artemis && point === GATEWAY_ON_FAMILY.point && idx === GATEWAY_ON_FAMILY.index;
   return {
     ...m,
-    id: `family-${point}`, name: `${point} family, member ${i + 1} of ${list.length}`,
-    family: point, index: i,
+    id: artemis ? 'artemis-family' : `family-${point}`,
+    name: artemis
+      ? `Artemis — halo → NRHO, member ${idx + 1} of ${list.length}`
+      : `${point} family, member ${idx + 1} of ${list.length}`,
+    family: point, index: idx, artemisFamily: artemis, atGateway,
     duration: m.period * 3,
-    blurb: 'One continuation, not a shortlist. Every member here was corrected from '
-      + 'the one before it, and the slider walks the family from a small halo down to '
-      + 'a near-rectilinear orbit that all but grazes the Moon.',
+    blurb: artemis
+      ? 'One continuation, not a shortlist, and not a set of mission curves. Drag the '
+        + 'slider and watch a small halo around L2 grow, lean over and go '
+        + 'near-rectilinear — the Gateway-like orbit is drawn alongside, and the family '
+        + 'passes through it on the way down. Nothing here was drawn to look like a '
+        + 'NASA diagram; it is the corrector walked from a Richardson seed to the '
+        + 'lunar surface.'
+      : 'One continuation, not a shortlist. Every member here was corrected from '
+        + 'the one before it, and the slider walks the family from a small halo down to '
+        + 'a near-rectilinear orbit that all but grazes the Moon.',
     expect: `|z| ${m.zMaxKm.toLocaleString('en-US')} km, perilune ${Math.round(m.periluneKm).toLocaleString('en-US')} km, `
       + `slenderness ${m.slenderness.toFixed(2)}`,
   };
@@ -512,35 +545,113 @@ function updateCaution(run) {
 /** The LLO comparison run, propagated once and kept while it is being shown. */
 let lloRun = null;
 
-/** Where the selected orbit is closest to and furthest from the Moon. */
-function passes3(run) {
-  let near = 0, far = 0, lo = Infinity, hi = 0;
-  for (let i = 0; i < run.xs.length; i += 1) {
-    const d = Math.hypot(run.xs[i] - MOON_X, run.ys[i], run.zs[i]);
-    if (d < lo) { lo = d; near = i; }
-    if (d > hi) { hi = d; far = i; }
+/**
+ * The Gateway-like orbit, drawn as a reference beside something else.
+ *
+ * One propagation, reused: it is the same stored state every time and nothing
+ * about the view changes it, so re-integrating it per frame would be work for
+ * no answer.
+ */
+let gatewayRef = null;
+function gatewayReference() {
+  if (!gatewayRef) {
+    const r = propagate3(GATEWAY_NRHO.state, GATEWAY_NRHO.period,
+      { sample: GATEWAY_NRHO.period / 4000, absTol: 1e-13, relTol: 1e-13 });
+    gatewayRef = { ...r, n: r.xs.length };
   }
-  return { near: run.ts[near], far: run.ts[far], lowKm: lo * DU_KM, highKm: hi * DU_KM };
+  return gatewayRef;
+}
+
+/**
+ * Which of the two orbits the comparison is about.
+ *
+ * A checkbox could not carry this. The honest picture -- both orbits, one scale
+ * -- is unwatchable: a 100 km lunar orbit is 3474 km across against the NRHO's
+ * 141 000 km, so it draws as a two-pixel dot. That is TRUE and it teaches nothing.
+ * Rather than shrink one or inflate the other, each gets a view where it is
+ * legible, and `both` shows the wide orbit whole with a magnified bubble over the
+ * Moon. Nothing is rescaled; the same arrays are drawn twice at two scales, and
+ * the magnification is printed on the bubble.
+ */
+let cmpMode = 'nrho';          // 'nrho' | 'llo' | 'both'
+const INSET_R = 92;            // radius of the magnified bubble, in CSS pixels
+// Wide enough to hold the low orbit with room round it. Fixed rather than fitted
+// so the magnification factor printed on the bubble stays a stable number.
+const INSET_SPAN = 0.022;      // DU across the bubble -- about 8 500 km
+
+/**
+ * Go to one end of the orbit and frame it.
+ *
+ * The camera matters as much as the clock here. Seeking to perilune on a view
+ * fitted to a 141 000 km orbit puts the spacecraft on top of a three-pixel Moon;
+ * seeking to apolune on a view fitted to the Moon puts it off the screen. So each
+ * event gets a span chosen from the event itself -- the distance to the Moon at
+ * that instant -- rather than a fixed one.
+ */
+function seekPass(which) {
+  if (!run3) return;
+  const pass = extrema3(run3);
+  clock3 = pass[which];
+  playing = false; ui.play.textContent = 'Play';
+  const km = which === 'near' ? pass.lowKm : pass.highKm;
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  // Centred between the Moon and the spacecraft, spanning enough to hold both
+  // with room -- so a near pass shows the Moon as a disc and a far pass shows how
+  // far out it is against the Moon still in frame.
+  const st = state3At(clock3);
+  const centre = st
+    ? [(MOON_X + st.s[0]) / 2, st.s[1] / 2, st.s[2] / 2]
+    : [MOON_X, 0, 0];
+  const span = Math.max(4 * MOON_RADIUS, (km / DU_KM) * 2.6) * (vr.height / usable);
+  scene3d.setView({ ...VIEWS.oblique, span, centre });
+  liftAbovePanel();
+  updatePassRead(which, pass);
+}
+
+/** What the event actually is: how far, when, and where in three components. */
+function updatePassRead(which, pass) {
+  const st = state3At(clock3);
+  if (!st) return;
+  const km = which === 'near' ? pass.lowKm : pass.highKm;
+  const phase = run3 && preset3 && preset3.period ? (clock3 % preset3.period) / preset3.period : 0;
+  ui.artemisRead.textContent =
+    `${which === 'near' ? 'near pass' : 'far pass'}   `
+    + `${altText(km - MOON_RADIUS_KM)}   `
+    + `${(km / 1000).toFixed(1)} thousand km from centre   `
+    + `t ${(clock3 * TU_DAYS).toFixed(2)} d (phase ${(phase * 100).toFixed(0)}%)   `
+    + `at ${st.s[0].toFixed(4)}, ${st.s[1].toFixed(4)}, ${st.s[2].toFixed(4)} DU   `
+    + `${vuToMs(Math.hypot(st.s[3], st.s[4], st.s[5])).toFixed(0)} m/s`;
 }
 
 function updateArtemis(p, run) {
+  const fam = !!(p && p.artemisFamily);
+  const rv = !!(p && p.rendezvous);
   const on = !!(p && (p.artemis || p.capstone));
-  ui.artemis.hidden = !on;
+  ui.artemis.hidden = !(on || fam || rv);
   ui.artemisbar.hidden = !on;
+  ui.rendezvousbar.hidden = !rv;
+  if (fam) { lloRun = null; return updateFamilyContext(p); }
+  if (rv) { lloRun = null; return updateRendezvousContext(p); }
   if (!on) { lloRun = null; return; }
 
   const ref = p.capstone ? NASA_REFERENCE.capstone : NASA_REFERENCE.gateway;
   const m = p.measured;
-  const pass = passes3(run);
+  const pass = extrema3(run);
   // Measured from the run on screen, not read back out of the stored record --
   // the stored figures come from one period and this is three, so if they ever
   // disagreed it would be visible here rather than hidden behind a field name.
-  ui.artemisRead.textContent = `near ${(pass.lowKm - MOON_RADIUS_KM).toFixed(0)} km   `
-    + `far ${(pass.highKm / 1000).toFixed(1)} thousand km   ${(p.period * TU_DAYS).toFixed(2)} d`
-    + (ui.cmpLlo.checked
-      ? `   against ${LOW_LUNAR.measured.periodHours.toFixed(2)} h, `
-        + `${LOW_LUNAR.measured.revsPerGateway.toFixed(0)} revolutions to its one`
-      : '');
+  const L = LOW_LUNAR.measured;
+  ui.artemisRead.textContent = cmpMode === 'nrho'
+    ? `near ${(pass.lowKm - MOON_RADIUS_KM).toFixed(0)} km   `
+      + `far ${(pass.highKm / 1000).toFixed(1)} thousand km   ${(p.period * TU_DAYS).toFixed(2)} d`
+    // The scale contrast, in the two units a reader can hold at once: how long
+    // each goes round in, and how many times one does it while the other does it
+    // once. Both measured -- the ratio is the periods divided, not a round number.
+    : `LLO ${L.periodHours.toFixed(2)} h/orbit   `
+      + `NRHO ${(p.period * TU_DAYS).toFixed(2)} d/orbit   `
+      + `${L.revsPerGateway.toFixed(0)} LLO revolutions to one NRHO`;
 
   ui.artemis.innerHTML = '';
   const line = (label, text, sim) => {
@@ -563,13 +674,175 @@ function updateArtemis(p, run) {
     + 'not an operational ephemeris. This member was selected from the continued halo '
     + 'family by period — it was not shaped to match the reference figures.'));
 
-  if (ui.cmpLlo.checked) {
+  if (cmpMode !== 'nrho') {
     // Same integrator, same equations, same frame -- so the comparison is one
-    // model throughout and needs no "illustration only" label.
+    // model throughout and needs no "illustration only" label. Sampled finely:
+    // at 79 revolutions per NRHO period a coarse sample draws a spirograph
+    // instead of an orbit.
     const r = propagate3(LOW_LUNAR.state, p.duration,
-      { sample: p.duration / 12000, absTol: 1e-13, relTol: 1e-13 });
+      { sample: p.duration / 24000, absTol: 1e-13, relTol: 1e-13 });
     lloRun = { ...r, n: r.xs.length };
   } else lloRun = null;
+}
+
+/**
+ * The Artemis family view's own context line.
+ *
+ * It says where on the family the slider is, and -- when it reaches the member
+ * nearest the Gateway-like orbit -- that it has, along with how near "nearest"
+ * is. The two are 30 samples of 3087 apart, so calling them the same orbit would
+ * be a small lie for no gain.
+ */
+function updateFamilyContext(p) {
+  const g = GATEWAY_ON_FAMILY;
+  ui.artemis.innerHTML = '';
+  const line = (label, text, sim) => {
+    const b = document.createElement('b');
+    b.textContent = label + ' ';
+    const span = document.createElement('span');
+    if (sim) span.className = 'sim';
+    span.textContent = text;
+    ui.artemis.appendChild(b); ui.artemis.appendChild(span);
+    ui.artemis.appendChild(document.createTextNode('\n'));
+  };
+  line('this member', `${(p.period * TU_DAYS).toFixed(3)} d   `
+    + `near pass ${altText(p.periluneKm - MOON_RADIUS_KM)}   `
+    + `|z| ${p.zMaxKm.toLocaleString('en-US')} km   slenderness ${p.slenderness.toFixed(2)}`, true);
+  line('Gateway-like member', `${GATEWAY_NRHO.measured.periodDays.toFixed(3)} d   `
+    + `near pass ${GATEWAY_NRHO.measured.nearKm.toFixed(0)} km   `
+    + `drawn in amber, member ${g.index + 1} of ${g.of} is the closest the slider comes`, true);
+  ui.artemis.appendChild(document.createTextNode(p.atGateway
+    ? 'This is that member — it differs from the Gateway-like orbit by '
+      + `${g.periodGapDays.toFixed(3)} d and ${g.periluneGapKm.toFixed(0)} km, because the slider samples `
+      + `${g.of} of the family's 3 087 members. The two are neighbours on one continuation, not the same orbit.`
+    : 'Earth–Moon CR3BP educational model. Every member was corrected from the one '
+      + 'before it; none was drawn, adjusted or chosen to resemble a diagram.'));
+  ui.famRead.classList.toggle('hit', !!p.atGateway);
+}
+
+// --- the Orion approach ------------------------------------------------------
+//
+// ARTEMIS_DEMO_SPEC.md E: a CONCEPT demonstration, not a reconstruction of an
+// Artemis IV operational trajectory, and the point it exists to make is that the
+// destination is a state in motion. Gateway keeps going round its NRHO while
+// Orion crosses; the arrival condition compares the two states at the same
+// future instant, never Orion's position against where Gateway is now.
+
+/** The epoch the approach departs at, on Gateway's clock. */
+let rvEpoch = 0;
+/** The live re-solve, when the reader has asked for one. */
+let rvLive = null;
+
+function updateRendezvousContext(p) {
+  const sol = rvLive || p.solution;
+  ui.artemis.innerHTML = '';
+  const line = (label, text, sim) => {
+    const b = document.createElement('b');
+    b.textContent = label + ' ';
+    const span = document.createElement('span');
+    if (sim) span.className = 'sim';
+    span.textContent = text;
+    ui.artemis.appendChild(b); ui.artemis.appendChild(span);
+    ui.artemis.appendChild(document.createTextNode('\n'));
+  };
+  // The four numbers the spec asks for, plus the word they earn. Relative speed
+  // is quoted BEFORE the arrival burn, because that is the number that says
+  // whether the approach is a rendezvous or a fly-past: after the burn it is
+  // zero by construction and would say nothing.
+  line(sol.kind === 'rendezvous' ? 'rendezvous — position and velocity matched'
+                                 : 'intercept — position only',
+    `relative position ${(sol.posErr * DU_KM * 1000).toFixed(1)} m   `
+    + `relative speed at arrival ${vuToMs(sol.relSpeedBefore).toFixed(1)} m/s, `
+    + `${vuToMs(sol.relSpeedAfter).toExponential(1)} m/s after the arrival burn`, true);
+  line('the two burns', `${vuToMs(sol.dv1Mag).toFixed(1)} m/s departure + `
+    + `${vuToMs(sol.dv2Mag).toFixed(1)} m/s arrival = ${vuToMs(sol.dvTotal).toFixed(1)} m/s   `
+    + `over ${(sol.timeOfFlight * TU_DAYS).toFixed(2)} days   status ${sol.status}`, true);
+  ui.artemis.appendChild(document.createTextNode(
+    'Earth–Moon CR3BP educational concept, not an Artemis IV trajectory. Gateway is '
+    + 'targeted where it WILL be at arrival, not where it is at departure — that is '
+    + 'what makes this a moving-target problem rather than aiming at a marker.'));
+
+  ui.rvRead.textContent = `${sol.kind}   `
+    + `${vuToMs(sol.dvTotal).toFixed(0)} m/s   ${(sol.timeOfFlight * TU_DAYS).toFixed(2)} d   `
+    + `miss ${(sol.posErr * DU_KM * 1000).toFixed(1)} m`;
+}
+
+/**
+ * Show an approach: the arc Orion actually flies, with Gateway still moving.
+ *
+ * `run3` becomes the POST-BURN arc -- the departure state with the solved
+ * impulse added, propagated for the flight time and no longer. Playing past the
+ * arrival would show Orion sailing through Gateway, which is exactly what the
+ * arrival burn exists to prevent, so the run stops when the approach does.
+ */
+function loadRendezvous(sol) {
+  const d = ORION_DEPARTURE.state;
+  const departed = [d[0], d[1], d[2], d[3] + sol.dv1[0], d[4] + sol.dv1[1], d[5] + sol.dv1[2]];
+  const T = sol.timeOfFlight;
+  const r = propagate3(departed, T, { sample: T / 6000, absTol: 1e-13, relTol: 1e-13 });
+  run3 = { ...r, n: r.xs.length };
+  run3.closest = updateCaution(r);
+  clock3 = 0;
+  playing = true; ui.play.textContent = 'Pause';
+  updateRendezvousContext(preset3);
+  fitApproach();
+}
+
+/** Frame the whole approach: Earth end, Moon end, and Gateway's orbit. */
+function fitApproach() {
+  if (!run3) return;
+  const g = gatewayReference();
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const src of [run3, g]) {
+    for (const [a, col] of [[0, src.xs], [1, src.ys], [2, src.zs]]) {
+      for (const v of col) { if (v < lo[a]) lo[a] = v; if (v > hi[a]) hi[a] = v; }
+    }
+  }
+  const centre = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  scene3d.setView({ ...VIEWS.oblique, span: extent * 1.35 * (vr.height / usable), centre });
+  liftAbovePanel();
+}
+
+/** And frame the moment it is about: the two states, side by side. */
+function fitArrival() {
+  if (!run3) return;
+  const sol = rvLive || (preset3 && preset3.solution);
+  if (!sol) return;
+  const goal = targetAt(GATEWAY_NRHO, rvEpoch + sol.timeOfFlight);
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  // Wide enough to hold the arrival point and the Moon, so "it arrived AT
+  // Gateway" is checkable against something rather than a dot in empty space.
+  const d = Math.hypot(goal[0] - MOON_X, goal[1], goal[2]);
+  scene3d.setView({ ...VIEWS.oblique, span: Math.max(4 * MOON_RADIUS, d * 2.8) * (vr.height / usable),
+                    centre: [(goal[0] + MOON_X) / 2, goal[1] / 2, goal[2] / 2] });
+  liftAbovePanel();
+}
+
+/** Frame the low lunar orbit: the Moon, filling the view. */
+function fitLlo() {
+  const r = LOW_LUNAR.state[0] - MOON_X;             // the orbit's own radius
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
+  scene3d.setView({ ...VIEWS.oblique, span: r * 5.2 * (vr.height / usable),
+                    centre: [MOON_X, 0, 0] });
+  liftAbovePanel();
+}
+
+function setCmpMode(mode) {
+  cmpMode = mode;
+  for (const [b, m] of [[ui.cmpNrho, 'nrho'], [ui.cmpLlo, 'llo'], [ui.cmpBoth, 'both']]) {
+    b.setAttribute('aria-pressed', String(m === mode));
+  }
+  if (!preset3 || !run3) return;
+  updateArtemis(preset3, run3);
+  if (mode === 'llo') fitLlo(); else fitSpatial();
 }
 
 function load3(p) {
@@ -577,7 +850,7 @@ function load3(p) {
     // an entry from the menu: start at whatever the slider is showing
     ui.familybar.hidden = false;
     ui.famSlider.max = String(FAMILY3D[p.family].length - 1);
-    load3(familyMember(p.family, Number(ui.famSlider.value)));
+    load3(familyMember(p.family, Number(ui.famSlider.value), !!p.artemisFamily));
     return;
   }
   ui.familybar.hidden = !(p && p.family);
@@ -585,6 +858,16 @@ function load3(p) {
   ui.title.textContent = p.name;
   ui.blurb.textContent = p.blurb;
   ui.note.textContent = 'integrating…';
+  if (p.rendezvous) {
+    // Not a periodic orbit and not a free launch: an arc with a start, an end
+    // and a reason. It gets its own loader because "three periods" means nothing
+    // here and the run must stop at arrival.
+    rvEpoch = p.epoch; rvLive = null;
+    ui.artemis.hidden = false; ui.artemisbar.hidden = true; ui.rendezvousbar.hidden = false;
+    loadRendezvous(p.solution);
+    ui.note.textContent = p.expect ? 'expect: ' + p.expect : '';
+    return;
+  }
   // Three periods, so the orbit is seen to CLOSE rather than merely to be drawn
   // once. A halo that did not repeat would be obvious here.
   const r = propagate3(p.state, p.duration, { sample: p.duration / 6000, absTol: 1e-13, relTol: 1e-13 });
@@ -606,22 +889,50 @@ function load3(p) {
   fitSpatial();
 }
 
-ui.cmpLlo.addEventListener('change', () => { if (preset3) updateArtemis(preset3, run3); });
-
 // One tap to each end of the orbit. ARTEMIS_DEMO_SPEC.md F: seek the extrema
 // MEASURED from the trajectory on screen, never a predetermined timestamp --
 // which also means these keep working when the family member changes.
 for (const [btn, which] of [[ui.seekNear, 'near'], [ui.seekFar, 'far']]) {
-  btn.addEventListener('click', () => {
-    if (!run3) return;
-    clock3 = passes3(run3)[which];
-    playing = false; ui.play.textContent = 'Play';
-  });
+  btn.addEventListener('click', () => seekPass(which));
 }
+for (const [btn, mode] of [[ui.cmpNrho, 'nrho'], [ui.cmpLlo, 'llo'], [ui.cmpBoth, 'both']]) {
+  btn.addEventListener('click', () => setCmpMode(mode));
+}
+
+// Re-derive the approach on screen, live, rather than trusting the stored one.
+// The scan is about two seconds -- fourteen flight times, each a damped Newton
+// on a finite-difference Jacobian, each residual a full propagation -- so it goes
+// behind a button and says so, instead of freezing the page on load.
+ui.planRv.addEventListener('click', () => {
+  if (!preset3 || !preset3.rendezvous) return;
+  ui.planRv.disabled = true;
+  ui.rvRead.textContent = 'solving — fourteen flight times…';
+  setTimeout(() => {
+    const plan = planRendezvous3(ORION_DEPARTURE.state, rvEpoch, GATEWAY_NRHO);
+    ui.planRv.disabled = false;
+    if (!plan.best) {
+      ui.rvRead.textContent = 'no flight time in the scan reached it'
+        + (plan.blocked.length ? `  (${plan.blocked.map(([w, n]) => `${n}x ${w}`).join(', ')})` : '');
+      return;
+    }
+    rvLive = plan.best;
+    loadRendezvous(plan.best);
+    ui.note.textContent = `expect: ${plan.all.length} of ${plan.tried} flight times converged; `
+      + `cheapest ${vuToMs(plan.best.dvTotal).toFixed(0)} m/s`;
+  }, 0);
+});
+
+// The arrival is the moment the demo is about, so it gets its own seek.
+ui.rvNear.addEventListener('click', () => {
+  if (!run3 || !preset3 || !preset3.rendezvous) return;
+  clock3 = run3.ts[run3.n - 1];
+  playing = false; ui.play.textContent = 'Play';
+  fitArrival();
+});
 
 ui.famSlider.addEventListener('input', () => {
   if (!preset3 || !preset3.family) return;
-  load3(familyMember(preset3.family, Number(ui.famSlider.value)));
+  load3(familyMember(preset3.family, Number(ui.famSlider.value), !!preset3.artemisFamily));
 });
 
 /** Frame the orbit from its own extent, so a bigger halo is not cropped. */
@@ -656,6 +967,19 @@ function fitSpatial() {
   // ...and then slide the scene up into the band that is actually visible.
   // Scaling the span alone makes the orbit small enough to fit but still centres
   // it on the canvas, which is half behind the panel.
+  liftAbovePanel();
+}
+
+/**
+ * Slide the scene up into the band the controls panel does not cover.
+ *
+ * Every 3D fit needs this and each one used to do it itself, which is how the
+ * comparison views got written without it and framed the Moon behind the panel.
+ */
+function liftAbovePanel() {
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const usable = Math.max(120, pr.top - vr.top - 16);
   scene3d.resize();
   scene3d.panByPixels(0, -(vr.height / 2 - usable / 2));
 }
@@ -741,6 +1065,55 @@ function updateEditor3Readout() {
   }
 }
 
+/**
+ * The second curve on screen, whatever it is this view.
+ *
+ * There is only ever one, and it is always amber and dashed against the
+ * trajectory's solid blue, so "the other one" means the same thing in every
+ * Artemis view: the low lunar orbit in the comparison, the Gateway-like orbit
+ * beside the family and beside the approach.
+ */
+function compareLayer() {
+  if (lloRun) return { run: lloRun, label: '100 km lunar orbit', head: lloAt(clock3) };
+  if (preset3 && (preset3.artemisFamily || preset3.rendezvous)) {
+    const g = gatewayReference();
+    return { run: g, label: 'Gateway-like NRHO',
+             head: preset3.rendezvous ? targetAt(GATEWAY_NRHO, rvEpoch + clock3) : null };
+  }
+  return null;
+}
+
+/**
+ * The magnified bubble, when there is something in it worth magnifying.
+ *
+ * Only in `both`: `nrho` has no second orbit and `llo` is already framed on the
+ * Moon, so a bubble there would magnify what is already large.
+ */
+function insetView() {
+  if (cmpMode !== 'both' || !lloRun || !run3) return null;
+  const st = state3At(clock3);
+  const times = scene3d.span / INSET_SPAN;
+  // Bottom right of the band the controls do not cover. The first placement was
+  // the top right, which is where the diagnostics panel lives -- the bubble was
+  // drawn correctly and entirely behind it.
+  const pr = ui.panel.getBoundingClientRect();
+  const vr = ui.canvas.getBoundingClientRect();
+  const floor = Math.max(2 * INSET_R + 40, pr.top - vr.top - 16);
+  return {
+    centre: [MOON_X, 0, 0], span: INSET_SPAN, radius: INSET_R,
+    at: [scene3d.w - INSET_R - 20, floor - INSET_R - 26],
+    paths: [
+      { run: run3, color: 'rgba(150, 222, 255, 0.55)', width: 1.4 },
+      { run: lloRun, color: 'rgba(255, 196, 92, 0.95)', width: 1.6, dash: [5, 3] },
+    ],
+    marks: [
+      st ? { at: st.s, color: 'rgba(190, 236, 255, 0.95)', r: 3 } : null,
+      { at: lloAt(clock3), color: 'rgba(255, 214, 130, 0.95)', r: 3 },
+    ].filter(Boolean),
+    label: `×${times < 10 ? times.toFixed(1) : times.toFixed(0)} on the Moon`,
+  };
+}
+
 /** Where the comparison orbit is at the same instant, by the same interpolation. */
 function lloAt(t) {
   if (!lloRun) return null;
@@ -767,7 +1140,8 @@ function render3() {
                           n: Math.max(2, st.index + 1) } : null,
     whole: run3 ? { xs: run3.xs, ys: run3.ys, zs: run3.zs, ts: run3.ts, n: run3.n } : null,
     head: st ? st.s : null,
-    compare: lloRun ? { run: lloRun, label: '100 km lunar orbit', head: lloAt(clock3) } : null,
+    compare: compareLayer(),
+    inset: insetView(),
     showPlane: ui.plane.checked, showTrack: ui.track.checked,
     sprite: spriteHandle(),
     edit: ed3.active
@@ -799,12 +1173,22 @@ function render3() {
     // the second would hide what is on screen. The planar readout names both for
     // the same reason.
     `drift    ${drift.toExponential(2)} shown   sim ${run3.relDrift.toExponential(2)}`,
-    `solver   ${run3.accepted} steps, ${run3.rejected} rejected${preset3.quasi ? '' : `   closes ${preset3.closure.toExponential(1)}`}`,
+    // An approach is not a periodic orbit and has no closure to quote: it starts
+    // somewhere, ends somewhere else, and the number that says whether it worked
+    // is the arrival miss. Asking it for `closure` is what threw here every frame.
+    `solver   ${run3.accepted} steps, ${run3.rejected} rejected`
+      + `${preset3.quasi || preset3.rendezvous ? '' : `   closes ${preset3.closure.toExponential(1)}`}`,
     `frame    ${FRAME_LABEL[frame] || frame}`,
     // A quasi-periodic trajectory has no period and no closure residual, so it
     // is given neither. Quoting a "period" for the in-plane frequency would be
     // exactly the mislabelling THREE_D_SPEC.md 9 forbids.
-    preset3.quasi
+    preset3.rendezvous
+      ? (() => {
+          const sol = rvLive || preset3.solution;
+          return `status   ${sol.kind}, miss ${(sol.posErr * DU_KM * 1000).toFixed(1)} m, `
+            + `arrival Δv ${vuToMs(sol.dv2Mag).toFixed(0)} m/s`;
+        })()
+      : preset3.quasi
       ? (preset3.id === 'free3'
           // A run that ended early was NOT propagated for the requested span, so
           // it is given the time it actually ended at. "impact: Moon, over 40 TU"
@@ -828,7 +1212,7 @@ for (const [label, list] of [['Periodic — halo', PRESETS3D],
   // Separately grouped and named, so nobody has to guess which entries are
   // orbit families and which are mission context. ARTEMIS_DEMO_SPEC.md asks
   // for exactly that, and for the word Artemis to stay visible.
-  ['Artemis demos — mission context', ARTEMIS3D]]) {
+  ['Artemis demos — mission context', [...ARTEMIS3D, ARTEMIS_FAMILY]]]) {
   // Grouped, and labelled by what they ARE. A Lissajous sitting in the same flat
   // list as a halo would be read as another orbit; it is not an orbit at all.
   const g = document.createElement('optgroup');
@@ -943,7 +1327,8 @@ function setSpatial(on) {
   ui.spatialbar.hidden = !on;
   if (!on) {
     ui.familybar.hidden = true; ui.caution.hidden = true;
-    ui.artemis.hidden = true; ui.artemisbar.hidden = true; lloRun = null;
+    ui.artemis.hidden = true; ui.artemisbar.hidden = true;
+    ui.rendezvousbar.hidden = true; lloRun = null; rvLive = null;
     ed3.end(); setEditing3(false);
   }
   ui.spatial.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -965,7 +1350,8 @@ function setSpatial(on) {
 ui.spatial.addEventListener('click', () => setSpatial(!spatial));
 /** The Orbit menu holds two kinds of thing: single orbits, and whole families. */
 function orbit3(id) {
-  return byId3d(id) || FAMILY_ENTRIES.find((f) => f.id === id) || null;
+  return byId3d(id) || FAMILY_ENTRIES.find((f) => f.id === id)
+    || (id === ARTEMIS_FAMILY.id ? ARTEMIS_FAMILY : null);
 }
 
 ui.preset3d.addEventListener('change', () => {
@@ -1016,8 +1402,7 @@ function fitEditor3() {
   const vr = ui.canvas.getBoundingClientRect();
   const usable = Math.max(120, pr.top - vr.top - 16);
   scene3d.setView({ span: extent * 1.8 * (vr.height / usable), centre });
-  scene3d.resize();
-  scene3d.panByPixels(0, -(vr.height / 2 - usable / 2));
+  liftAbovePanel();
 }
 
 function beginFree3() {
