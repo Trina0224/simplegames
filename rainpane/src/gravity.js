@@ -114,7 +114,17 @@ export class GravitySensor {
     const a = this.angle();
     const portraitNow = window.innerHeight >= window.innerWidth;
     const portraitAngle = portraitNow ? a % 180 : (a + 90) % 180;
-    return (((portraitAngle - a) % 360) + 360) % 360;
+    // The half-turn is empirical, and it is honest to say so. Portrait is
+    // confirmed correct on device with no half-turn; landscape came back
+    // exactly upside-down, on both landscape orientations. Two different
+    // derivations of the angle relation each fit one round of device reports
+    // and contradict the other, which means the reported values are not what
+    // either derivation assumes. Rather than guess a third time, this encodes
+    // what the device actually does, and debug() now reports every input the
+    // question depends on so it can be settled by reading rather than by
+    // theory.
+    const half = portraitNow ? 0 : 180;
+    return (((portraitAngle - a + half) % 360) + 360) % 360;
   }
 
   vector() {
@@ -133,11 +143,18 @@ export class GravitySensor {
   }
 
   debug() {
+    const so = window.screen && window.screen.orientation;
     return {
       source: 'DeviceMotionEvent / 89b765f mapping + display rotation',
       enabled: this.enabled,
       angle: this.angle(),
       rotation: this.rotation(),
+      // Everything the rotation is derived from, so a wrong answer can be read
+      // off the device instead of reasoned about.
+      reported: so && Number.isFinite(so.angle) ? so.angle : null,
+      kind: so && so.type ? so.type : null,
+      legacy: Number.isFinite(window.orientation) ? window.orientation : null,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
       raw: { ...this.raw },
       filtered: { x: this.gx, y: this.gy, z: this.gz },
       vector: this.vector(),

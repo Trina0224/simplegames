@@ -329,7 +329,9 @@ Optional later:
 Two findings that are not tuning and should not be undone:
 
 - **Voice at most ~40 taps a second.** Beyond that separate impacts fuse anyway, and what a higher cap produces is a machine-gun of transients that was reported as "a lot of little explosions". Energy past that ceiling belongs to the texture.
-- **The impact is a resonance, not a click.** A bandpass Q of 3.4 is a click with a slight colour; mounted glass rings, so Q is 11 with a second inharmonic mode. And the contact must be low-passed, not high-passed: a water drop is soft and its contact lasts hundreds of microseconds, so it cannot radiate strongly above a few kHz. An earlier highpass at 4.2 kHz carrying more level than the ring was both the harshest choice available and physically backwards.
+- **The impact is a splash with a pane under it, not a struck plate.** Two device reports bracket this. A bandpass Q of 3.4 at 2.5 kHz came back as "little explosions"; raising Q to 11 came back as "like castanets" — it fixed the harshness by turning the click into a note. Both modelled a hard, point-like, elastic strike, which is a fingernail, not a raindrop. Most of what you hear is the splash: broadband, low, a few milliseconds. Hence 1150 Hz at Q 2.2, decays of 6-22 ms, and the splash carrying the tap rather than garnishing it. Do not "improve" this by sharpening the resonance.
+- **The contact must be low-passed, not high-passed.** A water drop is soft and its contact lasts hundreds of microseconds, so it cannot radiate strongly above a few kHz. An earlier highpass at 4.2 kHz carrying more level than the ring was both the harshest choice available and physically backwards.
+- **Choose which drops to voice by the square root of energy, not by energy.** Weighting by energy outright makes nearly every voiced tap a big drop, so they all arrive at one prominence — a percussion instrument, not rain — and it double-counts, since loudness is already set by energy in `tapParams`.
 
 Crest factor is the measurable proxy: 12.8 at heavy rain before, 5.4 after.
 

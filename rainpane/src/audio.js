@@ -32,12 +32,31 @@ const ACOUSTIC_AREA_MM2 = 1.2e6;
 // own modes and stops most of the rain field outside. The result is a dull
 // thud and nothing else. Single 4 mm glass in a poorly sealed frame lets the
 // exterior through and rings.
-const PLATE_HZ = 2500;              // where a light tap on this pane sits
-// How resonant that answer is. This was 3.4, which is not a resonance at all —
-// it is a click with a slight colour, and a hundred clicks a second is what
-// "like a lot of little explosions" sounds like. Mounted glass really does ring:
-// its modes are lightly damped by the frame, not smeared into broadband noise.
-const PLATE_Q = 11;
+// Where a drop on this pane sits. Not where a *fingernail* on this pane sits,
+// which is what 2500 Hz at a Q of 11 describes — that is a hard, point-like,
+// elastic strike, and it came back from the device as "like castanets, honestly
+// nowhere near". It was an over-correction: at a Q of 3.4 the taps had been
+// reported as little explosions, and a sharper resonance fixes the harshness by
+// turning the click into a note, which is not the same thing as fixing it.
+//
+// A raindrop is neither. It is soft, spread over a millimetre or two, and most
+// of what you hear is not the plate: it is the splash — the lamella thrown
+// outward, the film slapping back. Broadband, low, over in a few milliseconds.
+// The pane's resonance is a colour on a noise burst, not a note.
+const PLATE_HZ = 1150;
+const PLATE_Q = 2.2;                // a colour, not a pitch
+
+// How the three parts of a tap are balanced, in units where 1.0 is the ring's
+// own gain. The splash leads; the pane answers under it.
+const RING_MIX = 0.42;
+const SECOND_MIX = 0.11;
+const SPLASH_MIX = 1.20;
+// ...and the splash runs through a LOWPASS while the ring runs through a narrow
+// bandpass, so the same gain is not the same loudness: measured on this noise,
+// the lowpass passes 2.16x what the bandpass does (rp-filter.mjs). Without this
+// trim, mixing the splash up to where it belongs also made every tap two and a
+// half times louder, which is not what "rebalance" is supposed to mean.
+const SPLASH_TRIM = 0.46;
 const OUTSIDE_HZ = 4200;            // one thin pane rolls the outside off gently
 
 const BIN_S = 0.02;                 // impacts are gathered into 20 ms windows
@@ -383,12 +402,21 @@ export class AudioEngine {
     if (n <= 0) return;
     this.owed -= n;
 
+    // Weighted by the SQUARE ROOT of energy, not by energy.
+    //
+    // Weighting by energy outright makes almost every voiced tap a big drop, so
+    // they all arrive at much the same prominence — and a stream of impacts at
+    // one level, however irregularly spaced, is a percussion instrument rather
+    // than rain. It also double-counts: how loud a drop sounds is already
+    // decided by its energy in tapParams, so letting energy pick the drop too
+    // applies it twice. Real rain is mostly faint impacts with the occasional
+    // prominent one, which is what a gentler weighting gives.
     let total = 0;
-    for (const ev of this.recent) total += ev.energy;
+    for (const ev of this.recent) total += Math.sqrt(ev.energy);
     for (let i = 0; i < n; i += 1) {
       let pick = Math.random() * total;
       let ev = this.recent[this.recent.length - 1];
-      for (const cand of this.recent) { pick -= cand.energy; if (pick <= 0) { ev = cand; break; } }
+      for (const cand of this.recent) { pick -= Math.sqrt(cand.energy); if (pick <= 0) { ev = cand; break; } }
       // spread across the bin: they did not arrive at the same instant, and
       // stacked onsets read as one loud click rather than as several drops
       this._tap(t + (i + Math.random()) * (dt / most), ev, Math.random());
@@ -436,7 +464,10 @@ export class AudioEngine {
 
     // A bigger drop reaches lower into the pane's modes; the jitter is there so
     // that a stream of drops is not a scale.
-    const jitter = 0.82 + Math.random() * 0.36;
+    // Widened from +/-18% to +/-35%. Rain is not a sequence of the same event:
+    // where a drop lands on a pane decides which of its modes answer, and a
+    // narrow spread makes a stream of taps read as one repeated sound.
+    const jitter = 0.65 + Math.random() * 0.7;
     // Dry glass rings near the plate's own frequency. A film mass-loads and
     // damps the contact, so the answer drops well down and loses its edge.
     const freq = PLATE_HZ * jitter * (1 - 0.30 * Math.min(1, e / 3)) * (1 - 0.62 * wet);
@@ -446,34 +477,40 @@ export class AudioEngine {
     // so without this, making a tap duller quietly makes it louder. Normalising
     // it means `loud` is the only thing setting loudness, and darkness is only
     // darkness. The exponents are measured, not derived (rp-filter.mjs, on this
-    // exact noise through this exact filter): level goes as f^-0.22 and Q^-0.42.
+    // exact noise through this exact filter): level goes as f^-0.03 and Q^-0.39.
     // An idealised bandpass on white noise gives -0.5 and -0.5, and correcting
     // by that overshoots the frequency term badly. Re-measure if _build's
-    // buffer changes — or if PLATE_Q moves, which it has: re-measured at Q 11
-    // they are -0.22 and -0.42.
-    const shape = Math.pow(freq / PLATE_HZ, 0.22) * Math.pow(q / PLATE_Q, 0.42);
+    // buffer changes — or if PLATE_Q or PLATE_HZ move, which they have.
+    // Re-measured at 1150 Hz and Q 2.2 they are -0.03 and -0.39: at a low centre
+    // frequency the band sits under the noise's own corner, so the frequency
+    // term all but vanishes and only the width still matters.
+    const shape = Math.pow(freq / PLATE_HZ, 0.03) * Math.pow(q / PLATE_Q, 0.39);
 
     return {
       wet,
-      peak: loud * shape,
+      peak: loud * shape * RING_MIX,
       freq,
       q,
-      decay: (0.020 + 0.055 * Math.min(1, e / 2)) * (1 - 0.45 * wet),
-      // The second mode. A plate's modes are not harmonics, so this is put at an
-      // irrational-ish ratio; without it a single band reads as a beep rather
-      // than as something struck.
-      second: freq * 2.42,
-      secondPeak: loud * shape * 0.34 * (1 - 0.6 * wet),
+      // Milliseconds, not tens of them. Sustain is the strongest single cue
+      // that something was *struck* rather than *splashed*.
+      decay: (0.006 + 0.016 * Math.min(1, e / 2)) * (1 - 0.45 * wet),
+      // A second, higher band, kept deliberately small. At this Q the bands are
+      // broad enough to overlap; its job is to stop the first reading as a
+      // pitch, not to add a partial of its own.
+      second: freq * 2.1,
+      secondPeak: loud * shape * SECOND_MIX * (1 - 0.6 * wet),
 
-      // The contact itself. This used to be a HIGHPASS at 4.2 kHz carrying more
-      // level than the ring, which is both the harshest possible choice and
-      // physically backwards: a water drop is soft and its contact lasts
-      // hundreds of microseconds, so it cannot put much energy above a few kHz
-      // at all. It is a lowpassed whisper under the onset now — enough that the
-      // tap is struck rather than rung, and no more.
-      contactPeak: loud * shape * 0.22 * Math.pow(1 - wet, 1.6),
-      contactHz: 2600 * (1 - 0.3 * wet),
-      contactDecay: 0.003 + 0.004 * (1 - wet),
+      // The splash, and it carries the tap rather than garnishing it. This is
+      // what makes a drop sound like water: broadband, soft-edged, gone in under
+      // ten milliseconds. It was a whisper at 0.22 beneath a ringing plate,
+      // which is backwards — the plate is the garnish.
+      //
+      // It gets LOUDER on wet glass, the one term here that moves that way: a
+      // drop landing in standing water makes more splash and less pane. That is
+      // why wet glass should read as duller and *thicker*, not merely quieter.
+      contactPeak: loud * shape * SPLASH_MIX * SPLASH_TRIM * (0.85 + 0.5 * wet),
+      contactHz: 1900 * (1 - 0.35 * wet),
+      contactDecay: 0.004 + 0.005 * (1 - wet),
     };
   }
 
