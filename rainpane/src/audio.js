@@ -33,14 +33,21 @@ const ACOUSTIC_AREA_MM2 = 1.2e6;
 // thud and nothing else. Single 4 mm glass in a poorly sealed frame lets the
 // exterior through and rings.
 const PLATE_HZ = 2500;              // where a light tap on this pane sits
-const PLATE_Q = 3.4;                // mounted glass is damped by its frame
+// How resonant that answer is. This was 3.4, which is not a resonance at all —
+// it is a click with a slight colour, and a hundred clicks a second is what
+// "like a lot of little explosions" sounds like. Mounted glass really does ring:
+// its modes are lightly damped by the frame, not smeared into broadband noise.
+const PLATE_Q = 11;
 const OUTSIDE_HZ = 4200;            // one thin pane rolls the outside off gently
 
 const BIN_S = 0.02;                 // impacts are gathered into 20 ms windows
 const MAX_VOICES = 26;
 // How many taps a listener can actually pick out of the roar. Past this point
 // more drops make the texture denser, not the individual taps more numerous.
-const TAPS_MAX_PER_S = 150;
+// Was 150, which is well past the point where separate impacts fuse: what it
+// gives you is a machine-gun of transients, not rain. Past this the energy goes
+// to the texture, which is what a sheet of rain actually is.
+const TAPS_MAX_PER_S = 40;
 const REF_ENERGY = 7.5e-5;          // a 2 mm drop at terminal velocity, in joules
 // The acoustic energy the window takes in a downpour, MEASURED off the solver
 // rather than calculated, and the difference matters: worked out by hand from
@@ -439,11 +446,12 @@ export class AudioEngine {
     // so without this, making a tap duller quietly makes it louder. Normalising
     // it means `loud` is the only thing setting loudness, and darkness is only
     // darkness. The exponents are measured, not derived (rp-filter.mjs, on this
-    // exact noise through this exact filter): level goes as f^-0.26 and Q^-0.45.
+    // exact noise through this exact filter): level goes as f^-0.22 and Q^-0.42.
     // An idealised bandpass on white noise gives -0.5 and -0.5, and correcting
     // by that overshoots the frequency term badly. Re-measure if _build's
-    // buffer changes.
-    const shape = Math.pow(freq / PLATE_HZ, 0.26) * Math.pow(q / PLATE_Q, 0.45);
+    // buffer changes — or if PLATE_Q moves, which it has: re-measured at Q 11
+    // they are -0.22 and -0.42.
+    const shape = Math.pow(freq / PLATE_HZ, 0.22) * Math.pow(q / PLATE_Q, 0.42);
 
     return {
       wet,
@@ -451,11 +459,21 @@ export class AudioEngine {
       freq,
       q,
       decay: (0.020 + 0.055 * Math.min(1, e / 2)) * (1 - 0.45 * wet),
-      // The contact crack: the first thing a film kills, and most of what makes
-      // dry glass sound like glass.
-      crackPeak: loud * 1.15 * Math.pow(1 - wet, 2.2),
-      crackHz: 4200 * (1 - 0.30 * wet),
-      crackDecay: 0.004 + 0.006 * (1 - wet),
+      // The second mode. A plate's modes are not harmonics, so this is put at an
+      // irrational-ish ratio; without it a single band reads as a beep rather
+      // than as something struck.
+      second: freq * 2.42,
+      secondPeak: loud * shape * 0.34 * (1 - 0.6 * wet),
+
+      // The contact itself. This used to be a HIGHPASS at 4.2 kHz carrying more
+      // level than the ring, which is both the harshest possible choice and
+      // physically backwards: a water drop is soft and its contact lasts
+      // hundreds of microseconds, so it cannot put much energy above a few kHz
+      // at all. It is a lowpassed whisper under the onset now — enough that the
+      // tap is struck rather than rung, and no more.
+      contactPeak: loud * shape * 0.22 * Math.pow(1 - wet, 1.6),
+      contactHz: 2600 * (1 - 0.3 * wet),
+      contactDecay: 0.003 + 0.004 * (1 - wet),
     };
   }
 
@@ -469,46 +487,62 @@ export class AudioEngine {
     src.playbackRate.value = 0.7 + Math.random() * 0.6;
     const offset = Math.random() * (this.noise.duration - 0.3);
 
+    // Two resonances and a contact. The resonances are narrow bands of noise
+    // rather than pure tones: a struck pane rings, but it does not ring like a
+    // tuning fork, and forty pure tones a second would be a music box.
     const ring = ctx.createBiquadFilter();
     ring.type = 'bandpass';
     ring.frequency.value = p.freq;
     ring.Q.value = p.q;
 
-    const crack = ctx.createBiquadFilter();
-    crack.type = 'highpass';
-    crack.frequency.value = p.crackHz;
+    const two = ctx.createBiquadFilter();
+    two.type = 'bandpass';
+    two.frequency.value = p.second;
+    two.Q.value = p.q * 0.8;
+
+    const contact = ctx.createBiquadFilter();
+    contact.type = 'lowpass';
+    contact.frequency.value = p.contactHz;
 
     const gRing = ctx.createGain();
-    const gCrack = ctx.createGain();
+    const gTwo = ctx.createGain();
+    const gContact = ctx.createGain();
     const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     if (pan) pan.pan.value = ((atX === undefined ? ev.x : atX) - 0.5) * 0.5;   // a pane in front of you, not an arcade
 
     src.connect(ring).connect(gRing);
-    src.connect(crack).connect(gCrack);
+    src.connect(two).connect(gTwo);
+    src.connect(contact).connect(gContact);
     const out = pan || this.master;
     gRing.connect(out);
-    gCrack.connect(out);
+    gTwo.connect(out);
+    gContact.connect(out);
     if (pan) pan.connect(this.master);
 
     // Every envelope decays to a fraction of its own peak, never to a fixed
     // floor. An absolute 0.0001 is nothing under a loud tap and most of a quiet
     // one, so quiet taps would never decay at all.
-    const a = 0.0008;
-    gRing.gain.setValueAtTime(0, when);
-    gRing.gain.linearRampToValueAtTime(p.peak, when + a);
-    gRing.gain.exponentialRampToValueAtTime(Math.max(1e-6, p.peak * 0.002), when + a + p.decay);
-    const crackLoud = p.crackPeak + 1e-5;
-    gCrack.gain.setValueAtTime(0, when);
-    gCrack.gain.linearRampToValueAtTime(crackLoud, when + 0.0004);
-    gCrack.gain.exponentialRampToValueAtTime(Math.max(1e-6, crackLoud * 0.002), when + 0.0004 + p.crackDecay);
+    //
+    // The attack was 0.8 ms, which on a broadband source is a click in its own
+    // right. A struck plate takes a few milliseconds to reach full amplitude
+    // and none of the percussiveness is lost by saying so.
+    const a = 0.0025;
+    const env = (g, peak, atk, dec) => {
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(peak + 1e-6, when + atk);
+      g.gain.exponentialRampToValueAtTime(Math.max(1e-7, peak * 0.002), when + atk + dec);
+    };
+    env(gRing, p.peak, a, p.decay);
+    env(gTwo, p.secondPeak, a * 0.6, p.decay * 0.5);
+    env(gContact, p.contactPeak, 0.0006, p.contactDecay);
 
     const stop = when + a + p.decay + 0.03;
     src.start(when, offset, stop - when + 0.02);
     this.busy.push(stop);
     // onended only tears the graph down; it is not what counts the voice.
     src.onended = () => {
-      src.disconnect(); ring.disconnect(); crack.disconnect();
-      gRing.disconnect(); gCrack.disconnect();
+      src.disconnect(); ring.disconnect(); two.disconnect(); contact.disconnect();
+      gRing.disconnect(); gTwo.disconnect(); gContact.disconnect();
       if (pan) pan.disconnect();
     };
   }

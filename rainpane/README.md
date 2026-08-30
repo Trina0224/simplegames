@@ -114,7 +114,7 @@ landed 4305 mm3 = on glass 271 + ran off 4007 + dried 28   (unaccounted 0.000%)
 | rivulet channels | 83 of them, 0.2 to 6.6 mm wide |
 | after heavy rain | 27% of the pane wetted, 54% still carrying residual film |
 | gravity | upright → down, right edge down → right, left edge down → left, flat → still |
-| gravity, display rotated 0/90/180/270° | runs down in all four (before the fix: down, right, **up**, left) |
+| gravity, all four display orientations, both device families | runs down in all eight |
 | cost, downpour | 4.5 ms/step and 1.1 ms/frame on a tablet-sized pane, 1.9 and 0.5 on a phone |
 
 ## Sound
@@ -164,15 +164,50 @@ correspondingly silent. It comes out like this:
 
 | | drops/s on the window | taps voiced | texture |
 |---|---|---|---|
-| Drizzle, 0.5 mm/h | 562 | 11/s | **exactly zero** |
-| Light, 3 mm/h | 1 446 | 92/s | **exactly zero** |
-| Rain, 10 mm/h | 2 289 | 142/s | barely there |
-| Heavy, 35 mm/h | 7 791 | 145/s | present |
-| Downpour, 180 mm/h | 24 054 | 147/s | a sheet |
+| Drizzle, 0.5 mm/h | 562 | 9/s | **exactly zero** |
+| Light, 3 mm/h | 1 446 | 35/s | barely there |
+| Rain, 10 mm/h | 2 289 | 37/s | present |
+| Heavy, 35 mm/h | 7 791 | 37/s | a soft wash |
+| Downpour, 180 mm/h | 24 054 | 36/s | a sheet |
 
 Separately, a `e < 0.02` audibility gate had been silencing *every* drop drizzle
 produces, so light rain had no individual drops in it at all — only the hiss.
 That gate is now three hundred times lower.
+
+### It has to sound like rain, not like static
+
+Reported from the device as "a lot of little explosions, rather unpleasant" —
+and the first thing to check was clipping, which it was not: peaks reached 0.27
+of full scale. What the measurement did show was a crest factor of 8 to 13,
+which is the signature of isolated sharp transients over near-silence. Three
+causes, two of them physically wrong rather than merely ugly:
+
+**A resonance with a Q of 3.4 is not a resonance.** It is a click with a slight
+colour. Mounted glass really does ring — its modes are lightly damped by the
+frame, not smeared into broadband noise. Q is 11 now, and there is a second mode
+at an inharmonic ratio so that a struck pane does not read as a beep.
+
+**The contact was a highpass at 4.2 kHz carrying more level than the ring.** That
+is both the harshest possible choice and backwards: a water drop is soft and its
+contact lasts hundreds of microseconds, so it cannot put much energy that high at
+all. It is a lowpassed whisper under the onset now.
+
+**Forty taps a second, not a hundred and fifty.** 150 is well past the density at
+which separate impacts fuse, so what it produced was a machine-gun of transients
+rather than rain. Past 40 the energy goes to the texture, which is what a sheet
+of rain is.
+
+The attack also went from 0.8 ms to 2.5 ms; on a broadband source 0.8 ms is a
+click in its own right, and nothing percussive is lost by saying a struck plate
+takes a few milliseconds to reach full amplitude.
+
+| | before | after |
+|---|---|---|
+| crest factor, heavy rain | 12.8 | 5.4 |
+| crest factor, downpour | 5.9 | 4.6 |
+| a dry tap's brightness | 6 899 Hz | 2 860 Hz |
+| voices at a downpour | 26 of 26 | 7 of 26 |
+| cost at a downpour | 0.22 ms/frame | 0.11 ms/frame |
 
 ### Four more that were structural, not tuning
 
@@ -207,19 +242,20 @@ being measured — twice.
 
 | a 2 mm drop landing on | level | brightness |
 |---|---|---|
-| dry glass | 0.00182 | 6 899 Hz |
-| damp glass, no film | 31% quieter | 25% darker |
-| a 0.25 mm film | 40% quieter | 44% darker |
-| a 0.6 mm film | 68% quieter | 75% darker |
+| dry glass | 0.00107 | 2 860 Hz |
+| damp glass, no film | 24% quieter | 6% darker |
+| a 0.25 mm film | 36% quieter | 16% darker |
+| a 0.6 mm film | 64% quieter | 40% darker |
 
 | | |
 |---|---|
 | before the first tap | no `AudioContext` is created at all |
 | rain stopped | falls to exactly zero, within a second of a downpour ending |
 | loudness against impact energy, ×0.01 → ×16 | 0.06, 0.32, 1.00, 2.78, 3.08 — tracking `e^0.55` |
-| a downpour | 113 drops/s on the visible patch, 147/s voiced, ~46 000/s folded into the texture |
-| voices at a downpour | 26 of a budget of 26 |
-| cost | 0.22 ms/frame at a downpour, against 5.1 ms for the water |
+| a downpour | 112 drops/s on the visible patch, 36/s voiced, ~39 000/s folded into the texture |
+| voices at a downpour | 7 of a budget of 26 |
+| peak level at a downpour | 0.20 of full scale — no clipping anywhere |
+| cost | 0.11 ms/frame at a downpour, against 5.1 ms for the water |
 | mute | silent, and it stays silent |
 | hidden then returned | 200 impacts had queued, 0 were replayed |
 
@@ -242,15 +278,25 @@ device, so past that point the two disagree by exactly `screen.orientation.angle
 a quarter turn sends the water sideways, and a tablet held upside-down sends it
 straight **up**. That is how it was found, on a device.
 
-The correction is a rotation of the answer in `vector()`, not a change to how the
-sensor is read, and it is the identity at angle 0 — so every case the original
-mapping was verified against is bit-for-bit what it was. `rp-orient.mjs` holds
-the screen upright in each of the four display orientations and asks where the
-water runs:
+The first attempt at this fixed the tablet-upside-down case and broke portrait,
+and the reason is worth writing down. **The two frames are measured from
+different reference orientations.** CoreMotion's axes are fixed to the hardware
+with +y toward the top of the device *in portrait*, on every iOS device.
+`screen.orientation.angle` is measured from the device's **natural** orientation
+— which is portrait on a phone but **landscape on an iPad**. So an iPad in
+portrait reports 90, not 0, and rotating by the angle at face value turns the
+water sideways in the one orientation that already worked.
+
+So `rotation()` works out which angle value *means* portrait on this device, from
+the shape of the viewport, and measures from there. No device is special-cased,
+and in portrait the result is zero on every device, so the frozen mapping is
+untouched exactly where it was verified. `rp-orient.mjs` holds the screen upright
+in each of the four display orientations, on each kind of device:
 
 ```text
-before:  0° down    90° right   180° UP     270° left
-after:   0° down    90° down    180° down   270° down
+                          portrait  landscape  portrait  landscape
+phone   (natural portrait)   down      down       down      down
+tablet  (natural landscape)  down      down       down      down
 ```
 
 Fog Mirror's `src/orientation.js` has the same defect and the same relayout, and

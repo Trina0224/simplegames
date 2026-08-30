@@ -248,14 +248,21 @@ Golden behavior:
 
 Use the known-good `DeviceMotionEvent.accelerationIncludingGravity` mapping. The sensor read itself is still frozen.
 
-**Device evidence has required the screen-orientation rotation.** DeviceMotion reports in the device's fixed frame, which equals the screen's frame only while the display is in its natural orientation. Rainpane relayouts on `orientationchange`, so past that point the two frames disagree by exactly `screen.orientation.angle`: a quarter turn sends the water sideways, and a tablet held upside-down sends it straight **up**. Reproduced in `rp-orient.mjs` by holding the screen upright in each of the four display orientations and asking where the water runs:
+**Device evidence has required a display-orientation rotation.** DeviceMotion reports in a frame fixed to the hardware; Rainpane relayouts on `orientationchange`; so past that point the two disagree and the water runs the wrong way.
+
+The trap, which cost one wrong fix on-device: **the two frames are measured from different reference orientations.** CoreMotion's axes are fixed with +y toward the top of the device *in portrait*, on every iOS device. `screen.orientation.angle` is measured from the device's **natural** orientation — portrait on a phone, **landscape on an iPad**. An iPad in portrait therefore reports 90, and rotating by the angle at face value breaks the one orientation that already worked (portrait ran sideways).
+
+So `rotation()` derives which angle value *means* portrait on this device from the viewport's shape, and measures from there. It is the identity in portrait on every device, so the frozen mapping is untouched where it was verified. Do not replace it with a bare `screen.orientation.angle`. `rp-orient.mjs` checks all four display orientations on both device families:
 
 ```text
-before:  0° down    90° right   180° UP     270° left
-after:   0° down    90° down    180° down   270° down
+                          portrait  landscape  portrait  landscape
+phone   (natural portrait)   down      down       down      down
+tablet  (natural landscape)  down      down       down      down
 ```
 
-The correction is applied in `vector()`, at read time, and is the identity at angle 0 — so all four golden behaviours above are bit-for-bit what they were. It is a rotation of the answer, not a change to how the sensor is read. `window.orientation` is the iOS-before-16.4 fallback and counts the same rotation the other way round.
+`window.orientation` is the iOS-before-16.4 fallback and counts the same rotation the other way round.
+
+Fog Mirror's `src/orientation.js` has the same defect and the same relayout; it has not been changed.
 
 Fog Mirror's `src/orientation.js` has the same defect and the same `orientationchange` relayout; it has not been changed.
 
@@ -316,6 +323,15 @@ Optional later:
 - wind
 - lightning/thunder
 - quiet interior room tone
+
+### Density and timbre, from device evidence
+
+Two findings that are not tuning and should not be undone:
+
+- **Voice at most ~40 taps a second.** Beyond that separate impacts fuse anyway, and what a higher cap produces is a machine-gun of transients that was reported as "a lot of little explosions". Energy past that ceiling belongs to the texture.
+- **The impact is a resonance, not a click.** A bandpass Q of 3.4 is a click with a slight colour; mounted glass rings, so Q is 11 with a second inharmonic mode. And the contact must be low-passed, not high-passed: a water drop is soft and its contact lasts hundreds of microseconds, so it cannot radiate strongly above a few kHz. An earlier highpass at 4.2 kHz carrying more level than the ring was both the harshest choice available and physically backwards.
+
+Crest factor is the measurable proxy: 12.8 at heavy rain before, 5.4 after.
 
 ### Hard audio rules
 

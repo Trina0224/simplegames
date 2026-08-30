@@ -6,16 +6,21 @@
 // without a real-device test showing a regression.
 //
 // What was added is the one thing that mapping was missing, on device evidence:
-// a rotation by the display's own orientation. DeviceMotion reports in the
-// device's fixed frame, which is the screen's frame only while the display is
-// in its natural orientation. Rainpane relayouts when you rotate the device, so
-// past that point the two frames disagree by exactly screen.orientation.angle
-// and the water runs the wrong way — sideways at a quarter turn, and straight
-// UP with the tablet held upside-down, which is how this was found.
+// a rotation from the frame the sensor reports in to the frame the page is laid
+// out in. Rainpane relayouts when you turn the device; the sensor does not, so
+// past that point the two disagree and the water runs the wrong way.
 //
-// The correction is the identity at angle 0, so every case the original mapping
-// was verified against behaves exactly as before. It is a rotation of the
-// answer, not a change to how the sensor is read.
+// The subtlety, and it cost a wrong fix first: those two frames are measured
+// from DIFFERENT reference orientations. CoreMotion's axes are fixed to the
+// hardware with +y toward the top of the device *in portrait*, on every iOS
+// device. `screen.orientation.angle` is measured from the device's NATURAL
+// orientation — which is portrait on a phone but LANDSCAPE on an iPad. So an
+// iPad in portrait reports 90, not 0, and rotating by the angle at face value
+// turns the water sideways in the one orientation that used to work.
+//
+// See rotation(). It is a rotation of the answer, not a change to how the
+// sensor is read, and it is the identity whenever the display is in the same
+// orientation the frozen mapping was verified in — portrait.
 
 export class GravitySensor {
   constructor() {
@@ -95,12 +100,29 @@ export class GravitySensor {
     return 0;
   }
 
+  /**
+   * The rotation from the sensor's frame to the display's frame.
+   *
+   * `angle()` counts from the device's natural orientation and the sensor
+   * counts from portrait, so the two differ by a quarter turn on any device
+   * whose natural orientation is landscape. Rather than special-case iPads,
+   * work out which angle value *means* portrait on this device from the shape
+   * of the viewport, and measure from there. In portrait the result is zero on
+   * every device, so the frozen mapping is untouched where it was verified.
+   */
+  rotation() {
+    const a = this.angle();
+    const portraitNow = window.innerHeight >= window.innerWidth;
+    const portraitAngle = portraitNow ? a % 180 : (a + 90) % 180;
+    return (((portraitAngle - a) % 360) + 360) % 360;
+  }
+
   vector() {
     if (!this.enabled) return { x: 0, y: 1, plane: 1 };
     // Rotated at read time rather than folded into the smoothing, so that
     // turning the device takes effect on the next frame instead of waiting for
     // a quarter-second filter to re-converge on the answer it already had.
-    const th = (this.angle() * Math.PI) / 180;
+    const th = (this.rotation() * Math.PI) / 180;
     const c = Math.cos(th);
     const s = Math.sin(th);
     const dx = this.gx * c - this.gy * s;
@@ -115,6 +137,7 @@ export class GravitySensor {
       source: 'DeviceMotionEvent / 89b765f mapping + display rotation',
       enabled: this.enabled,
       angle: this.angle(),
+      rotation: this.rotation(),
       raw: { ...this.raw },
       filtered: { x: this.gx, y: this.gy, z: this.gz },
       vector: this.vector(),
