@@ -254,11 +254,16 @@ The trap, which cost one wrong fix on-device: **the two frames are measured from
 
 So `rotation()` derives which angle value *means* portrait on this device from the viewport's shape, and measures from there. It is the identity in portrait on every device, so the frozen mapping is untouched where it was verified. Do not replace it with a bare `screen.orientation.angle`. `rp-orient.mjs` checks all four display orientations on both device families:
 
+Confirmed on device, all four readings, including the unlocked landscape case the harness cannot generate for itself:
+
 ```text
-                          portrait  landscape  portrait  landscape
-phone   (natural portrait)   down      down       down      down
-tablet  (natural landscape)  down      down       down      down
+locked upright        angle  90  portrait-primary       turn   0  -> down
+locked, right down    angle  90  portrait-primary       turn   0  -> right
+locked, left down     angle  90  portrait-primary       turn   0  -> left
+unlocked, turned      angle 180  landscape-secondary    turn 270  -> down
 ```
+
+A rotation-locked display never rotates, so the correction is a no-op and gravity points at whichever screen edge is physically lowest — sideways water is then correct, not a bug, and `displayLocked()` surfaces the difference.
 
 `window.orientation` is the iOS-before-16.4 fallback and counts the same rotation the other way round.
 

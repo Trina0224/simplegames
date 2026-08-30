@@ -346,7 +346,8 @@ says `ROTATION LOCKED` when the tablet is held a quarter-turn or more over while
 the display still calls itself portrait.
 
 With the lock **off**, the display really does rotate and the correction earns
-its keep. Read off the device, turned a quarter to the right:
+its keep. Read off the device, turned a quarter to the right, and **confirmed
+correct on device**:
 
 ```text
 screen  angle 180  landscape-secondary  legacy -90
@@ -356,7 +357,16 @@ raw (9.61, -0.54)  ->  gravity (0.06, 0.99)  down
 
 That reading is now a test case, and it is the only landscape ground truth in
 the file — the harness cannot generate one for itself without assuming the
-answer.
+answer. All four device readings are checked: locked-portrait upright, locked
+sideways both ways, and unlocked landscape.
+
+It took four rounds, and three of them were spent on the wrong thing. Worth
+naming what actually cost the time, because none of it was the physics: a
+harness that validated the formula against its own assumption and so passed
+while the device failed; a rotation lock that made a correct answer look wrong;
+and a module cache that had the device running the previous build while the
+diagnostics reported the new build's intentions. The one round that fixed it
+was the one that started by reading numbers off the device.
 
 ### Which build am I looking at?
 
@@ -389,6 +399,11 @@ in each of the four display orientations, on each kind of device:
                           portrait  landscape  portrait  landscape
 phone   (natural portrait)   down    (device)     down   (device)
 tablet  (natural landscape)  down    (device)     down   (device)
+
+from the device:  locked upright       turn   0  -> down
+                  locked, right down   turn   0  -> right   (lowest edge)
+                  locked, left down    turn   0  -> left    (lowest edge)
+                  unlocked, turned      turn 270  -> down
 ```
 
 The landscape columns are **printed, not asserted**. Simulating one means
