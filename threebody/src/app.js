@@ -14,9 +14,9 @@ import { zeroVelocityCurves } from './zvc.js';
 import { planTransfer } from './targeting.js';
 import { PRESETS, byId } from './presets.js';
 import { Scene } from './render.js';
-import { toInertial } from './frames.js';
+import { FRAMES, FRAME_LABEL, displayPos, burnToRotating } from './display.js';
 
-const BUILD = '20260830b';
+const BUILD = '20260830c';
 const POINTS = lagrangePoints(MU);
 const el = (id) => document.getElementById(id);
 // what the co-orbital region needs; presets that live somewhere smaller say so
@@ -155,7 +155,7 @@ function render() {
       `C now    ${(C ?? 0).toFixed(9)}`,
       `drift    ${drift.toExponential(2)}   relative ${(drift / Math.max(1, Math.abs(run.C0))).toExponential(2)}`,
       `solver   ${run.accepted} steps, ${run.rejected} rejected   sim drift ${run.relDrift.toExponential(1)}`,
-      `frame    ${frame}`,
+      `frame    ${FRAME_LABEL[frame] || frame}`,
       `status   ${run.status}`,
       `build    ${BUILD}`,
     ].join('\n');
@@ -184,7 +184,14 @@ function choosePreset(id) {
 }
 
 ui.preset.addEventListener('change', () => choosePreset(ui.preset.value));
-ui.frame.addEventListener('change', () => { frame = ui.frame.value; });
+// Switching frames is a change of coordinates and nothing else: the clock, the
+// integrated trail, the camera and every diagnostic carry straight over, and no
+// integration is asked for. The one thing that does move is Fit, because the
+// preset's centre is a rotating-frame offset that means nothing once the
+// picture turns — see fitView.
+ui.frame.addEventListener('change', () => {
+  frame = FRAMES.includes(ui.frame.value) ? ui.frame.value : 'rotating';
+});
 ui.speed.addEventListener('input', () => {
   speedDaysPerSec = Number(ui.speed.value);
   el('speedLabel').textContent = speedDaysPerSec < 1
@@ -236,16 +243,19 @@ function canvasPoint(e) {
 function headScreen() {
   const s = stateAt(clock);
   if (!s) return null;
-  let x = s.x, y = s.y;
-  if (frame === 'inertial') {
-    const c = Math.cos(clock), sn = Math.sin(clock);
-    [x, y] = [x * c - y * sn, x * sn + y * c];
-  }
+  const [x, y] = displayPos(s.x, s.y, clock, frame);
   return { s, model: [x, y], screen: scene.toScreen(x, y) };
 }
 
 function fitView() {
-  scene.setView(currentView);
+  // The preset's span is what it wants to see and holds in every frame. Its
+  // centre is an offset in rotating coordinates, though, and in the
+  // Earth-following view the frame is defined by holding Earth at the origin,
+  // so that is where a fit belongs. Neither is a physical quantity; the camera
+  // cannot reach the trajectory.
+  scene.setView(frame === 'earth'
+    ? { span: currentView.span, centre: [0, 0] }
+    : currentView);
 }
 
 ui.canvas.addEventListener('pointerdown', (e) => {
@@ -308,12 +318,8 @@ ui.canvas.addEventListener('pointermove', (e) => {
     // Δv in the FRAME BEING SHOWN, then rotated back into rotating coordinates,
     // because that is where the integrator lives.
     const dxPx = p[0] - h.screen[0], dyPx = p[1] - h.screen[1];
-    let dx = msToVu(dxPx * MS_PER_PX);
-    let dy = msToVu(-dyPx * MS_PER_PX);
-    if (frame === 'inertial') {
-      const c = Math.cos(-clock), sn = Math.sin(-clock);
-      [dx, dy] = [dx * c - dy * sn, dx * sn + dy * c];
-    }
+    const [dx, dy] = burnToRotating(
+      msToVu(dxPx * MS_PER_PX), msToVu(-dyPx * MS_PER_PX), clock, frame);
     dragging.dv = [dx, dy];
     dragging.to = scene.toModel(p[0], p[1]);
     ui.note.textContent = `burn ${vuToMs(Math.hypot(dx, dy)).toFixed(1)} m/s — release to commit`;

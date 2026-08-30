@@ -1,4 +1,4 @@
-// validate.mjs — the numerical validation suite from SPEC.md section 16.
+// validate.mjs — the numerical validation suite from SPEC.md section 17.
 //
 // The specification says the implementation may not claim physical fidelity
 // without these checks, so they are committed rather than left in a scratch
@@ -16,6 +16,8 @@ import { lagrangePoints } from '../src/lagrange.js';
 import { Dopri5 } from '../src/integrator.js';
 import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js';
 import { PRESETS } from '../src/presets.js';
+import { toInertial } from '../src/frames.js';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -93,7 +95,7 @@ for (const tol of [1e-9, 1e-11, 1e-13]) {
 console.log('     note: tightening past 1e-11 does not reduce drift -- that is the round-off');
 console.log('     floor, and more steps then cost accuracy rather than buying it.');
 
-console.log('\n6. Rotating -> inertial -> rotating returns the same state');
+console.log('\n6. The three display frames are transforms of one trajectory');
 {
   const s = [0.62, 0.31, -0.44, 0.28], t = 3.7;
   const c = Math.cos(t), sn = Math.sin(t);
@@ -102,7 +104,92 @@ console.log('\n6. Rotating -> inertial -> rotating returns the same state');
   const bx = X * c + Y * sn, by = -X * sn + Y * c;
   const bvx = VX * c + VY * sn + by, bvy = -VX * sn + VY * c - bx;
   const err = Math.max(Math.abs(bx - s[0]), Math.abs(by - s[1]), Math.abs(bvx - s[2]), Math.abs(bvy - s[3]));
-  check('round trip at t = 3.7 TU', err < 1e-12, `worst component off by ${err.toExponential(1)}`);
+  check('rotating -> inertial -> rotating at t = 3.7 TU', err < 1e-12,
+    `worst component off by ${err.toExponential(1)}`);
+}
+{
+  // SPEC.md 5.2 defines the Earth-following view by a subtraction. These check
+  // that the code performs that subtraction and not something that merely looks
+  // like it: the state is compared against the spec's arithmetic recomputed
+  // here from toInertial, at times spread over a horseshoe period.
+  const st = [0.62, 0.31, -0.44, 0.28];
+  let wPos = 0, wVel = 0, wEarth = 0, wMoon = 0, wPoints = 0;
+  const L = lagrangePoints(MU);
+  for (const t of [0, 0.4, 1.9, 7.25, 21.97, 43.937540294751]) {
+    const I = toInertial(...st, t);
+    const E = toInertial(-MU, 0, 0, 0, t);          // Earth's own inertial state
+    const F = displayState(st[0], st[1], st[2], st[3], t, 'earth');
+    wPos = Math.max(wPos, Math.abs(F[0] - (I[0] - E[0])), Math.abs(F[1] - (I[1] - E[1])));
+    wVel = Math.max(wVel, Math.abs(F[2] - (I[2] - E[2])), Math.abs(F[3] - (I[3] - E[3])));
+    const P = displayPos(st[0], st[1], t, 'earth');
+    wPos = Math.max(wPos, Math.abs(P[0] - F[0]), Math.abs(P[1] - F[1]));
+
+    const b = displayBodies(t, 'earth');
+    wEarth = Math.max(wEarth, Math.hypot(b.earth[0], b.earth[1]));
+    // the Moon must sit one full DU from Earth and on the Earth-Moon line, and
+    // the barycentre must sit MU of the way along it -- inside the Earth
+    wMoon = Math.max(wMoon, Math.abs(Math.hypot(b.moon[0], b.moon[1]) - 1));
+    const along = (b.barycenter[0] * b.moon[0] + b.barycenter[1] * b.moon[1]);
+    wMoon = Math.max(wMoon, Math.abs(along - MU));
+
+    // and every L point must be the same subtraction, not a separate rule
+    for (const q of displayPoints(L, t, 'earth')) {
+      const QI = toInertial(q.x, q.y, 0, 0, t);
+      wPoints = Math.max(wPoints, Math.abs(q.px - (QI[0] - E[0])), Math.abs(q.py - (QI[1] - E[1])));
+    }
+    const e = earthInertial(t);
+    wPoints = Math.max(wPoints, Math.abs(e[0] - E[0]), Math.abs(e[1] - E[1]),
+                                Math.abs(e[2] - E[2]), Math.abs(e[3] - E[3]));
+  }
+  check('Earth-following position = inertial - Earth inertial', wPos === 0,
+    `worst component off by ${wPos.toExponential(1)}`);
+  check('Earth-following velocity = inertial - Earth inertial', wVel === 0,
+    `worst component off by ${wVel.toExponential(1)}`);
+  check('Earth sits at the Earth-following origin', wEarth === 0,
+    `worst offset ${wEarth.toExponential(1)} DU`);
+  check('Moon revolves at 1 DU, barycentre at MU along the line', wMoon < 4e-16,
+    `worst ${wMoon.toExponential(1)} DU`);
+  check('L1-L5 use the same subtraction', wPoints < 4e-16,
+    `worst ${wPoints.toExponential(1)} DU`);
+}
+{
+  // Switching frames may not change the physical state. The display transform
+  // is a pure function of a state and a time, so ask it for every frame in
+  // every order and confirm the rotating answer is the one that was handed in.
+  const st = [0.62, 0.31, -0.44, 0.28], t = 11.3;
+  let worst = 0;
+  for (const f of ['rotating', 'earth', 'inertial', 'earth', 'rotating', 'inertial', 'rotating']) {
+    displayState(st[0], st[1], st[2], st[3], t, f);
+    displayBodies(t, f);
+  }
+  const back = displayState(st[0], st[1], st[2], st[3], t, 'rotating');
+  for (let i = 0; i < 4; i += 1) worst = Math.max(worst, Math.abs(back[i] - st[i]));
+  check('cycling all three frames leaves the state untouched', worst === 0,
+    `worst component off by ${worst.toExponential(1)}`);
+}
+{
+  // SPEC.md 10: a burn may be gestured in the displayed frame, but the Delta-v
+  // has to arrive at the integrator in rotating coordinates. An impulse does not
+  // move the spacecraft, so the position-dependent part of the velocity map
+  // cancels and the display Delta-v is just R(t) times the rotating one. Check
+  // that burnToRotating inverts that exactly -- and that the Earth-following
+  // frame gives the SAME answer as the inertial one, because the two differ by
+  // a translation and a translation leaves a difference alone.
+  let worst = 0, spread = 0;
+  for (const t of [0, 0.4, 7.25, 43.937540294751]) {
+    for (const dv of [[0.01, 0], [0, -0.004], [0.0031, 0.0072]]) {
+      const c = Math.cos(t), sn = Math.sin(t);
+      const shown = [dv[0] * c - dv[1] * sn, dv[0] * sn + dv[1] * c];   // R(t) dv
+      const bi = burnToRotating(shown[0], shown[1], t, 'inertial');
+      const be = burnToRotating(shown[0], shown[1], t, 'earth');
+      worst = Math.max(worst, Math.abs(bi[0] - dv[0]), Math.abs(bi[1] - dv[1]));
+      spread = Math.max(spread, Math.abs(be[0] - bi[0]), Math.abs(be[1] - bi[1]));
+    }
+  }
+  check('a gestured burn returns to rotating coordinates', worst < 4e-18,
+    `worst component off by ${worst.toExponential(1)} VU`);
+  check('Earth-following and inertial read the same burn', spread === 0,
+    `differ by ${spread.toExponential(1)} VU`);
 }
 
 console.log('\n7. Collision uses the physical radius');

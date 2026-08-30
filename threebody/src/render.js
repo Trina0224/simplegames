@@ -3,7 +3,9 @@
 // Nothing here computes a trajectory or moves anything. It is handed physical
 // states in rotating coordinates and a frame to show them in, and its whole job
 // is to make the geometry legible: which regions are closed, where the
-// equilibria are, what the spacecraft is doing now.
+// equilibria are, what the spacecraft is doing now. The frame is one of three
+// and this file does not know how any of them work — display.js turns a state
+// and a time into a place, and everything drawn goes through it.
 //
 // The camera lives here too — span and centre, in model units. Zoom and pan
 // change those two numbers and nothing else, so no amount of looking can alter
@@ -16,7 +18,7 @@
 // against the real one in trajectory.js, which cannot see this file.
 
 import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js';
-import { toInertial, bodies, movePoints } from './frames.js';
+import { displayPos, displayState, displayBodies, displayPoints } from './display.js';
 
 const EARTH_DRAW = 0.055;
 const MOON_DRAW = 0.030;
@@ -212,9 +214,13 @@ export class Scene {
     ctx.fillRect(0, 0, this.w, this.h);
 
     const P = (x, y) => this.toScreen(x, y);
-    const rot = frame === 'inertial' ? t : 0;
-    const rc = Math.cos(rot), rs = Math.sin(rot);
-    const turn = (x, y) => (rot ? [x * rc - y * rs, x * rs + y * rc] : [x, y]);
+    // Every physical thing on screen goes through the same transform, at its
+    // own time: the trail is a sequence of states from different instants, and
+    // moving all of them by the time of the newest would draw a curve nobody
+    // flew. In the rotating frame this costs nothing and returns its argument.
+    const moving = frame !== 'rotating';
+    const at = (x, y, ts) => displayPos(x, y, ts, frame);
+    const turn = (x, y) => (moving ? displayPos(x, y, t, frame) : [x, y]);
 
     // --- the forbidden region, kept quiet ---------------------------------
     if (showZvc && zvc && zvc.length) {
@@ -235,11 +241,8 @@ export class Scene {
       const step = Math.max(1, Math.floor(N / 2600));
       const pts = [];
       for (let i = 0; i < N; i += step) {
-        let x = trail.xs[i], y = trail.ys[i];
-        if (rot) {
-          const tt = trail.ts[i], c = Math.cos(tt), s = Math.sin(tt);
-          [x, y] = [x * c - y * s, x * s + y * c];
-        }
+        const [x, y] = moving ? at(trail.xs[i], trail.ys[i], trail.ts[i])
+                              : [trail.xs[i], trail.ys[i]];
         pts.push(P(x, y));
       }
       ctx.lineJoin = 'round';
@@ -265,7 +268,7 @@ export class Scene {
     }
 
     // --- primaries and barycentre ------------------------------------------
-    const b = bodies(t, frame);
+    const b = displayBodies(t, frame);
     const spinLight = LIGHT0 - (frame === 'rotating' ? t : 0);
 
     const bc = P(b.barycenter[0], b.barycenter[1]);
@@ -291,8 +294,10 @@ export class Scene {
     const mp = P(b.moon[0], b.moon[1]);
     const mr = Math.max(1.8, MOON_DRAW * this.scale);
     // The Moon is tidally locked, so in the rotating frame its surface does not
-    // turn at all: the same face really is always toward the Earth. In the
-    // inertial frame it turns once per orbit, which is the same statement.
+    // turn at all: the same face really is always toward the Earth. In the two
+    // frames that do not rotate with it -- Earth-following and barycentric
+    // inertial -- it turns once per orbit, which is the same statement, and in
+    // the Earth-following view it is the one you can actually watch happen.
     this._sphere(mp[0], mp[1], mr, spinLight, frame === 'rotating' ? 0 : t, {
       ocean: '#8f949c',
       craters: { dark: 'rgba(96, 100, 108, 0.85)', light: 'rgba(178, 183, 191, 0.5)' },
@@ -307,7 +312,7 @@ export class Scene {
 
     // --- equilibria: present, not shouting ---------------------------------
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    for (const p of movePoints(points, t, frame)) {
+    for (const p of displayPoints(points, t, frame)) {
       const s = P(p.px, p.py);
       const un = p.unstable;
       ctx.strokeStyle = un ? 'rgba(226, 148, 106, 0.55)' : 'rgba(126, 206, 164, 0.55)';
@@ -331,11 +336,8 @@ export class Scene {
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < plan.xs.length; i += 1) {
-        let x = plan.xs[i], y = plan.ys[i];
-        if (rot) {
-          const tt = t + plan.ts[i], c = Math.cos(tt), s = Math.sin(tt);
-          [x, y] = [x * c - y * s, x * s + y * c];
-        }
+        const [x, y] = moving ? at(plan.xs[i], plan.ys[i], t + plan.ts[i])
+                              : [plan.xs[i], plan.ys[i]];
         const p = P(x, y);
         if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
       }
@@ -345,8 +347,7 @@ export class Scene {
 
     // --- the spacecraft -----------------------------------------------------
     if (head) {
-      let [x, y, vx, vy] = head;
-      if (frame === 'inertial') [x, y, vx, vy] = toInertial(x, y, vx, vy, t);
+      const [x, y, vx, vy] = displayState(head[0], head[1], head[2], head[3], t, frame);
       const p = P(x, y);
       const ang = Math.atan2(-vy, vx);
 
