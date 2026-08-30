@@ -114,17 +114,32 @@ export class GravitySensor {
     const a = this.angle();
     const portraitNow = window.innerHeight >= window.innerWidth;
     const portraitAngle = portraitNow ? a % 180 : (a + 90) % 180;
-    // The half-turn is empirical, and it is honest to say so. Portrait is
-    // confirmed correct on device with no half-turn; landscape came back
-    // exactly upside-down, on both landscape orientations. Two different
-    // derivations of the angle relation each fit one round of device reports
-    // and contradict the other, which means the reported values are not what
-    // either derivation assumes. Rather than guess a third time, this encodes
-    // what the device actually does, and debug() now reports every input the
-    // question depends on so it can be settled by reading rather than by
-    // theory.
-    const half = portraitNow ? 0 : 180;
-    return (((portraitAngle - a + half) % 360) + 360) % 360;
+    return (((portraitAngle - a) % 360) + 360) % 360;
+  }
+
+  /**
+   * Is the display refusing to follow the device?
+   *
+   * Device readings settled a long argument here. On a rotation-locked iPad,
+   * `screen.orientation` stays `portrait-primary` at 90 and the viewport stays
+   * portrait no matter how the tablet is held — so the correction above is a
+   * no-op, correctly, and gravity in screen coordinates points at whichever
+   * screen edge is physically lowest. Held sideways that is the left or right
+   * edge, and water running across the screen is the feature working, not a
+   * bug. It only looks wrong because the scene is painted on the screen and
+   * turns with it, so water running downhill reads as running across the
+   * picture.
+   *
+   * Worth reporting rather than hiding: it is the difference between "the
+   * sensor mapping is broken" and "the display is locked", and those two look
+   * identical from the sofa. A quarter-turn or more of screen-relative tilt
+   * while the display still calls itself portrait is the tell.
+   */
+  displayLocked() {
+    if (!this.enabled) return false;
+    const sideways = Math.abs(this.gx) > 0.7;
+    const portraitNow = window.innerHeight >= window.innerWidth;
+    return sideways && portraitNow;
   }
 
   vector() {
@@ -155,6 +170,7 @@ export class GravitySensor {
       kind: so && so.type ? so.type : null,
       legacy: Number.isFinite(window.orientation) ? window.orientation : null,
       viewport: `${window.innerWidth}x${window.innerHeight}`,
+      locked: this.displayLocked(),
       raw: { ...this.raw },
       filtered: { x: this.gx, y: this.gy, z: this.gz },
       vector: this.vector(),
