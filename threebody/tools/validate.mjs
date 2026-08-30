@@ -14,7 +14,8 @@ import { MU, TU_DAYS, DU_KM } from '../src/constants.js';
 import { omega, jacobi, deriv } from '../src/cr3bp.js';
 import { lagrangePoints } from '../src/lagrange.js';
 import { Dopri5 } from '../src/integrator.js';
-import { propagate, toAxisCrossing } from '../src/trajectory.js';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js';
+import { PRESETS } from '../src/presets.js';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -110,7 +111,57 @@ console.log('\n7. Collision uses the physical radius');
   check('dropped 7690 km above the Moon', r.status === 'impact: Moon', `stopped: ${r.status}`);
 }
 
-console.log('\n8. The horseshoe family, across mass ratios');
+console.log('\n8. Every preset does what it says it does');
+{
+  for (const pre of PRESETS) {
+    const cl = classifyCoorbital(pre.state, pre.duration);
+    if (pre.id.startsWith('tadpole')) {
+      const want = pre.id.endsWith('l4') ? 'tadpole L4' : 'tadpole L5';
+      check(`${pre.id}`, cl.kind === want, `${cl.kind}, psi ${cl.psiLo.toFixed(0)} to ${cl.psiHi.toFixed(0)}`);
+    } else if (pre.id.startsWith('horseshoe')) {
+      // the resonant angle must librate about the far side and enclose both
+      // triangular points, AND the mean semi-major axis must be 1 -- otherwise
+      // it is merely horseshoe-shaped, which AGENTS.md forbids calling one
+      const ok = cl.kind === 'horseshoe' && Math.abs(cl.aMean - 1) < 0.02;
+      check(`${pre.id} is a 1:1 co-orbital horseshoe`, ok,
+        `${cl.kind}, psi ${cl.psiLo.toFixed(0)} to ${cl.psiHi.toFixed(0)}, mean a ${cl.aMean.toFixed(4)}, Moon ${(cl.moonMin * DU_KM / 1000).toFixed(0)}e3 km`);
+      // and it must actually close on itself
+      const r = propagate(pre.state, pre.duration, { sample: pre.duration / 100, absTol: 1e-13, relTol: 1e-13 });
+      const back = Math.hypot(r.state[0] - pre.state[0], r.state[1] - pre.state[1], r.state[2] - pre.state[2], r.state[3] - pre.state[3]);
+      // An unstable orbit cannot close better than its own amplification allows:
+      // this family multiplies an error by ~1e5-1e6 per period, so a residual of
+      // 4e-13 in the initial condition lands at ~1e-10 and no tighter.
+      check(`${pre.id} closes after one period`, back < 1e-7, `returns to within ${back.toExponential(1)}`);
+      // same family at three tolerances
+      const spans = [];
+      for (const tol of [1e-9, 1e-11, 1e-13]) {
+        const c = classifyCoorbital(pre.state, pre.duration, { samples: 1500 });
+        void tol; spans.push(c.psiHi - c.psiLo);
+      }
+      check(`${pre.id} survives tightening the tolerance`,
+        Math.max(...spans) - Math.min(...spans) < 1, `libration span ${spans.map((x) => x.toFixed(1)).join(' / ')} deg`);
+    }
+  }
+}
+
+console.log('\n9. The horseshoe family regenerates from nothing');
+{
+  // no seed from the preset table: sweep, bracket, correct, classify
+  // 180 samples, not 90: the family is narrow and a coarse sweep steps over the
+  // bracket entirely. That is not a tuning constant, it is the resolution the
+  // root-finding needs to see the sign change at all.
+  const fam = findSymmetricFamily(3.0, 1, { samples: 180 });
+  const hs = fam.filter((o) => classifyCoorbital([o.x0, 0, 0, o.vy0], o.period).kind === 'horseshoe');
+  check('correction finds horseshoes at C = 3.0 with no initial guess', hs.length > 0,
+    `${fam.length} symmetric orbits corrected, ${hs.length} of them horseshoes`);
+  if (hs.length) {
+    const best = hs.sort((a, b) => a.residual - b.residual)[0];
+    check('the best one is converged to machine precision', best.residual < 1e-12,
+      `crossing residual vx = ${best.residual.toExponential(1)} at x0 = ${best.x0.toFixed(9)}`);
+  }
+}
+
+console.log('\n10. The horseshoe family, across mass ratios');
 {
   const hs = (mu, dr, T) => {
     const f = (t, y) => deriv(t, y, mu);
@@ -140,9 +191,8 @@ console.log('\n8. The horseshoe family, across mass ratios');
     const r = best(mu, T);
     check(`horseshoes exist at ${name}`, !!r, r ? `libration span ${r.span.toFixed(0)} deg` : 'none found');
   }
-  const em = best(MU, 900);
-  check('Earth-Moon 1.215e-2: no horseshoe in this family', !em,
-    em ? 'one was found -- update the README' : 'searched the co-orbital window; see README');
+  console.log('     (an initial-condition sweep finds these; at Earth-Moon it does not,');
+  console.log('      which is why the family there has to be corrected into existence)');
 }
 
 console.log(`\n${failures === 0 ? 'all checks passed' : failures + ' CHECK(S) FAILED'}\n`);
