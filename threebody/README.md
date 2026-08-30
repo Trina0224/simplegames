@@ -127,12 +127,17 @@ re-integrating anything.
 | `src/cr3bp3d.js` | the six-state equations. The planar problem is a subspace of them |
 | `src/trajectory3d.js` | spatial propagation, and the `y = 0` section the corrector shoots to |
 | `src/frames3d.js` | the same three frames, extended to six states |
-| `src/halo.js` | Richardson seed, differential correction, continuation |
+| `src/halo.js` | Richardson seed, differential correction, continuation — by held component and by arclength |
 | `src/presets3d.js` | the corrected halos and the Lissajous arcs, with their provenance |
-| `src/render3d.js` | the orthographic camera. Presentation only |
+| `src/targeting3d.js` | shooting at a state that is still moving, and what may be called a rendezvous |
+| `src/events3.js` | the moments on a trajectory worth going to: the near pass and the far one |
+| `src/playback.js` | how the clock advances, and when it stops |
+| `src/artemis.js` | generated: the mission-context presets, measured apart from what NASA publishes |
+| `src/render3d.js` | the orthographic camera, and the magnified inset. Presentation only |
 | `tools/halo.mjs` | regenerates the halo family from nothing |
 | `tools/family.mjs` | writes `src/family3d.js`, the branches the slider browses |
-| `src/family3d.js` | generated: 34 members per branch, every number measured |
+| `tools/artemis.mjs` | writes `src/artemis.js`: selects the Gateway-like member, searches out the approach |
+| `src/family3d.js` | generated: 30 members per branch, every number measured |
 | `assets/spacecraft-v1.png` | the sprite. Presentation only; the version is in the name |
 | `src/zvc.js` | zero-velocity curves from the live Jacobi constant |
 | `src/targeting.js` | shooting for a burn that arrives |
@@ -325,7 +330,9 @@ Validity is the three-dimensional distance to a body centre against the
 **physical** radius, the same test collision uses. A projected 2D test would
 happily allow a spacecraft placed 869 km directly above the Moon's centre.
 
-Still out of scope, as asked: 3D targeting and zero-velocity surfaces.
+That was where 3D targeting and zero-velocity surfaces were both out of scope.
+Targeting has since been built — see *Reaching something that is going somewhere*
+— and the surfaces have not; *Where the specs stand* says which is which.
 
 ### A fold is the end of a parameterisation, not of a family
 
@@ -1108,6 +1115,21 @@ their own arithmetic rather than the integration — precisely what `RESEARCH.md
 says not to hide. Velocities are sampled from the interpolant now and the
 readout shows 1.2e-8, which is the interpolation between samples and nothing
 else.
+
+## Where the specs stand
+
+The specs in this folder are the brief; this is what has been built against them,
+so nothing has to be inferred from the code.
+
+| | |
+|---|---|
+| `SPEC.md` — planar sandbox | built: frames, presets, zero-velocity curves, free launch, targeting |
+| `FREE_LAUNCH_SPEC.md` | built, planar and spatial |
+| `THREE_D_SPEC.md` 1–9 — six-state core, halo, NRHO, Lissajous, family browser | built and validated |
+| `THREE_D_SPEC.md` 10 — Phase 3 sandbox | 3D free launch ✓, 3D impulsive burns ✓, 3D targeting ✓; **spatial invariant manifolds not built** |
+| `THREE_D_SPEC.md` 11 — zero-velocity surfaces | **not built.** Marked optional there, and a volumetric surface is the one thing most likely to hide the orbit it is drawn around |
+| `ARTEMIS_DEMO_SPEC.md` A–D and E–F | built: Gateway-like NRHO, CAPSTONE, the low-lunar comparison, the Orion approach, "not parked at L2", near/far pass |
+| `ARTEMIS_DEMO_SPEC.md` — south-pole cue | **not built, deliberately.** The CR3BP has no model of the Moon's rotation; the spec asks for it only "if it can be represented honestly", and it cannot |
 
 ## Next
 

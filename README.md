@@ -11,7 +11,7 @@
 | [和弦墊 Chord Pad](chordpad/) | 用大按鈕彈和弦的伴奏樂器，替詩歌伴奏用（[說明](chordpad/README.md)） |
 | [百葉窗 Blinds](blinds/) | 相機畫面後面的百葉窗，用手指撥開偷看。不拍照、不錄影（[說明](blinds/README.md)） |
 | [霧鏡 Fog Mirror](fogmirror/) | 前鏡頭變成起霧的三溫暖鏡子；可擦開、畫圖、水珠合併流動，並依裝置重力改變方向（[說明](fogmirror/README.md)） |
-| [三體沙盤 Threebody](threebody/) | 地月三體沙盤：拉格朗日點、馬蹄形軌道、零速度曲線、脈衝與目標規劃。同一條積分軌跡可以在會旋轉、跟著地球、與慣性三種座標系裡看；也可以自己放一艘太空船丟出去（[說明](threebody/README.md)） |
+| [三體沙盤 Threebody](threebody/) | 地月三體沙盤：拉格朗日點、馬蹄形軌道、零速度曲線、脈衝與目標規劃。同一條積分軌跡可以在會旋轉、跟著地球、與慣性三種座標系裡看；也可以自己放一艘太空船丟出去。3D 部分是真正的六維狀態：數值修正出來的暈輪軌道族（一路連續到月面）、NRHO，以及 Artemis 情境示範 —— Gateway 級 NRHO、與 100 公里環月軌道的對照、以及朝著一個「還在動的目標」求解的會合（[說明](threebody/README.md)） |
 | [雨窗 Rainpane](rainpane/) | 隔著一片玻璃看夜裡的林間小路。水滴的物理、同一場雨算出來的雨聲、雨越大遠處越看不清（[說明](rainpane/README.md)） |
 
 ## 本機執行

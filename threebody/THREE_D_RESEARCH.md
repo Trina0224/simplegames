@@ -187,6 +187,18 @@ Acceptable approaches include:
 
 Store family provenance. A preset should identify where it came from rather than storing an unexplained six-state vector.
 
+**What happened, recorded here because this section called it.** Simple parameter
+continuation folds, twice. The first fold is in `z0` and is survived by switching the
+held component to `x0`; the second is in `x0`, and there is nothing left to hold — the
+L2 branch stalls there at a perilune of 7412 km with its last two members 1.0e-3 apart
+in `z0` and 2.5e-5 apart in `x0`, a family running very nearly perpendicular to the
+parameter it is being asked to advance. Halving the stride does not help.
+
+Pseudo-arclength carries it the rest of the way, to the lunar surface, and the family
+passes through the geometry NASA publishes for Gateway on the way down. Implemented as
+`haloArc` in `src/halo.js`; the terminus is checked to be stride-independent, which is
+the difference between following the family and following the discretisation.
+
 ---
 
 ## Validation targets

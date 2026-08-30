@@ -10,7 +10,10 @@ import { writeFileSync } from 'node:fs';
 import { MU, DU_KM, TU_DAYS } from '../src/constants.js?v=20260830n';
 import { haloBranch, haloArc, lunarGeometry, closure } from '../src/halo.js?v=20260830n';
 
-const WANT = 34;          // members kept per branch, evenly spaced along it
+// Members kept per branch. Fewer come out than are asked for: the targets are
+// spaced geometrically in perilune and two of them can land on the same branch
+// member where the held-component walk is sparse, so 34 asked for yields 30.
+const WANT = 34;
 const out = {};
 
 for (const point of ['L1', 'L2']) {
