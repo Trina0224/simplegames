@@ -22,6 +22,12 @@ The existing 2D implementation is the regression baseline. Do not rewrite it cas
 8. Camera orbit/zoom/top/side/fit are presentation only and may never affect physical state.
 9. Collision distance is three-dimensional physical distance to Earth/Moon centers.
 10. Do not weaken 2D tests to make 3D pass.
+11. Playback may repeat only a run that reached the span it was asked for. A run that a
+    collision or a domain exit stopped early did not come back round, and looping it shows
+    the reader something that did not happen. See `src/playback.js`.
+12. A diagnostic must answer the question its own label asks. A closest-approach figure for
+    a run that ended in an impact says it hit; an elapsed-time figure says when the run
+    actually stopped, not the span requested.
 
 ## First implementation sequence
 

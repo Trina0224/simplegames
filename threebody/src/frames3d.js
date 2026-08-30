@@ -8,7 +8,7 @@
 // The rule that matters more than the algebra: ONE integrated history, three
 // ways of drawing it. No frame gets its own integration, ever.
 
-import { EARTH_X, MOON_X } from './constants.js?v=20260830j';
+import { EARTH_X, MOON_X } from './constants.js?v=20260830k';
 
 /** Rotating -> barycentric inertial. */
 export function toInertial3(x, y, z, vx, vy, vz, t) {

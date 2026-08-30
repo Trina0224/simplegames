@@ -320,7 +320,9 @@ now reports its closest approach as an **altitude** — "1 788 km from the Moon"
 sounds roomy and "51 km above it" does not, and the second is the one that tells
 you what you are looking at — measured from the propagated samples rather than
 read from a stored field, so it will still be right for a free-launched
-trajectory that has no stored anything.
+trajectory that has no stored anything — and from the run's own terminal state as
+well as its samples, so a run that ends inside the Moon cannot report an altitude
+above it (see *The spacecraft that hit the Moon over and over*).
 
 Below 100 km the page says so outright:
 
@@ -510,6 +512,62 @@ looks only at the end of each accepted step. It was hunted for: **67 372 arcs
 that genuinely enter a body, all 67 372 detected, none missed** — the adaptive
 step collapses near a body long before a step could straddle it. So the
 integrator and the event detection were left alone.
+
+### The spacecraft that hit the Moon over and over
+
+Reported from an iPad: a free-launched trajectory whose status read
+`impact: Moon` kept crashing, reappearing at the launch point and crashing again
+— *看太空船一直撞很奇怪*, and quite right.
+
+The wrap was written for the 3D presets, where it is correct: a halo is a closed
+orbit, so playing it round again shows the reader what the orbit does. It was
+three lines inside a `requestAnimationFrame` callback:
+
+```js
+if (clock3 >= run3.ts[run3.n - 1]) clock3 = 0;   // a halo repeats; so may the playback
+```
+
+The comment is true of a halo and false of everything else the 3D view can now
+hold. `propagate3` stops on `impact: Earth`, `impact: Moon`, `left display
+domain` and `integration failed`; none of those arcs came back round, and looping
+one is a picture of something that did not happen. The rule is now one line in
+`playback.js` — a run repeats only if it reached the span it was asked for — and
+it is one line in a module rather than in a frame callback so that the suite can
+test it. It could not before: **every check in sections 1–17 passed while this
+bug shipped**, because none of them could see inside an animation frame.
+
+Two smaller things were found by looking at the same screen, and both are the
+class of defect this README already records twice — a diagnostic that answers a
+slightly different question than the one it appears to answer:
+
+**`closest 2379 km over the Moon`, beside `status impact: Moon`.** Both lines
+described the same run. `closest3` walked the *samples*, and the samples stop at
+the last multiple of the sample stride; the step that ends inside the Moon breaks
+mid-step and is returned as `state`, not pushed. So the last sampled point was
+still 2379 km up, and the readout reported it as the closest approach — a
+distance measured before the event that ended the run, exactly as the planar miss
+distance was once measured *past* one. The terminal state is now folded in, and a
+run that hit is told to say so:
+
+```text
+closest  hit the Moon
+```
+
+The low-altitude caution is gated the same way. It exists to qualify an orbit low
+enough that mascons and terrain start to matter; a run that went *below* the
+surface did not fly a low orbit, and "closest approach −6 km above the Moon" is
+not a caution, it is a hole in the Moon.
+
+**`status impact: Moon, over 40 TU`.** Forty TU is what the run was *asked* for,
+not what it flew. It now reports where it actually stopped:
+
+```text
+status   impact: Moon at 1.64 TU (7.1 d)
+```
+
+And the Play button, which had been dead at the end of a run since the planar
+view shipped: pressing it set `playing = true` on a clock already at the end, so
+the next frame stopped it again. Play now starts a finished run over.
 
 ### Nothing sits on top of anything else
 

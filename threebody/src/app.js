@@ -6,23 +6,24 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830j';
-import { jacobi } from './cr3bp.js?v=20260830j';
-import { lagrangePoints } from './lagrange.js?v=20260830j';
-import { propagate } from './trajectory.js?v=20260830j';
-import { zeroVelocityCurves } from './zvc.js?v=20260830j';
-import { planTransfer } from './targeting.js?v=20260830j';
-import { PRESETS, byId } from './presets.js?v=20260830j';
-import { Scene } from './render.js?v=20260830j';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830j';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830j';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830j';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830j';
-import { propagate3 } from './trajectory3d.js?v=20260830j';
-import { jacobi3 } from './cr3bp3d.js?v=20260830j';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830j';
-import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830j';
-import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830j';
+import { MU, TU_DAYS, DU_KM, MOON_X, EARTH_X, MOON_RADIUS, MOON_RADIUS_KM, vuToMs, msToVu } from './constants.js?v=20260830k';
+import { jacobi } from './cr3bp.js?v=20260830k';
+import { lagrangePoints } from './lagrange.js?v=20260830k';
+import { propagate } from './trajectory.js?v=20260830k';
+import { zeroVelocityCurves } from './zvc.js?v=20260830k';
+import { planTransfer } from './targeting.js?v=20260830k';
+import { PRESETS, byId } from './presets.js?v=20260830k';
+import { Scene } from './render.js?v=20260830k';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830k';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830k';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830k';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830k';
+import { propagate3 } from './trajectory3d.js?v=20260830k';
+import { jacobi3 } from './cr3bp3d.js?v=20260830k';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830k';
+import { FAMILY3D, FAMILY_POINTS } from './family3d.js?v=20260830k';
+import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830k';
+import { advance, resumeFrom } from './playback.js?v=20260830k';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -31,7 +32,7 @@ import { Editor3D, PREVIEW3_TU } from './freelaunch3d.js?v=20260830j';
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830j';
+const STAMP = '20260830k';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -120,7 +121,7 @@ const LAUNCH3_MS_PER_PX = 8;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830j', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830k', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -265,16 +266,19 @@ function frameLoop(ms) {
   frameLoop.last = ms;
   if (spatial) {
     if (playing && run3) {
-      clock3 += dt * speedDaysPerSec / TU_DAYS;
-      // a halo is periodic: let it keep going round rather than stopping
-      if (clock3 >= run3.ts[run3.n - 1]) clock3 = 0;   // a halo repeats; so may the playback
+      // loop: a 3D preset is a periodic orbit and is meant to keep going round.
+      // playback.js decides what "keep going round" may apply to.
+      const a = advance(clock3, dt * speedDaysPerSec / TU_DAYS, run3, true);
+      clock3 = a.t;
+      if (!a.playing) { playing = false; ui.play.textContent = 'Play'; }
     }
     render3();
     return;
   }
   if (playing && run) {
-    clock += dt * speedDaysPerSec / TU_DAYS;
-    if (clock >= run.ts[run.n - 1]) { clock = run.ts[run.n - 1]; playing = false; ui.play.textContent = 'Play'; }
+    const a = advance(clock, dt * speedDaysPerSec / TU_DAYS, run);
+    clock = a.t;
+    if (!a.playing) { playing = false; ui.play.textContent = 'Play'; }
   }
   render();
 }
@@ -424,13 +428,35 @@ function familyMember(point, i) {
  */
 function closest3(run) {
   let moon = Infinity, earth = Infinity;
-  for (let i = 0; i < run.xs.length; i += 1) {
-    const dm = Math.hypot(run.xs[i] - MOON_X, run.ys[i], run.zs[i]);
-    const de = Math.hypot(run.xs[i] - EARTH_X, run.ys[i], run.zs[i]);
+  const at = (x, y, z) => {
+    const dm = Math.hypot(x - MOON_X, y, z);
+    const de = Math.hypot(x - EARTH_X, y, z);
     if (dm < moon) moon = dm;
     if (de < earth) earth = de;
-  }
+  };
+  for (let i = 0; i < run.xs.length; i += 1) at(run.xs[i], run.ys[i], run.zs[i]);
+  // The samples stop at the last multiple of the sample stride; the run does
+  // not. An arc that ends inside the Moon breaks mid-step, and that final state
+  // is exactly where it came closest. Reading the samples alone reported
+  // "closest 2379 km over the Moon" beside a status line saying "impact: Moon"
+  // -- a distance measured past the event that ended the run, which is the same
+  // defect RESEARCH.md records for the planar miss distance.
+  if (run.state) at(run.state[0], run.state[1], run.state[2]);
   return { moon, earth, moonAltKm: (moon - MOON_RADIUS) * DU_KM };
+}
+
+/**
+ * How to name a run's closest approach in one readout column.
+ *
+ * A run that hit says it hit. An altitude for such a run is at best zero and at
+ * worst negative, and either would read as a flyby.
+ */
+function closestLabel3(run, near) {
+  if (run.status === 'impact: Moon') return 'hit the Moon';
+  if (run.status === 'impact: Earth') return 'hit the Earth';
+  if (!near || !(near.moonAltKm < 1e5)) return 'not near the Moon';
+  return `${near.moonAltKm.toFixed(0)} km over the Moon`
+    + (near.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : '');
 }
 
 // The altitude below which the model's own limits are worth stating outright.
@@ -447,7 +473,10 @@ const LOW_LUNAR_KM = 100;
  */
 function updateCaution(run) {
   const c = closest3(run);
-  const low = c.moonAltKm < LOW_LUNAR_KM;
+  // A run that went BELOW the surface did not fly a low orbit; it crashed, and
+  // the status line already says so. The caution is for an orbit low enough that
+  // the model's omissions start to matter, not for a hole in the Moon.
+  const low = c.moonAltKm >= 0 && c.moonAltKm < LOW_LUNAR_KM;
   ui.caution.hidden = !low;
   if (low) {
     ui.caution.textContent =
@@ -583,8 +612,7 @@ function updateEditor3Readout() {
     `t        candidate at ${(ed3.epoch * TU_DAYS).toFixed(2)} days   (${ed3.epoch.toFixed(3)} TU)`,
     `position ${s[0].toFixed(5)}, ${s[1].toFixed(5)}, ${s[2].toFixed(5)} DU   candidate`,
     `speed    ${speed.toFixed(1)} m/s   vz ${vuToMs(s[5]).toFixed(1)}   candidate`,
-    `closest  ${near ? `${near.moonAltKm.toFixed(0)} km over the Moon` : '—'}`
-      + `${near && near.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : ''}`,
+    `closest  ${pv ? closestLabel3(pv, near) : '—'}`,
     `C0       ${c === null ? '   —' : c.toFixed(9)}   candidate`,
     `C now    ${c === null ? '   —' : c.toFixed(9)}   candidate`,
     ed3.mode === 'burn'
@@ -636,8 +664,7 @@ function render3() {
     `speed    ${vuToMs(Math.hypot(st.s[3], st.s[4], st.s[5])).toFixed(1)} m/s   z ${(st.s[2] * DU_KM).toFixed(0)} km`,
     // Terse: the caution panel carries the full statement, and a readout line
     // that wraps past 53 characters costs a whole extra row for a word.
-    `closest  ${near3.moonAltKm < 1e5 ? `${near3.moonAltKm.toFixed(0)} km over the Moon` : 'not near the Moon'}`
-      + `${near3.moonAltKm < LOW_LUNAR_KM ? '   (idealized)' : ''}`,
+    `closest  ${closestLabel3(run3, near3)}`,
     `C0       ${run3.C0.toFixed(9)}`,
     `C now    ${C.toFixed(9)}`,
     // Two drifts, and they are different measurements. `drift` is computed from
@@ -656,7 +683,13 @@ function render3() {
     // exactly the mislabelling THREE_D_SPEC.md 9 forbids.
     preset3.quasi
       ? (preset3.id === 'free3'
-          ? `status   ${run3.status}, over ${preset3.duration} TU`
+          // A run that ended early was NOT propagated for the requested span, so
+          // it is given the time it actually ended at. "impact: Moon, over 40 TU"
+          // read as forty tidy units of flight that happened to end in a crash.
+          ? (run3.status === 'ok'
+              ? `status   ok, over ${preset3.duration} TU`
+              : `status   ${run3.status} at ${run3.t.toFixed(2)} TU `
+                + `(${(run3.t * TU_DAYS).toFixed(1)} d)`)
           : `status   quasi-periodic, ${(preset3.inPlane / preset3.outOfPlane).toFixed(4)}:1, holds ${preset3.lifetime.toFixed(0)} TU`)
       : `status   period ${preset3.period.toFixed(6)} TU, residual ${preset3.residual.toExponential(1)}`,
     `build    ${BUILD}`,
@@ -714,6 +747,13 @@ ui.speed.addEventListener('input', () => {
 });
 ui.play.addEventListener('click', () => {
   playing = !playing;
+  // Pressing Play on a run that has already reached its end -- a terminated 3D
+  // arc, or any finished 2D one -- would otherwise stop again on the very next
+  // frame and look like a dead button. Rewind instead: Play means play.
+  if (playing) {
+    const r = spatial ? run3 : run;
+    if (r) { if (spatial) clock3 = resumeFrom(clock3, r); else clock = resumeFrom(clock, r); }
+  }
   ui.play.textContent = playing ? 'Pause' : 'Play';
 });
 ui.reset.addEventListener('click', () => {

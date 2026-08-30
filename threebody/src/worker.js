@@ -9,7 +9,7 @@
 // So the worker computes physical states as fast as it can and the main thread
 // plays back what it has. Nothing here decides how anything looks.
 
-import { propagate } from './trajectory.js?v=20260830j';
+import { propagate } from './trajectory.js?v=20260830k';
 
 self.onmessage = (e) => {
   const { id, state, duration, sample, absTol, relTol } = e.data;

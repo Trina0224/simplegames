@@ -7,10 +7,10 @@
 // corrector produces the orbit, and continuation produces the family; every
 // number below is measured from the propagator afterwards.
 
-import { MU, DU_KM, TU_DAYS, TU_S, VU_KMS } from '../src/constants.js?v=20260830j';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830j';
-import { richardsonSeed, correctHalo, closure, legendre } from '../src/halo.js?v=20260830j';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830j';
+import { MU, DU_KM, TU_DAYS, TU_S, VU_KMS } from '../src/constants.js?v=20260830k';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830k';
+import { richardsonSeed, correctHalo, closure, legendre } from '../src/halo.js?v=20260830k';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830k';
 
 const f = (v, n = 12) => (v >= 0 ? ' ' : '') + v.toFixed(n);
 

@@ -11,25 +11,26 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830j';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830j';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830j';
-import { Dopri5 } from '../src/integrator.js?v=20260830j';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830j';
-import { PRESETS } from '../src/presets.js?v=20260830j';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830j';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830j';
-import { displayToRotating } from '../src/display.js?v=20260830j';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830j';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830j';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830j';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830j';
-import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830j';
-import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830j';
-import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830j';
-import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830j';
-import { toInertial } from '../src/frames.js?v=20260830j';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830j';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830k';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830k';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830k';
+import { Dopri5 } from '../src/integrator.js?v=20260830k';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830k';
+import { PRESETS } from '../src/presets.js?v=20260830k';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830k';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830k';
+import { displayToRotating } from '../src/display.js?v=20260830k';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830k';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830k';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830k';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830k';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights, haloBranch, lunarGeometry } from '../src/halo.js?v=20260830k';
+import { PRESETS3D, NRHO3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830k';
+import { FAMILY3D, FAMILY_POINTS } from '../src/family3d.js?v=20260830k';
+import { Editor3D, PREVIEW3_TU } from '../src/freelaunch3d.js?v=20260830k';
+import { advance, resumeFrom } from '../src/playback.js?v=20260830k';
+import { toInertial } from '../src/frames.js?v=20260830k';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830k';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -793,6 +794,46 @@ console.log('\n17. The 3D editor sets all three components, and hides none');
   inside.height(MOON_RADIUS * 1.5);
   check('and just outside it is allowed', inside.valid(),
     `${(MOON_RADIUS * 1.5 * DU_KM).toFixed(0)} km up`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n18. Playback stops when the trajectory did');
+{
+  // A run is only its sample times and how it ended, as far as playback cares.
+  const run = (end, status) => ({ ts: [0, end / 2, end], n: 3, status });
+  const halo = run(2.7674202404692116, 'ok');
+  const hitMoon = run(1.64, 'impact: Moon');
+  const hitEarth = run(3.1, 'impact: Earth');
+  const gone = run(9.4, 'left display domain');
+
+  const mid = advance(1.0, 0.01, halo, true);
+  check('mid-run the clock just advances',
+    mid.playing && Math.abs(mid.t - 1.01) < 1e-15,
+    `t 1.0 -> ${mid.t}`);
+
+  const wrap = advance(halo.ts[2] - 0.001, 0.01, halo, true);
+  check('a closed orbit that reached its span comes back round',
+    wrap.playing && wrap.t === 0,
+    `status "ok" at the end of a looping view -> t ${wrap.t}, playing ${wrap.playing}`);
+
+  // The bug: this used to wrap too, so the spacecraft hit the Moon, reappeared
+  // at the launch point and hit it again, forever.
+  for (const r of [hitMoon, hitEarth, gone]) {
+    const a = advance(r.ts[2] - 0.001, 0.01, r, true);
+    check(`a run that ended "${r.status}" stops there instead of repeating`,
+      !a.playing && a.t === r.ts[2],
+      `t held at ${a.t} of ${r.ts[2]}, playing ${a.playing}`);
+  }
+
+  // and the planar view, which never loops, is unchanged by any of it
+  const flat = advance(halo.ts[2] - 0.001, 0.01, halo);
+  check('a view that does not loop still stops at the end',
+    !flat.playing && flat.t === halo.ts[2],
+    `t held at ${flat.t}, playing ${flat.playing}`);
+
+  check('and Play on a finished run starts it over rather than doing nothing',
+    resumeFrom(hitMoon.ts[2], hitMoon) === 0 && resumeFrom(0.8, hitMoon) === 0.8,
+    'at the end -> 0; part-way through -> unchanged');
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');
