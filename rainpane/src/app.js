@@ -7,14 +7,14 @@
 // audio, no thunder, no airborne rain and no decoration: the point is that the
 // water on the glass can be judged on a real device.
 
-import { Surface, MM } from './surface.js?v=20260830a';
-import { FlowSystem } from './flows.js?v=20260830a';
-import { ImpactField } from './impact.js?v=20260830a';
-import { Rainfall, INTENSITIES } from './rain.js?v=20260830a';
-import { PaneRenderer } from './render.js?v=20260830a';
-import { Scene } from './scene.js?v=20260830a';
-import { GravitySensor } from './gravity.js?v=20260830a';
-import { AudioEngine } from './audio.js?v=20260830a';
+import { Surface, MM } from './surface.js?v=20260830b';
+import { FlowSystem } from './flows.js?v=20260830b';
+import { ImpactField } from './impact.js?v=20260830b';
+import { Rainfall, INTENSITIES } from './rain.js?v=20260830b';
+import { PaneRenderer } from './render.js?v=20260830b';
+import { Scene } from './scene.js?v=20260830b';
+import { GravitySensor } from './gravity.js?v=20260830b';
+import { AudioEngine } from './audio.js?v=20260830b';
 
 // The grid follows a physical cell size, not a fixed count. Fixing the count
 // means a phone quietly simulates at twice the resolution of a tablet and pays
@@ -29,7 +29,7 @@ import { AudioEngine } from './audio.js?v=20260830a';
 // fixed. A query string makes each version a different URL, so there is nothing
 // to invalidate. The diagnostics show it, which is the point — "which build am
 // I actually looking at" should never again be something to reason about.
-const BUILD = '20260830a';
+const BUILD = '20260830b';
 
 const CELL_MM = 0.22;        // about a fifth of a millimetre of glass per cell
 const MAX_CELLS = 130000;    // ...unless that would cost too much
@@ -177,6 +177,7 @@ function setIntensity(index) {
   const step = INTENSITIES[Math.max(0, Math.min(INTENSITIES.length - 1, index | 0))];
   rainfall.setRate(step.rate);
   audio.setRate(step.rate);
+  renderer.setWeather(step.rate);
   el.intensityName.textContent = `${step.name}${step.rate ? ` · ${step.rate} mm/h` : ''}`;
 }
 
@@ -200,6 +201,7 @@ function updateDiag(g) {
     `on glass ${mm3.toFixed(0)} mm3   ran off ${(surface.drained * surface.cellMm ** 3).toFixed(0)}   dried ${(surface.evaporated * surface.cellMm ** 3).toFixed(0)}`,
     `cell     ${surface.cellMm.toFixed(3)} mm   grid ${surface.cols}x${surface.rows}`,
     `sound    ${audio.ready ? (audio.muted ? 'muted' : 'on') : 'off'}   ${audio.voices} voices   x${audio.multiplier.toFixed(0)} pane`,
+    `veil     ${renderer.veil ? 'on' : 'OFF'}   sigma ${renderer.sigma.toFixed(3)}   ${renderer.maskUploaded ? 'masks ok' : 'no masks'}`,
     `renderer ${renderer.ok ? 'webgl' : '2d fallback'}   build ${BUILD}`,
   ].join('\n');
 }
@@ -220,6 +222,15 @@ function updateSound() {
   el.soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   el.soundBtn.textContent = on ? 'Sound on' : 'Sound off';
 }
+
+// Acceptance test 8: the veil has to be separable from the glass water, so it
+// can be told apart from it by eye rather than by argument. Tapping the readout
+// toggles it; there is nowhere better to put a diagnostic control than on the
+// diagnostics.
+el.diag.addEventListener('click', () => {
+  renderer.setVeil(!renderer.veil);
+  showMessage(renderer.veil ? 'Rain veil on' : 'Rain veil off');
+});
 
 el.infoBtn.addEventListener('click', () => {
   showDiag = !showDiag;

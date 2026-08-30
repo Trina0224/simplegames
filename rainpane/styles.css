@@ -106,6 +106,8 @@ body {
   font-size: 11px;
   line-height: 1.5;
   white-space: pre;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   z-index: 3;
 }
 
