@@ -16,7 +16,7 @@
 // THREE_D_AGENT.md rule 10 is that 2D tests are not weakened to make 3D pass, so
 // the planar code keeps its own arithmetic and this is checked against it.
 
-import { MU } from './constants.js?v=20260830h';
+import { MU } from './constants.js?v=20260830i';
 
 /** Distances to the two primaries, in three dimensions. */
 export function radii3(x, y, z, mu = MU) {

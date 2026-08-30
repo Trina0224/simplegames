@@ -20,8 +20,8 @@
 //                       the 3D orbit projects into the planar geometry -- except
 //                       it is visible from every angle, not only from the top.
 
-import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830h';
-import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830h';
+import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js?v=20260830i';
+import { displayPos3, displayState3, bodies3 } from './frames3d.js?v=20260830i';
 
 // Bodies are drawn at their PHYSICAL radius, with a floor and a ceiling in
 // screen pixels. The planar view inflates them because the whole Earth-Moon

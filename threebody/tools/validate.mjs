@@ -11,23 +11,23 @@
 // and this suite does not change that.
 
 import { readFileSync } from 'node:fs';
-import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830h';
-import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830h';
-import { lagrangePoints } from '../src/lagrange.js?v=20260830h';
-import { Dopri5 } from '../src/integrator.js?v=20260830h';
-import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830h';
-import { PRESETS } from '../src/presets.js?v=20260830h';
-import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830h';
-import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830h';
-import { displayToRotating } from '../src/display.js?v=20260830h';
-import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830h';
-import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830h';
-import { propagate3 } from '../src/trajectory3d.js?v=20260830h';
-import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830h';
-import { richardsonSeed, correctHalo, closure, haloFamily } from '../src/halo.js?v=20260830h';
-import { PRESETS3D } from '../src/presets3d.js?v=20260830h';
-import { toInertial } from '../src/frames.js?v=20260830h';
-import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830h';
+import { MU, TU_DAYS, DU_KM } from '../src/constants.js?v=20260830i';
+import { omega, jacobi, deriv, gradOmega } from '../src/cr3bp.js?v=20260830i';
+import { lagrangePoints } from '../src/lagrange.js?v=20260830i';
+import { Dopri5 } from '../src/integrator.js?v=20260830i';
+import { propagate, toAxisCrossing, findSymmetricFamily, classifyCoorbital } from '../src/trajectory.js?v=20260830i';
+import { PRESETS } from '../src/presets.js?v=20260830i';
+import { planTransfer, solveBurn } from '../src/targeting.js?v=20260830i';
+import { MOON_RADIUS, MOON_X, EARTH_RADIUS, EARTH_X, msToVu } from '../src/constants.js?v=20260830i';
+import { displayToRotating } from '../src/display.js?v=20260830i';
+import { FreeLaunch, PREVIEW_TU } from '../src/freelaunch.js?v=20260830i';
+import { deriv3, jacobi3, omega3, gradOmega3, lift } from '../src/cr3bp3d.js?v=20260830i';
+import { propagate3 } from '../src/trajectory3d.js?v=20260830i';
+import { toInertial3, toRotating3, displayState3, bodies3 } from '../src/frames3d.js?v=20260830i';
+import { richardsonSeed, correctHalo, closure, haloFamily, lissajousSeed, refineLissajous, crossingHeights } from '../src/halo.js?v=20260830i';
+import { PRESETS3D, LISSAJOUS3D } from '../src/presets3d.js?v=20260830i';
+import { toInertial } from '../src/frames.js?v=20260830i';
+import { displayPos, displayState, displayBodies, displayPoints, earthInertial, burnToRotating } from '../src/display.js?v=20260830i';
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -566,6 +566,59 @@ console.log('\n13. The spatial problem contains the planar one, and closes a hal
   check('the L1 family continues rather than being hand-picked',
     got.length === list.length && got[got.length - 1].residual < 1e-10,
     `${got.length} of ${list.length} members corrected, last residual ${got[got.length - 1].residual.toExponential(1)}`);
+}
+
+console.log('\n14. A Lissajous is not a halo, and is not called one');
+{
+  // THREE_D_SPEC.md 9: quasi-periodic motion must not be mislabelled periodic,
+  // and "its plotted path visually seems to close" is explicitly not enough. So
+  // the two are put through the SAME measurement -- the height at every second
+  // crossing of the x-z plane, which for a periodic orbit is the same point
+  // every time -- and the answers are four orders of magnitude apart.
+  const same = (p, n, tMax) => crossingHeights(p.state, n, { tMax });
+
+  // The halo's own spread over three periods is tens of METRES, not zero, and it
+  // should not be asserted to be zero: a halo is unstable, so its closure error
+  // is amplified a little on every revolution. What matters is the ratio to the
+  // Lissajous, which is a factor of two hundred thousand, so the bound is set
+  // where that distinction lives rather than at the noise floor.
+  let haloWorst = 0;
+  for (const h of PRESETS3D) {
+    const c = same(h, 3, h.period * 8);
+    haloWorst = Math.max(haloWorst, c.spread);
+    check(`${h.id} returns to the same height every period`, c.spread * DU_KM < 0.5,
+      `3 successive same-face crossings within ${(c.spread * DU_KM * 1000).toFixed(2)} m ` +
+      `-- not zero, because a halo is unstable`);
+  }
+  for (const l of LISSAJOUS3D) {
+    const c = same(l, 8, l.duration);
+    check(`${l.id} does NOT`, c.spread * DU_KM > 1000,
+      `8 crossings spread over ${(c.spread * DU_KM).toFixed(0)} km`);
+    check(`${l.id} carries no period to quote`,
+      l.period === undefined && l.residual === undefined && l.quasi === true,
+      `frequencies ${l.inPlane.toFixed(4)} and ${l.outOfPlane.toFixed(4)}, ratio ${(l.inPlane / l.outOfPlane).toFixed(6)} -- not 1`);
+    // it must survive as long as it claims, and still be a Lissajous while it does
+    const r = propagate3(l.state, l.duration, { sample: 0.01, absTol: 1e-13, relTol: 1e-13 });
+    check(`${l.id} holds for the ${l.duration} TU it is played over`,
+      r.status === 'ok' && r.relDrift < 1e-9,
+      `status "${r.status}", Jacobi drift ${r.relDrift.toExponential(2)}, ${r.accepted} steps`);
+    check(`${l.id} reports the C it stores`, Math.abs(jacobi3(l.state, MU) - l.C) < 1e-9,
+      `stored ${l.C.toFixed(9)}, measured ${jacobi3(l.state, MU).toFixed(9)}`);
+  }
+
+  let lisBest = Infinity;
+  for (const l of LISSAJOUS3D) lisBest = Math.min(lisBest, same(l, 8, l.duration).spread);
+  check('the two are separated by orders of magnitude, not by eye',
+    lisBest / haloWorst > 1000,
+    `the loosest halo repeats to ${(haloWorst * DU_KM * 1000).toFixed(0)} m; the tightest ` +
+    `Lissajous spreads ${(lisBest * DU_KM).toFixed(0)} km -- a factor of ${Math.round(lisBest / haloWorst).toLocaleString('en-US')}`);
+
+  const raw = lissajousSeed('L1', 0.012, 0.012);
+  const refined = refineLissajous(raw, { tMax: 60 });
+  check('bisection buys a Lissajous a usable lifetime',
+    refined.lifetime > 20 && Math.abs(refined.correction) < 0.05,
+    `${raw.point} seed holds 4.4 TU raw, ${refined.lifetime.toFixed(1)} TU after ` +
+    `a correction of ${refined.correction.toExponential(2)} in vy`);
 }
 
 console.log('     note: the step-end collision test was hunted for a case it could');

@@ -6,21 +6,21 @@
 // cached states are shown and never touches the integration, so a trajectory
 // watched at 5 days a second is the same trajectory watched at one.
 
-import { MU, TU_DAYS, DU_KM, MOON_X, vuToMs, msToVu } from './constants.js?v=20260830h';
-import { jacobi } from './cr3bp.js?v=20260830h';
-import { lagrangePoints } from './lagrange.js?v=20260830h';
-import { propagate } from './trajectory.js?v=20260830h';
-import { zeroVelocityCurves } from './zvc.js?v=20260830h';
-import { planTransfer } from './targeting.js?v=20260830h';
-import { PRESETS, byId } from './presets.js?v=20260830h';
-import { Scene } from './render.js?v=20260830h';
-import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830h';
-import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830h';
-import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830h';
-import { Scene3D, VIEWS } from './render3d.js?v=20260830h';
-import { propagate3 } from './trajectory3d.js?v=20260830h';
-import { jacobi3 } from './cr3bp3d.js?v=20260830h';
-import { PRESETS3D, byId3d } from './presets3d.js?v=20260830h';
+import { MU, TU_DAYS, DU_KM, MOON_X, vuToMs, msToVu } from './constants.js?v=20260830i';
+import { jacobi } from './cr3bp.js?v=20260830i';
+import { lagrangePoints } from './lagrange.js?v=20260830i';
+import { propagate } from './trajectory.js?v=20260830i';
+import { zeroVelocityCurves } from './zvc.js?v=20260830i';
+import { planTransfer } from './targeting.js?v=20260830i';
+import { PRESETS, byId } from './presets.js?v=20260830i';
+import { Scene } from './render.js?v=20260830i';
+import { FRAMES, FRAME_LABEL, displayPos, displayState, displayToRotating, burnToRotating } from './display.js?v=20260830i';
+import { FreeLaunch, PREVIEW_TU } from './freelaunch.js?v=20260830i';
+import { EDITOR_HIT_PX, spriteHandle } from './render.js?v=20260830i';
+import { Scene3D, VIEWS } from './render3d.js?v=20260830i';
+import { propagate3 } from './trajectory3d.js?v=20260830i';
+import { jacobi3 } from './cr3bp3d.js?v=20260830i';
+import { PRESETS3D, LISSAJOUS3D, ALL3D, byId3d } from './presets3d.js?v=20260830i';
 
 // The build stamp is compared against this module's own URL rather than simply
 // declared, because the thing it is there to catch is the browser having served
@@ -29,7 +29,7 @@ import { PRESETS3D, byId3d } from './presets3d.js?v=20260830h';
 // browser actually asked for. When they agree the readout says so in one word.
 // When they do not, the readout says that instead of quietly reporting a version
 // that is not running -- which is the failure this whole mechanism exists for.
-const STAMP = '20260830h';
+const STAMP = '20260830i';
 const LOADED = new URL(import.meta.url).searchParams.get('v');
 const BUILD = LOADED === STAMP ? STAMP : `${STAMP} — but loaded as ${LOADED || 'unversioned'}, so the page is cached`;
 const POINTS = lagrangePoints(MU);
@@ -106,7 +106,7 @@ let preset3 = null;
 
 function makeWorker() {
   try {
-    const w = new Worker(new URL('./worker.js?v=20260830h', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=20260830i', import.meta.url), { type: 'module' });
     w.onerror = () => { worker = null; };
     return w;
   } catch (_) {
@@ -253,7 +253,7 @@ function frameLoop(ms) {
     if (playing && run3) {
       clock3 += dt * speedDaysPerSec / TU_DAYS;
       // a halo is periodic: let it keep going round rather than stopping
-      if (clock3 >= run3.ts[run3.n - 1]) clock3 = 0;
+      if (clock3 >= run3.ts[run3.n - 1]) clock3 = 0;   // a halo repeats; so may the playback
     }
     render3();
     return;
@@ -466,19 +466,31 @@ function render3() {
     // the second would hide what is on screen. The planar readout names both for
     // the same reason.
     `drift    ${drift.toExponential(2)} shown   sim ${run3.relDrift.toExponential(2)}`,
-    `solver   ${run3.accepted} steps, ${run3.rejected} rejected   closes ${preset3.closure.toExponential(1)}`,
+    `solver   ${run3.accepted} steps, ${run3.rejected} rejected${preset3.quasi ? '' : `   closes ${preset3.closure.toExponential(1)}`}`,
     `frame    ${FRAME_LABEL[frame] || frame}`,
-    `status   period ${preset3.period.toFixed(6)} TU, residual ${preset3.residual.toExponential(1)}`,
+    // A quasi-periodic trajectory has no period and no closure residual, so it
+    // is given neither. Quoting a "period" for the in-plane frequency would be
+    // exactly the mislabelling THREE_D_SPEC.md 9 forbids.
+    preset3.quasi
+      ? `status   quasi-periodic, ${(preset3.inPlane / preset3.outOfPlane).toFixed(4)}:1, holds ${preset3.lifetime.toFixed(0)} TU`
+      : `status   period ${preset3.period.toFixed(6)} TU, residual ${preset3.residual.toExponential(1)}`,
     `build    ${BUILD}`,
   ].join('\n');
 }
 
 // ---------------------------------------------------------------- controls
 
-for (const p of PRESETS3D) {
-  const o = document.createElement('option');
-  o.value = p.id; o.textContent = p.name;
-  ui.preset3d.appendChild(o);
+for (const [label, list] of [['Periodic — halo', PRESETS3D], ['Quasi-periodic — Lissajous', LISSAJOUS3D]]) {
+  // Grouped, and labelled by what they ARE. A Lissajous sitting in the same flat
+  // list as a halo would be read as another orbit; it is not an orbit at all.
+  const g = document.createElement('optgroup');
+  g.label = label;
+  for (const p of list) {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    g.appendChild(o);
+  }
+  ui.preset3d.appendChild(g);
 }
 
 for (const p of PRESETS) {

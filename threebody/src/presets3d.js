@@ -11,7 +11,7 @@
 // integrator tolerance, the Jacobi drift and the step counts recorded. They are
 // here and they are re-measured by validate.mjs section 13 rather than trusted.
 
-import { MU } from './constants.js?v=20260830h';
+import { MU } from './constants.js?v=20260830i';
 
 export const PRESETS3D = [
   {
@@ -54,5 +54,65 @@ export const PRESETS3D = [
   },
 ];
 
-export const byId3d = (id) => PRESETS3D.find((p) => p.id === id) || null;
+/**
+ * Lissajous trajectories.
+ *
+ * Deliberately a SEPARATE list with no `period` field. THREE_D_SPEC.md 9: a
+ * Lissajous must not be called periodic, and the surest way to keep that promise
+ * is for the object to have no period to quote. What it has instead is two
+ * frequencies that refuse to agree, a lifetime, and a measured proof that it
+ * does not close.
+ *
+ * These are not forever. L1 and L2 have an e-folding time under half a time
+ * unit, and a third-order approximation of the centre manifold carries a small
+ * unstable component; bisecting onto the manifold buys about an e-folding per
+ * halving until double precision runs out. Real Lissajous trajectories need
+ * station keeping for exactly the same reason, so the honest thing is to say how
+ * long each one holds rather than to loop it silently.
+ */
+export const LISSAJOUS3D = [
+  {
+    id: 'lissajous-l1',
+    name: 'L1 Lissajous',
+    point: 'L1',
+    quasi: true,
+    blurb: 'Not a periodic orbit. The in-plane and out-of-plane motions run at '
+      + 'slightly different rates, so the path never closes — it winds around a '
+      + 'torus, and every pass through the plane happens at a different height.',
+    state: [0.8265876806734829, 0, 0.012600695082136853, 0, 0.10557236481730659, 0],
+    lifetime: 35.94,
+    duration: 33,
+    C: 3.177632536340015,
+    inPlane: 2.309798,
+    outOfPlane: 2.268831,
+    spreadKm: 3944,
+    origin: 'Richardson third-order expansion at L1 with Ax = Az = 0.012 DU and the '
+      + 'halo amplitude constraint dropped, then bisected onto the centre manifold '
+      + 'between the two escape directions (60 halvings, dvy = 7.884e-3)',
+    expect: 'never closes: 8 successive passes through the plane spread over 3 944 km',
+  },
+  {
+    id: 'lissajous-l2',
+    name: 'L2 Lissajous',
+    point: 'L2',
+    quasi: true,
+    blurb: 'The same idea beyond the Moon, with a bigger vertical amplitude. Watch '
+      + 'the height at which it crosses the plane: it is different every time, and '
+      + 'that is what "quasi-periodic" means.',
+    state: [1.1373725408640845, 0, 0.028017446905756273, 0, 0.08496866288616428, 0],
+    lifetime: 34.36,
+    duration: 31,
+    C: 3.164342354612123,
+    inPlane: 1.866213,
+    outOfPlane: 1.786176,
+    spreadKm: 15623,
+    origin: 'Richardson third-order expansion at L2 with Ax = 0.015, Az = 0.030 DU and '
+      + 'the halo amplitude constraint dropped, then bisected onto the centre manifold '
+      + '(60 halvings, dvy = -9.211e-4)',
+    expect: 'never closes: 8 successive passes through the plane spread over 15 623 km',
+  },
+];
+
+export const ALL3D = [...PRESETS3D, ...LISSAJOUS3D];
+export const byId3d = (id) => ALL3D.find((p) => p.id === id) || null;
 export { MU };

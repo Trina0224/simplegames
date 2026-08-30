@@ -23,10 +23,10 @@
 // Richardson (1980), Celestial Mechanics 22(3), 241-253, DOI 10.1007/BF01229511.
 // Howell (1984), Celestial Mechanics 32, 53-71, DOI 10.1007/BF01358403.
 
-import { MU } from './constants.js?v=20260830h';
-import { lagrangePoints } from './lagrange.js?v=20260830h';
-import { jacobi3 } from './cr3bp3d.js?v=20260830h';
-import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830h';
+import { MU } from './constants.js?v=20260830i';
+import { lagrangePoints } from './lagrange.js?v=20260830i';
+import { jacobi3 } from './cr3bp3d.js?v=20260830i';
+import { propagate3, toPlaneCrossing3 } from './trajectory3d.js?v=20260830i';
 
 /**
  * The Legendre coefficients of the expansion about a collinear point.
@@ -56,6 +56,206 @@ export function legendre(point, mu = MU) {
  * `az` is the out-of-plane amplitude in NORMALISED units (fractions of the
  * Earth-Moon distance). `northern` picks between the mirror pair.
  */
+/**
+ * The third-order expansion's coefficients, once, for a given point.
+ *
+ * Split out because a halo and a Lissajous are the SAME expansion evaluated
+ * under different rules: a halo obeys the amplitude constraint that brings the
+ * in-plane and out-of-plane frequencies into resonance, and a Lissajous does
+ * not. Sharing the coefficients is what makes that the only difference between
+ * them, rather than two hand-written formulas that might drift apart.
+ */
+function expansion(point, mu) {
+  const { xL, gamma, c2, c3, c4 } = legendre(point, mu);
+  const lam = Math.sqrt((2 - c2 + Math.sqrt(9 * c2 * c2 - 8 * c2)) / 2);
+  const k = (lam * lam + 1 + 2 * c2) / (2 * lam);
+  const l2 = lam * lam;
+  const d1 = (3 * l2 / k) * (k * (6 * l2 - 1) - 2 * lam);
+  const d2 = (8 * l2 / k) * (k * (11 * l2 - 1) - 2 * lam);
+  const a21 = 3 * c3 * (k * k - 2) / (4 * (1 + 2 * c2));
+  const a22 = 3 * c3 / (4 * (1 + 2 * c2));
+  const a23 = -3 * c3 * lam / (4 * k * d1) * (3 * k ** 3 * lam - 6 * k * (k - lam) + 4);
+  const a24 = -3 * c3 * lam / (4 * k * d1) * (2 + 3 * k * lam);
+  const b21 = -3 * c3 * lam / (2 * d1) * (3 * k * lam - 4);
+  const b22 = 3 * c3 * lam / d1;
+  const d21 = -c3 / (2 * l2);
+  const a31 = -9 * lam / (4 * d2) * (4 * c3 * (k * a23 - b21) + k * c4 * (4 + k * k))
+    + ((9 * l2 + 1 - c2) / (2 * d2)) * (3 * c3 * (2 * a23 - k * b21) + c4 * (2 + 3 * k * k));
+  const a32 = -(9 * lam / (4 * d2)) * (4 * c3 * (k * a24 - b22) + k * c4)
+    - (3 / (2 * d2)) * (9 * l2 + 1 - c2) * (c3 * (k * b22 + d21 - 2 * a24) - c4);
+  const b31 = (3 / (8 * d2)) * 8 * lam * (3 * c3 * (k * b21 - 2 * a23) - c4 * (2 + 3 * k * k))
+    + (3 / (8 * d2)) * (9 * l2 + 1 + 2 * c2) * (4 * c3 * (k * a23 - b21) + k * c4 * (4 + k * k));
+  const b32 = (9 * lam / d2) * (c3 * (k * b22 + d21 - 2 * a24) - c4)
+    + (3 * (9 * l2 + 1 + 2 * c2) / (8 * d2)) * (4 * c3 * (k * a24 - b22) + k * c4);
+  const d31 = (3 / (64 * l2)) * (4 * c3 * a24 + c4);
+  const d32 = (3 / (64 * l2)) * (4 * c3 * (a23 - d21) + c4 * (4 + k * k));
+  const den = 2 * lam * (lam * (1 + k * k) - 2 * k);
+  const s1 = ((3 / 2) * c3 * (2 * a21 * (k * k - 2) - a23 * (k * k + 2) - 2 * k * b21)
+    - (3 / 8) * c4 * (3 * k ** 4 - 8 * k * k + 8)) / den;
+  const s2 = ((3 / 2) * c3 * (2 * a22 * (k * k - 2) + a24 * (k * k + 2) + 2 * k * b22 + 5 * d21)
+    + (3 / 8) * c4 * (12 - k * k)) / den;
+  const a1 = -(3 / 2) * c3 * (2 * a21 + a23 + 5 * d21) - (3 / 8) * c4 * (12 - k * k);
+  const a2 = (3 / 2) * c3 * (a24 - 2 * a22) + (9 / 8) * c4;
+  return { xL, gamma, c2, c3, c4, lam, k, l2, a21, a22, a23, a24, b21, b22, d21,
+    a31, a32, b31, b32, d31, d32, s1, s2,
+    l1c: a1 + 2 * l2 * s1, l2c: a2 + 2 * l2 * s2, delta: l2 - c2,
+    nuZ: Math.sqrt(c2) };
+}
+
+/**
+ * The expansion at its x-z plane crossing, for given amplitudes in gamma units.
+ *
+ * Shared by the halo seed and the Lissajous seed. At tau1 = 0 the expansion is
+ * at its simplest and its most useful: y has only sine terms so it vanishes, and
+ * x and z have only cosine terms so their derivatives vanish.
+ */
+function atCrossing(E, Ax, Az, { northern = true, sign = 1 } = {}) {
+  const { lam, k, gamma, xL, s1, s2, a21, a22, a23, a24, a31, a32,
+    b21, b22, b31, b32, d21, d31, d32 } = E;
+  const nu = 1 + s1 * Ax * Ax + s2 * Az * Az;
+  const dm = northern ? 1 : -1;
+  const xb = a21 * Ax * Ax + a22 * Az * Az - Ax + (a23 * Ax * Ax - a24 * Az * Az)
+    + (a31 * Ax ** 3 - a32 * Ax * Az * Az);
+  const zb = dm * (Az - 2 * d21 * Ax * Az + (d32 * Az * Ax * Ax - d31 * Az ** 3));
+  const vyb = lam * nu * (k * Ax + 2 * (b21 * Ax * Ax - b22 * Az * Az)
+    + 3 * (b31 * Ax ** 3 - b32 * Ax * Az * Az));
+  return {
+    state: [xL + sign * gamma * xb, 0, gamma * zb, 0, sign * gamma * vyb, 0],
+    nu, period: 2 * Math.PI / (lam * nu),
+  };
+}
+
+/**
+ * A quasi-periodic Lissajous trajectory near a collinear point.
+ *
+ * The SAME expansion as a halo, with the amplitude constraint dropped. Ax and Az
+ * are then independent, the in-plane frequency lambda*nu and the out-of-plane
+ * one are no longer equal, and the motion never closes -- it winds around a
+ * torus. That is the whole distinction and it is why this returns no period:
+ * THREE_D_SPEC.md 9 is explicit that a Lissajous must not be called periodic,
+ * and the surest way to keep that promise is for the object to have no period to
+ * quote.
+ *
+ * It does not last forever either, and that is honest rather than a defect. L1
+ * and L2 are unstable with an e-folding time under half a time unit, and a
+ * third-order approximation of the centre manifold carries a small unstable
+ * component that grows. Real Lissajous trajectories need station keeping for the
+ * same reason. How long this one holds is measured, not asserted.
+ */
+export function lissajousSeed(point, ax, az, { mu = MU, northern = true, sign = 1 } = {}) {
+  const E = expansion(point, mu);
+  const Ax = ax / E.gamma, Az = az / E.gamma;
+  const at = atCrossing(E, Ax, Az, { northern, sign });
+  return {
+    state: at.state, point, Ax: ax, Az: az,
+    // the two frequencies that refuse to agree, which is what a Lissajous IS
+    inPlane: E.lam * at.nu,
+    outOfPlane: E.nuZ,
+    ratio: (E.lam * at.nu) / E.nuZ,
+    periodic: false,
+  };
+}
+
+/**
+ * Which way a trajectory eventually leaves the neighbourhood of a collinear
+ * point, and when. Returns side 0 if it never does within tMax.
+ */
+function departure(state, xL, { mu = MU, tMax = 40, radius = 0.25 } = {}) {
+  const r = propagate3(state, tMax, { mu, sample: 0.01, absTol: 1e-13, relTol: 1e-13 });
+  for (let i = 0; i < r.xs.length; i += 1) {
+    if (Math.hypot(r.xs[i] - xL, r.ys[i], r.zs[i]) > radius) {
+      return { side: Math.sign(r.xs[i] - xL), t: r.ts[i], status: 'left the neighbourhood', bounded: false };
+    }
+  }
+  // Leaving the ball is not the only way to stop being a Lissajous. An arc that
+  // ends in the Moon has ended, and calling that "bounded for 30 TU" because it
+  // never crossed a radius test would be the diagnostics choosing a flattering
+  // question. Anything but a clean run to tMax counts as the end of the arc.
+  return { side: 0, t: r.t, status: r.status, bounded: r.status === 'ok' && r.t >= tMax - 1e-9 };
+}
+
+/**
+ * Push a Lissajous seed onto the centre manifold, by bisection.
+ *
+ * The third-order seed carries a small unstable component, and L1 and L2 have an
+ * e-folding time under half a time unit, so it survives about a revolution and a
+ * half before that component owns the trajectory. Measured: 4.4 TU at L1.
+ *
+ * No state-transition matrix is needed to fix this. A trajectory near a
+ * collinear point leaves toward the nearer primary or away from it, and which
+ * one depends continuously on the initial state; the set that leaves NEITHER way
+ * is the boundary between them, and it is the manifold we want. So bracket the
+ * two behaviours in one component and bisect. Each halving buys roughly another
+ * e-folding, and double precision runs out at about e^36 -- which is where the
+ * lifetime stops improving, not where the method does.
+ *
+ * Measured after refining: 60+ TU at L1 (about 22 revolutions), 32 TU at L2.
+ * That is enough to watch the torus fill, which is the point of showing one.
+ */
+export function refineLissajous(seed, { mu = MU, tMax = 60, iterations = 60 } = {}) {
+  const xL = legendre(seed.point, mu).xL;
+  const base = seed.state;
+  const at = (d) => [base[0], 0, base[2], 0, base[4] + d, 0];
+  const probe = (d) => departure(at(d), xL, { mu, tMax: 40 });
+
+  // bracket: widen until the two escape directions are both seen
+  let lo = null, hi = null;
+  for (const d of [0, 2e-4, -2e-4, 5e-4, -5e-4, 1e-3, -1e-3, 2e-3, -2e-3,
+                   4e-3, -4e-3, 8e-3, -8e-3]) {
+    const e = probe(d);
+    if (e.side < 0 && (lo === null || Math.abs(d) < Math.abs(lo))) lo = d;
+    if (e.side > 0 && (hi === null || Math.abs(d) < Math.abs(hi))) hi = d;
+    if (lo !== null && hi !== null) break;
+  }
+  if (lo === null || hi === null) return null;
+
+  let a = lo, b = hi;
+  for (let i = 0; i < iterations; i += 1) {
+    const m = 0.5 * (a + b);
+    if (probe(m).side < 0) a = m; else b = m;
+  }
+  const dv = 0.5 * (a + b);
+  const state = at(dv);
+  const lasted = departure(state, xL, { mu, tMax });
+  return {
+    state, point: seed.point, Ax: seed.Ax, Az: seed.Az,
+    inPlane: seed.inPlane, outOfPlane: seed.outOfPlane, ratio: seed.ratio,
+    correction: dv, lifetime: lasted.t, ended: lasted.status || 'ok',
+    bounded: lasted.bounded === true,
+    C: jacobi3(state, mu), periodic: false,
+  };
+}
+
+/**
+ * Does this trajectory close, or does it wind?
+ *
+ * The distinction THREE_D_SPEC.md 9 insists on, measured rather than eyeballed.
+ * Take the height at every second crossing of the x-z plane -- for a periodic
+ * orbit those are the same point every time, so z repeats exactly. For a
+ * Lissajous the two frequencies differ, so z precesses, and the spread over many
+ * crossings is the evidence that it is not periodic.
+ */
+export function crossingHeights(state, n = 12, { mu = MU, tMax = 60 } = {}) {
+  const zs = [];
+  let y = state.slice(), t = 0;
+  for (let i = 0; i < n * 2 && t < tMax; i += 1) {
+    const c = toPlaneCrossing3(y, { mu, tMax: tMax - t, absTol: 1e-13, relTol: 1e-13 });
+    if (!c) break;
+    t += c.t; y = c.state;
+    // The section is y = 0, so set it. The returned y is 1e-16 rather than zero,
+    // and the crossing search skips its starting point only when y is EXACTLY
+    // zero -- so without this the next search rediscovers the crossing it was
+    // handed, at t of order 1e-9. That produced duplicated entries and, because
+    // it broke the alternation, silently mixed the two faces of the orbit
+    // together: the halo then measured a 45 000 km "spread" and looked as
+    // aperiodic as the Lissajous.
+    y[1] = 0;
+    if (i % 2 === 1) zs.push(y[2]);      // every second crossing: the same face
+  }
+  if (zs.length < 2) return { zs, spread: 0 };
+  return { zs, spread: Math.max(...zs) - Math.min(...zs) };
+}
+
 export function richardsonSeed(point, az, { mu = MU, northern = true, sign = 1 } = {}) {
   const { xL, gamma, c2, c3, c4 } = legendre(point, mu);
   const Az = az / gamma;                    // amplitudes are in gamma units

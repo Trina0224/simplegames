@@ -114,7 +114,7 @@ re-integrating anything.
 | `src/trajectory3d.js` | spatial propagation, and the `y = 0` section the corrector shoots to |
 | `src/frames3d.js` | the same three frames, extended to six states |
 | `src/halo.js` | Richardson seed, differential correction, continuation |
-| `src/presets3d.js` | the corrected halos, with the provenance to regenerate them |
+| `src/presets3d.js` | the corrected halos and the Lissajous arcs, with their provenance |
 | `src/render3d.js` | the orthographic camera. Presentation only |
 | `tools/halo.mjs` | regenerates the halo family from nothing |
 | `assets/spacecraft-v1.png` | the sprite. Presentation only; the version is in the name |
@@ -229,6 +229,49 @@ halo, `x` and `z` co-vary, so the x–z view collapses to nearly a straight line
 74 px wide against 177 tall on the L1 preset. Physically correct, visually
 useless. Hence **End**, looking down the Earth–Moon line, where the loop opens
 out and the z excursion is the thing you are looking at.
+
+### A Lissajous is not a halo, and is not called one
+
+Phase 2's first item. A Lissajous is the **same third-order expansion** as a
+halo with the amplitude constraint dropped: `Ax` and `Az` become independent, the
+in-plane and out-of-plane frequencies stop agreeing, and the path never closes —
+it winds around a torus. Sharing the expansion is deliberate, so that the
+constraint is the *only* difference rather than two formulas that might drift.
+
+The objects carry no `period` and no `residual`, because they have none.
+`THREE_D_SPEC.md` 9 forbids calling a Lissajous periodic, and the surest way to
+keep that promise is to leave it nothing to quote. The readout says
+`quasi-periodic, 1.0448:1, holds 34 TU` instead.
+
+**Proved rather than asserted**, and by the same measurement for both: the height
+at every second crossing of the x–z plane. For a periodic orbit that is the same
+point every time.
+
+```text
+halo-l1        3 crossings within 21 m       — not zero, because a halo is unstable
+lissajous-l1   8 crossings spread 3 944 km
+                                             a factor of 191 709
+```
+
+**A raw third-order seed lasts about a revolution and a half.** L1 and L2 have an
+e-folding time under half a time unit, so the seed's small unstable component
+owns the trajectory within 4.4 TU. Fixing it needs no state-transition matrix: a
+trajectory near a collinear point leaves either toward the nearer primary or away
+from it, which one depends continuously on the initial state, and the set that
+leaves *neither* way is the boundary between them. So bracket the two behaviours
+and bisect. Each halving buys roughly another e-folding until double precision
+runs out — measured, 4.4 TU becomes 35.9 TU, about thirteen revolutions.
+
+They are not forever, and the presets say so rather than looping silently. Real
+Lissajous trajectories need station keeping for exactly this reason.
+
+Two bugs found here. The crossing walk rediscovered the crossing it was handed —
+the section residual is 1e-16 rather than exactly zero, and the search only skips
+its start when `y` is *exactly* zero — which broke the alternation and silently
+mixed the two faces of the orbit together, making the halo measure a 45 000 km
+"spread" and look as aperiodic as the Lissajous. And the lifetime test asked only
+whether the arc had left a ball, so an arc that ended *in the Moon* was reported
+as "bounded for 30 TU".
 
 ### Free launch: your initial condition, their equations
 
@@ -481,6 +524,11 @@ how it looks, and it drives nothing.
 | halo topology under tightening | period stable to 9 figures across 1e-9 … 1e-14; max \|z\| moves 0.0000 km |
 | northern vs southern halo | exact mirrors — every component agrees with z negated, to 0 |
 | the 3D camera | orbit, zoom and pan leave the run identical |
+| L1 Lissajous | `[0.8265876806734829, 0, 0.012600695082136853, 0, 0.10557236481730659, 0]`, no period |
+| | C = 3.177632536340015, 2.309798 : 2.268831, holds 35.9 TU, 8 crossings spread 3 944 km |
+| L2 Lissajous | `[1.1373725408640845, 0, 0.028017446905756273, 0, 0.08496866288616428, 0]`, no period |
+| | C = 3.164342354612123, 1.866213 : 1.786176, holds 34.4 TU, 8 crossings spread 15 623 km |
+| halo vs Lissajous, same test | 21 m against 3 944 km — a factor of 191 709 |
 | entering and leaving 3D | the 2D run is identical |
 | stamping the version in | leaves the validation output identical character for character |
 | the same burn from Earth-following and inertial | identical, to 0 ulp |
