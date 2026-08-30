@@ -16,7 +16,7 @@ import { PRESETS, byId } from './presets.js';
 import { Scene } from './render.js';
 import { toInertial } from './frames.js';
 
-const BUILD = '20260830a';
+const BUILD = '20260830b';
 const POINTS = lagrangePoints(MU);
 const el = (id) => document.getElementById(id);
 // what the co-orbital region needs; presets that live somewhere smaller say so
@@ -25,7 +25,7 @@ const DEFAULT_VIEW = { span: 3.7, centre: [0.06, -0.20] };
 const ui = {
   canvas: el('view'), preset: el('preset'), frame: el('frame'), speed: el('speed'),
   play: el('play'), reset: el('reset'), zvc: el('zvc'), vel: el('vel'),
-  target: el('target'), plan: el('plan'), execute: el('execute'),
+  target: el('target'), plan: el('plan'), execute: el('execute'), fit: el('fit'),
   readout: el('readout'), note: el('note'), title: el('title'), blurb: el('blurb'),
 };
 
@@ -40,6 +40,9 @@ let zvcFor = null;
 let pending = null;    // a planned burn awaiting Execute
 let dragging = null;
 let worker = null;
+// The framing the current preset asked for. Fit returns to it without touching
+// the trajectory: resetting the camera must never cost an integration.
+let currentView = { ...DEFAULT_VIEW };
 
 // ---------------------------------------------------------------- solving
 
@@ -83,7 +86,7 @@ function load(state, duration, label, view) {
     if (err) { ui.note.textContent = 'integration failed: ' + err; return; }
     run = { ...data, n: data.xs.length, start: state.slice(), duration };
     clock = 0;
-    if (view) { scene.span = view.span; scene.centre = view.centre.slice(); }
+    if (view) { currentView = { span: view.span, centre: view.centre.slice() }; scene.setView(view); }
     playing = true;
     ui.play.textContent = 'Pause';
     zvcFor = null;
@@ -139,7 +142,7 @@ function render() {
     trail: run && s ? { xs: run.xs, ys: run.ys, ts: run.ts, n: Math.max(2, s.index + 1) } : null,
     head, zvc: zvcSegs, showZvc: ui.zvc.checked, showVel: ui.vel.checked,
     plan: pending ? pending.path : null,
-    burn: dragging ? dragging.dv : null,
+    burn: dragging,
   });
 
   if (run && s) {
@@ -194,47 +197,195 @@ ui.play.addEventListener('click', () => {
 });
 ui.reset.addEventListener('click', () => choosePreset(ui.preset.value));
 
-// --- a burn is a change of velocity, at this position, right now -----------
+// --- input ------------------------------------------------------------------
+//
+// Three gestures over one canvas, and the rule that separates them is where the
+// pointer went down rather than what it did afterwards:
+//
+//   near the spacecraft -> burn
+//   anywhere else       -> pan
+//   two fingers, wheel  -> zoom
+//
+// None of them may touch the trajectory. Pan and zoom move the camera, which is
+// two numbers in render.js; a burn does change the physics, but only by asking
+// for a fresh integration from a new state, exactly as it always did.
+
+// How close counts as "on the spacecraft", in screen pixels rather than model
+// units. In DU the target would shrink to nothing when zoomed out and swallow
+// the whole view when zoomed in.
+const HIT_PX = 26;
+// A drag has to travel this far before it is a drag at all, so that a tap which
+// wobbles does not pan the scene out from under itself.
+const SLOP_PX = 3;
+// Burn scale, per pixel of drag. Deliberately gentle: SPEC.md asks that small
+// burns be reachable, and the interesting behaviour is at tens of m/s. Fixed in
+// pixels so the control feels the same however far the camera is zoomed.
+const MS_PER_PX = 0.55;
+
+const pointers = new Map();
+let gesture = null;        // 'burn' | 'pan' | 'pinch'
+let pinch = null;
+let lastTap = 0;
+
+function canvasPoint(e) {
+  const r = ui.canvas.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+/** Where the spacecraft is on screen right now, in the frame being displayed. */
+function headScreen() {
+  const s = stateAt(clock);
+  if (!s) return null;
+  let x = s.x, y = s.y;
+  if (frame === 'inertial') {
+    const c = Math.cos(clock), sn = Math.sin(clock);
+    [x, y] = [x * c - y * sn, x * sn + y * c];
+  }
+  return { s, model: [x, y], screen: scene.toScreen(x, y) };
+}
+
+function fitView() {
+  scene.setView(currentView);
+}
+
 ui.canvas.addEventListener('pointerdown', (e) => {
-  const s = stateAt(clock);
-  if (!s) return;
-  const r = ui.canvas.getBoundingClientRect();
-  const [mx, my] = scene.toModel(e.clientX - r.left, e.clientY - r.top);
-  let hx = s.x, hy = s.y;
-  if (frame === 'inertial') { const c = Math.cos(clock), sn = Math.sin(clock); [hx, hy] = [s.x * c - s.y * sn, s.x * sn + s.y * c]; }
-  if (Math.hypot(mx - hx, my - hy) > 0.12) return;
-  playing = false; ui.play.textContent = 'Play';
-  dragging = { dv: [0, 0] };
-  ui.canvas.setPointerCapture(e.pointerId);
+  // Capture keeps a drag alive when the finger leaves the canvas, but a browser
+  // is entitled to refuse and it must not take the gesture down with it.
+  try { ui.canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
+  const p = canvasPoint(e);
+  pointers.set(e.pointerId, p);
+
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch = {
+      dist: Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1])),
+      mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+    };
+    gesture = 'pinch';
+    dragging = null;                       // a second finger cancels a burn
+    return;
+  }
+  if (pointers.size > 2) return;
+
+  const h = headScreen();
+  if (h && Math.hypot(p[0] - h.screen[0], p[1] - h.screen[1]) <= HIT_PX) {
+    playing = false; ui.play.textContent = 'Play';
+    gesture = 'burn';
+    dragging = { dv: [0, 0], to: h.model, from: p, moved: 0 };
+  } else {
+    gesture = 'pan';
+    pinch = { last: p, moved: 0 };
+  }
 });
+
 ui.canvas.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  const s = stateAt(clock);
-  const r = ui.canvas.getBoundingClientRect();
-  const [mx, my] = scene.toModel(e.clientX - r.left, e.clientY - r.top);
-  let hx = s.x, hy = s.y;
-  if (frame === 'inertial') { const c = Math.cos(clock), sn = Math.sin(clock); [hx, hy] = [s.x * c - s.y * sn, s.x * sn + s.y * c]; }
-  // Deliberately gentle: a full-width drag is a few hundred m/s, so that small
-  // burns are reachable. The interesting behaviour is at tens of m/s.
-  let dx = (mx - hx) * 0.22, dy = (my - hy) * 0.22;
-  if (frame === 'inertial') { const c = Math.cos(-clock), sn = Math.sin(-clock); [dx, dy] = [dx * c - dy * sn, dx * sn + dy * c]; }
-  dragging.dv = [dx, dy];
-  ui.note.textContent = `burn ${vuToMs(Math.hypot(dx, dy)).toFixed(1)} m/s — release to commit`;
+  if (!pointers.has(e.pointerId)) return;
+  const p = canvasPoint(e);
+  pointers.set(e.pointerId, p);
+
+  if (gesture === 'pinch' && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const dist = Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1]));
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    scene.zoomAt(mid[0], mid[1], dist / pinch.dist);
+    scene.panByPixels(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    pinch = { dist, mid };
+    return;
+  }
+
+  if (gesture === 'pan' && pinch) {
+    const dx = p[0] - pinch.last[0], dy = p[1] - pinch.last[1];
+    pinch.moved += Math.hypot(dx, dy);
+    if (pinch.moved > SLOP_PX) scene.panByPixels(dx, dy);
+    pinch.last = p;
+    return;
+  }
+
+  if (gesture === 'burn' && dragging) {
+    const h = headScreen();
+    if (!h) return;
+    dragging.moved = Math.hypot(p[0] - dragging.from[0], p[1] - dragging.from[1]);
+    // Δv in the FRAME BEING SHOWN, then rotated back into rotating coordinates,
+    // because that is where the integrator lives.
+    const dxPx = p[0] - h.screen[0], dyPx = p[1] - h.screen[1];
+    let dx = msToVu(dxPx * MS_PER_PX);
+    let dy = msToVu(-dyPx * MS_PER_PX);
+    if (frame === 'inertial') {
+      const c = Math.cos(-clock), sn = Math.sin(-clock);
+      [dx, dy] = [dx * c - dy * sn, dx * sn + dy * c];
+    }
+    dragging.dv = [dx, dy];
+    dragging.to = scene.toModel(p[0], p[1]);
+    ui.note.textContent = `burn ${vuToMs(Math.hypot(dx, dy)).toFixed(1)} m/s — release to commit`;
+  }
 });
-ui.canvas.addEventListener('pointerup', () => {
-  if (!dragging) return;
-  const s = stateAt(clock);
-  const dv = dragging.dv;
-  dragging = null;
-  if (!s || Math.hypot(dv[0], dv[1]) < 1e-6) { ui.note.textContent = ''; return; }
-  const before = [s.x, s.y, s.vx, s.vy];
-  const after = [s.x, s.y, s.vx + dv[0], s.vy + dv[1]];
-  const c0 = jacobi(before, MU), c1 = jacobi(after, MU);
-  ui.title.textContent = 'After a burn';
-  ui.blurb.textContent = 'Position unchanged, velocity changed, and the Jacobi constant with it. Everything after this is ballistic.';
-  load(after, run ? run.duration : 40,
-    `burn ${vuToMs(Math.hypot(dv[0], dv[1])).toFixed(1)} m/s   C ${c0.toFixed(6)} -> ${c1.toFixed(6)}`);
+
+function endPointer(e) {
+  const had = gesture;
+  const wasDrag = dragging;
+  const movedLittle = had === 'pan' && pinch && pinch.moved <= SLOP_PX;
+  pointers.delete(e.pointerId);
+
+  if (had === 'pinch') {
+    // one finger lifted: carry on as a pan rather than jumping
+    if (pointers.size === 1) { gesture = 'pan'; pinch = { last: [...pointers.values()][0], moved: 99 }; }
+    else { gesture = null; pinch = null; }
+    return;
+  }
+
+  if (had === 'burn' && wasDrag) {
+    dragging = null; gesture = null;
+    const s = stateAt(clock);
+    const dv = wasDrag.dv;
+    if (!s || wasDrag.moved < SLOP_PX || Math.hypot(dv[0], dv[1]) < 1e-9) { ui.note.textContent = ''; return; }
+    const before = [s.x, s.y, s.vx, s.vy];
+    const after = [s.x, s.y, s.vx + dv[0], s.vy + dv[1]];
+    const c0 = jacobi(before, MU), c1 = jacobi(after, MU);
+    ui.title.textContent = 'After a burn';
+    ui.blurb.textContent = 'Position unchanged, velocity changed, and the Jacobi constant with it. Everything after this is ballistic.';
+    // the camera is deliberately left where the user put it
+    load(after, run ? run.duration : 40,
+      `burn ${vuToMs(Math.hypot(dv[0], dv[1])).toFixed(1)} m/s   C ${c0.toFixed(6)} -> ${c1.toFixed(6)}`, null);
+    return;
+  }
+
+  gesture = null;
+  if (pointers.size === 0) pinch = null;
+
+  // a tap on empty space that did not move: double-tap restores the framing
+  if (movedLittle) {
+    const now = performance.now();
+    if (now - lastTap < 320) { fitView(); lastTap = 0; } else lastTap = now;
+  }
+}
+ui.canvas.addEventListener('pointerup', endPointer);
+ui.canvas.addEventListener('pointercancel', endPointer);
+
+// wheel / trackpad zoom, about the cursor
+ui.canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const p = canvasPoint(e);
+  // trackpads send small continuous deltas and mice send large discrete ones;
+  // the exponential keeps both feeling like the same control
+  const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016));
+  scene.zoomAt(p[0], p[1], Math.min(2.2, Math.max(0.45, factor)));
+}, { passive: false });
+
+ui.canvas.addEventListener('dblclick', (e) => {
+  const p = canvasPoint(e);
+  const h = headScreen();
+  if (h && Math.hypot(p[0] - h.screen[0], p[1] - h.screen[1]) <= HIT_PX) return;
+  fitView();
 });
+
+ui.fit.addEventListener('click', fitView);
+
+// Safari on iOS fires its own gesture events for a pinch and will happily zoom
+// the whole page instead of the scene. touch-action: none on the canvas handles
+// most of it; these catch the rest.
+for (const g of ['gesturestart', 'gesturechange', 'gestureend']) {
+  ui.canvas.addEventListener(g, (e) => e.preventDefault());
+}
 
 // --- targeting -------------------------------------------------------------
 ui.plan.addEventListener('click', () => {
@@ -272,7 +423,7 @@ ui.execute.addEventListener('click', () => {
   ui.title.textContent = 'Targeted burn';
   ui.blurb.textContent = 'Solved by shooting, not steering: the burn happens once and the equations do the rest.';
   load(pending.after, Math.max(b.timeOfFlight * 2.2, 12),
-    `executed Δv ${b.dvMs.toFixed(1)} m/s, miss ${(b.residual * DU_KM).toFixed(1)} km`);
+    `executed Δv ${b.dvMs.toFixed(1)} m/s, miss ${(b.residual * DU_KM).toFixed(1)} km`, null);
 });
 
 window.addEventListener('resize', () => scene.resize());
@@ -283,4 +434,9 @@ ui.preset.value = 'horseshoe';
 choosePreset('horseshoe');
 requestAnimationFrame(frameLoop);
 
-window.threebody = { POINTS, get run() { return run; }, stateAt, scene, load, propagate, planTransfer };
+window.threebody = {
+  POINTS, get run() { return run; }, stateAt, scene, load, propagate, planTransfer,
+  fitView, get view() { return { span: scene.span, centre: scene.centre.slice() }; },
+  get clock() { return clock; }, get frame() { return frame; },
+  get intendedView() { return currentView; },
+};

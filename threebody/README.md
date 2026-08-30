@@ -28,6 +28,9 @@ space. It was a shape *relative to the Moon*.
 
 - **Drag the spacecraft** to burn. Its position does not change, its velocity
   does, and the Jacobi constant changes with it. Everything after is ballistic.
+- **Drag anywhere else** to pan. **Pinch or scroll** to zoom, about the point
+  under your fingers. **Fit**, or a double-tap on empty space, restores the
+  framing the preset asked for.
 - **Zero-velocity** draws the boundary of where the spacecraft can be at all at
   its current energy. Burn, and watch the necks around L1 and L2 open or close.
 - **Target** solves for a burn that arrives, by shooting — not by steering. It
@@ -35,6 +38,27 @@ space. It was a shape *relative to the Moon*.
   when it cannot find one it says so instead of snapping to the destination.
 - L1, L2 and L3 are drawn as crosses because nothing rests there; L4 and L5 as
   rings because things can.
+
+### Which gesture is which
+
+Decided by where the pointer went down, not by what it did afterwards — so a
+drag never changes its mind halfway:
+
+```text
+within 26 px of the spacecraft  ->  burn
+anywhere else                   ->  pan
+two fingers, or the wheel       ->  zoom about the midpoint
+```
+
+The hit target is in screen pixels rather than model units, because in DU it
+would shrink to nothing zoomed out and swallow the view zoomed in. The burn
+scale is per pixel of drag for the same reason: the same gesture means the same
+Δv however far the camera is zoomed.
+
+**None of the camera can reach the physics.** Zoom and pan change two numbers,
+`span` and `centre`, that live in the renderer. A trajectory integrated at one
+zoom level is byte-identical at another, and Fit restores the framing without
+re-integrating anything.
 
 ## What is here
 
@@ -72,6 +96,26 @@ Body radii are drawn larger than life — Earth is three pixels at true scale an
 the Moon is under one — but the enlarged radius exists only in `render.js`.
 Collision is tested against the physical radius in `trajectory.js`, which cannot
 see the renderer.
+
+### What is physical about the bodies, and what is decoration
+
+The centres are physical: fixed in the rotating frame, circling the barycentre in
+the inertial one. The surfaces are a mixture, and it is worth being clear which
+is which.
+
+**Physical.** The light comes from a direction fixed in *inertial* space, because
+the Sun does not co-rotate with the Moon — so in the rotating frame the
+terminator sweeps round once per synodic period, which is the slowest and most
+truthful motion on screen. And the Moon's surface does not rotate in the rotating
+frame at all: it is tidally locked, so the same face really is always turned
+toward the Earth. In the inertial frame it turns once per orbit, which is the
+same statement said differently.
+
+**Decoration, and labelled as such in the code.** The continents are a suggestion
+of continents rather than a map. The Earth's spin rate is chosen by eye: a true
+sidereal day is about a quarter of a time unit, which at eight days a second is
+eight turns a second and strobes. It is the only number in the project picked for
+how it looks, and it drives nothing.
 
 ## What was measured
 
@@ -180,6 +224,10 @@ that is a real 2e-4 error rather than a display choice.
 | targeting, near L4 → L4 | Δv 9 m/s |
 | targeting, near L1 → L5 | Δv 1057 m/s — expensive, and it says so |
 | the `free` preset | ends in `impact: Moon`, detected on the physical radius |
+
+The camera has no effect on any of it. Zooming, panning and fitting through a
+whole session leaves the run's sample count, `C0` and step count byte-identical —
+checked, not assumed.
 
 One thing worth recording. The readout first showed a Jacobi drift of 1.5e-5
 while the solver was holding 1e-11, because the displayed velocity was

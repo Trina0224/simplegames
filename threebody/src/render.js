@@ -5,11 +5,15 @@
 // is to make the geometry legible: which regions are closed, where the
 // equilibria are, what the spacecraft is doing now.
 //
-// The one liberty is body size. Earth at true scale on this view is three pixels
-// and the Moon is under one, so both are drawn larger. SPEC.md separates
-// physicalRadius from renderRadius for exactly this reason, and the enlarged
-// radius never reaches the physics: collision is tested against the real one in
-// trajectory.js and cannot see this file.
+// The camera lives here too — span and centre, in model units. Zoom and pan
+// change those two numbers and nothing else, so no amount of looking can alter
+// what was integrated.
+//
+// The one liberty taken with physics is body size. Earth at true scale on the
+// default view is three pixels and the Moon is under one, so both are drawn
+// larger. SPEC.md separates physicalRadius from renderRadius for exactly this
+// reason, and the enlarged radius never reaches the physics: collision is tested
+// against the real one in trajectory.js, which cannot see this file.
 
 import { EARTH_RADIUS, MOON_RADIUS, DU_KM } from './constants.js';
 import { toInertial, bodies, movePoints } from './frames.js';
@@ -17,22 +21,59 @@ import { toInertial, bodies, movePoints } from './frames.js';
 const EARTH_DRAW = 0.055;
 const MOON_DRAW = 0.030;
 
+// How far the camera may go. The lower bound is about a fifth of the Earth's
+// drawn disc, which is as close as anything here is worth looking at; the upper
+// is well outside L3, past which there is nothing left to see.
+export const MIN_SPAN = 0.03;
+export const MAX_SPAN = 14;
+
+// Where the light comes from. There is no Sun in the CR3BP, but a body without a
+// terminator reads as a sticker rather than a sphere. The direction is fixed in
+// INERTIAL space, which is the honest choice: the Sun does not co-rotate with
+// the Moon, so in the rotating frame the terminator sweeps round once per
+// synodic period, and that slow sweep is the most physical thing on screen.
+const LIGHT0 = 0.6;
+
+// Continents, as blobs on a sphere. Not a map of Earth — a suggestion of one,
+// enough that a rotating ball reads as a rotating ball.
+const LAND = [
+  [-1.55, 0.75, 0.34], [-1.75, 0.30, 0.30], [-1.30, 0.10, 0.20],
+  [-1.10, -0.35, 0.26], [-1.20, -0.62, 0.16],
+  [0.25, 0.85, 0.30], [0.35, 0.35, 0.26], [0.55, 0.10, 0.22],
+  [0.45, -0.45, 0.22], [1.55, -0.45, 0.24], [2.35, -0.30, 0.18],
+  [1.40, 0.55, 0.30], [2.60, 0.60, 0.22],
+];
+const CLOUD = [
+  [-0.4, 0.5, 0.30], [0.9, -0.2, 0.34], [2.2, 0.25, 0.28],
+  [-2.3, -0.5, 0.26], [1.7, 0.8, 0.24], [-1.0, -0.75, 0.22],
+];
+// Craters. The Moon is tidally locked, so in the rotating frame these do not
+// move at all — the same face really is always turned toward the Earth.
+const CRATERS = [
+  [0.15, 0.35, 0.30], [-0.55, 0.10, 0.24], [0.70, -0.20, 0.20],
+  [-0.20, -0.50, 0.26], [1.20, 0.45, 0.16], [0.45, 0.70, 0.14],
+  [-1.10, -0.25, 0.18], [0.05, -0.05, 0.12], [0.95, -0.60, 0.13],
+];
+
 export class Scene {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    // Framed so that the co-orbital region fits and L5 is not underneath the
+    // Framed so the co-orbital region fits and L5 is not underneath the
     // controls: the horseshoe reaches r = 1.37, and both triangular points have
     // to be visible at once or the thing it encloses cannot be seen.
-    this.span = 3.7;                 // DU across the shorter axis
+    this.span = 3.7;
     this.centre = [0.06, -0.20];
+    this.w = 1; this.h = 1; this.dpr = 1; this.scale = 1;
   }
 
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const r = this.canvas.getBoundingClientRect();
-    this.canvas.width = Math.max(1, Math.round(r.width * dpr));
-    this.canvas.height = Math.max(1, Math.round(r.height * dpr));
+    const cw = Math.max(1, Math.round(r.width * dpr));
+    const ch = Math.max(1, Math.round(r.height * dpr));
+    if (this.canvas.width !== cw) this.canvas.width = cw;
+    if (this.canvas.height !== ch) this.canvas.height = ch;
     this.w = r.width; this.h = r.height; this.dpr = dpr;
     this.scale = Math.min(this.w, this.h) / this.span;
   }
@@ -51,120 +92,247 @@ export class Scene {
     ];
   }
 
+  // --- camera. All of it is presentation; none of it touches a trajectory. ---
+
+  setView(view) {
+    if (!view) return;
+    this.span = Math.min(MAX_SPAN, Math.max(MIN_SPAN, view.span));
+    this.centre = view.centre.slice();
+    this.scale = Math.min(this.w, this.h) / this.span;
+  }
+
+  /**
+   * Zoom about a point on screen, keeping whatever is under it where it is.
+   * Zooming about the canvas centre instead is the difference between a control
+   * that feels like a map and one that feels like a slider.
+   */
+  zoomAt(px, py, factor) {
+    const before = this.toModel(px, py);
+    this.span = Math.min(MAX_SPAN, Math.max(MIN_SPAN, this.span / factor));
+    this.scale = Math.min(this.w, this.h) / this.span;
+    const after = this.toModel(px, py);
+    this.centre[0] += before[0] - after[0];
+    this.centre[1] += before[1] - after[1];
+  }
+
+  panByPixels(dx, dy) {
+    this.centre[0] -= dx / this.scale;
+    this.centre[1] += dy / this.scale;
+  }
+
+  // --------------------------------------------------------------- bodies
+
+  /**
+   * A shaded sphere: limb-darkened disc, some markings that rotate with it, and
+   * a night side. The terminator is a radial gradient centred on the anti-solar
+   * point rather than a hard edge, which is both cheaper and closer to what a
+   * lit sphere looks like at this size.
+   */
+  _sphere(cx, cy, r, lightAngle, spin, opts) {
+    const { ctx } = this;
+    const { ocean, land, cloud, craters, rim } = opts;
+    // sub-solar point projected onto the disc; z is how far round the far side
+    const lx = Math.cos(lightAngle), lz = Math.sin(lightAngle) * 0.35;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.fillStyle = ocean;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    const blob = (lon, lat, br, fill) => {
+      const a = lon - spin;
+      const z = Math.cos(lat) * Math.cos(a);
+      if (z <= 0.03) return;                       // on the far side
+      const x = Math.cos(lat) * Math.sin(a);
+      const y = Math.sin(lat);
+      const px = cx + x * r, py = cy - y * r;
+      const d = Math.hypot(x, y) || 1e-6;
+      // foreshortened along the radial direction as it approaches the limb
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.atan2(-y, x));
+      ctx.beginPath();
+      ctx.ellipse(0, 0, br * r * z, br * r * Math.min(1, 0.55 + 0.45 * z), 0, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.restore();
+      void d;
+    };
+
+    if (land) for (const [lon, lat, br] of LAND) blob(lon, lat, br, land);
+    if (craters) {
+      for (const [lon, lat, br] of CRATERS) {
+        blob(lon, lat, br, craters.dark);
+        blob(lon + 0.03, lat + 0.03, br * 0.68, craters.light);
+      }
+    }
+    if (cloud) for (const [lon, lat, br] of CLOUD) blob(lon, lat, br, cloud);
+
+    // night side
+    const ax = cx - lx * r * 0.55, ay = cy + lz * r * 0.55;
+    const night = ctx.createRadialGradient(ax, ay, r * 0.05, ax, ay, r * 1.85);
+    night.addColorStop(0, 'rgba(2,4,9,0.92)');
+    night.addColorStop(0.45, 'rgba(2,4,9,0.62)');
+    night.addColorStop(1, 'rgba(2,4,9,0)');
+    ctx.fillStyle = night;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    // limb darkening, so the edge falls away instead of stopping
+    const limb = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
+    limb.addColorStop(0, 'rgba(0,0,0,0)');
+    limb.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = limb;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+
+    if (rim) {                                   // atmosphere, on the lit side
+      const g = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.35);
+      g.addColorStop(0, rim);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ---------------------------------------------------------------- draw
+
   draw(view) {
     const { ctx } = this;
-    const { frame, t, points, trail, head, velocity, zvc, plan, burn, showZvc, showVel } = view;
+    const { frame, t, points, trail, head, zvc, plan, burn, showZvc, showVel } = view;
+    this.resize();
     ctx.save();
-    ctx.scale(this.dpr, this.dpr);
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
-    ctx.fillStyle = '#05070c';
+    ctx.fillStyle = '#04060b';
     ctx.fillRect(0, 0, this.w, this.h);
 
     const P = (x, y) => this.toScreen(x, y);
+    const rot = frame === 'inertial' ? t : 0;
+    const rc = Math.cos(rot), rs = Math.sin(rot);
+    const turn = (x, y) => (rot ? [x * rc - y * rs, x * rs + y * rc] : [x, y]);
 
-    // --- the forbidden region -------------------------------------------
-    // Drawn as the curve rather than a filled area: filling needs to know which
-    // side is inside, and the inside is disconnected at these energies.
+    // --- the forbidden region, kept quiet ---------------------------------
     if (showZvc && zvc && zvc.length) {
-      ctx.strokeStyle = 'rgba(120, 170, 255, 0.30)';
+      ctx.strokeStyle = 'rgba(112, 152, 214, 0.22)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i < zvc.length; i += 4) {
-        let [ax, ay] = [zvc[i], zvc[i + 1]];
-        let [bx, by] = [zvc[i + 2], zvc[i + 3]];
-        if (frame === 'inertial') {
-          const c = Math.cos(t), s = Math.sin(t);
-          [ax, ay] = [ax * c - ay * s, ax * s + ay * c];
-          [bx, by] = [bx * c - by * s, bx * s + by * c];
-        }
-        const a = P(ax, ay), b = P(bx, by);
+        const a = P(...turn(zvc[i], zvc[i + 1]));
+        const b = P(...turn(zvc[i + 2], zvc[i + 3]));
         ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
       }
       ctx.stroke();
     }
 
-    // --- the trail --------------------------------------------------------
+    // --- the trajectory: the subject of the picture ------------------------
     if (trail && trail.n > 1) {
-      ctx.lineWidth = 1.6;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
-      // fades into the past, so a long horseshoe still reads as a direction
       const N = trail.n;
-      const step = Math.max(1, Math.floor(N / 2200));
-      let prev = null;
+      const step = Math.max(1, Math.floor(N / 2600));
+      const pts = [];
       for (let i = 0; i < N; i += step) {
         let x = trail.xs[i], y = trail.ys[i];
-        if (frame === 'inertial') {
+        if (rot) {
           const tt = trail.ts[i], c = Math.cos(tt), s = Math.sin(tt);
           [x, y] = [x * c - y * s, x * s + y * c];
         }
-        const p = P(x, y);
-        if (prev) {
-          const age = i / N;
-          ctx.strokeStyle = `rgba(126, 214, 255, ${0.10 + 0.75 * age * age})`;
-          ctx.beginPath();
-          ctx.moveTo(prev[0], prev[1]);
-          ctx.lineTo(p[0], p[1]);
-          ctx.stroke();
-        }
-        prev = p;
+        pts.push(P(x, y));
       }
-    }
-
-    // --- primaries and barycentre ----------------------------------------
-    const b = bodies(t, frame);
-    const bc = P(b.barycenter[0], b.barycenter[1]);
-    ctx.strokeStyle = 'rgba(190, 200, 220, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(bc[0] - 5, bc[1]); ctx.lineTo(bc[0] + 5, bc[1]);
-    ctx.moveTo(bc[0], bc[1] - 5); ctx.lineTo(bc[0], bc[1] + 5);
-    ctx.stroke();
-
-    const drawBody = (pos, rDraw, fill, glow, label) => {
-      const p = P(pos[0], pos[1]);
-      const r = Math.max(3, rDraw * this.scale);
-      const g = ctx.createRadialGradient(p[0], p[1], r * 0.2, p[0], p[1], r * 2.6);
-      g.addColorStop(0, glow); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(p[0], p[1], r * 2.6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = fill;
-      ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(215, 228, 240, 0.85)';
-      ctx.font = '11px ui-monospace, Menlo, monospace';
-      ctx.fillText(label, p[0] + r + 6, p[1] + 4);
-    };
-    drawBody(b.earth, EARTH_DRAW, '#4e86c6', 'rgba(78,134,198,0.30)', 'Earth');
-    drawBody(b.moon, MOON_DRAW, '#b9bec7', 'rgba(185,190,199,0.22)', 'Moon');
-
-    // --- equilibria -------------------------------------------------------
-    ctx.font = '11px ui-monospace, Menlo, monospace';
-    for (const p of movePoints(points, t, frame)) {
-      const s = P(p.px, p.py);
-      const unstable = p.unstable;
-      ctx.strokeStyle = unstable ? 'rgba(255, 170, 120, 0.85)' : 'rgba(150, 240, 190, 0.85)';
-      ctx.lineWidth = 1.2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      // a wide, dim underlay so the path reads as a single object at a glance
+      ctx.strokeStyle = 'rgba(96, 190, 255, 0.10)';
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      if (unstable) {                    // a cross: a saddle, nothing rests here
-        ctx.moveTo(s[0] - 4, s[1] - 4); ctx.lineTo(s[0] + 4, s[1] + 4);
-        ctx.moveTo(s[0] + 4, s[1] - 4); ctx.lineTo(s[0] - 4, s[1] + 4);
-      } else {                           // a ring: things can stay
-        ctx.arc(s[0], s[1], 4.5, 0, Math.PI * 2);
+      for (let i = 0; i < pts.length; i += 1) {
+        if (i === 0) ctx.moveTo(pts[i][0], pts[i][1]); else ctx.lineTo(pts[i][0], pts[i][1]);
       }
       ctx.stroke();
-      ctx.fillStyle = unstable ? 'rgba(255, 190, 150, 0.9)' : 'rgba(170, 245, 205, 0.9)';
-      ctx.fillText(p.name, s[0] + 8, s[1] - 6);
+      // then the line itself, brightening toward now
+      ctx.lineWidth = 1.9;
+      for (let i = 1; i < pts.length; i += 1) {
+        const age = i / pts.length;
+        ctx.strokeStyle = `rgba(150, 222, 255, ${0.16 + 0.80 * age * age})`;
+        ctx.beginPath();
+        ctx.moveTo(pts[i - 1][0], pts[i - 1][1]);
+        ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.stroke();
+      }
     }
 
-    // --- the planned burn's path, before it is committed -------------------
+    // --- primaries and barycentre ------------------------------------------
+    const b = bodies(t, frame);
+    const spinLight = LIGHT0 - (frame === 'rotating' ? t : 0);
+
+    const bc = P(b.barycenter[0], b.barycenter[1]);
+    ctx.strokeStyle = 'rgba(150, 168, 195, 0.30)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(bc[0] - 4, bc[1]); ctx.lineTo(bc[0] + 4, bc[1]);
+    ctx.moveTo(bc[0], bc[1] - 4); ctx.lineTo(bc[0], bc[1] + 4);
+    ctx.stroke();
+
+    const ep = P(b.earth[0], b.earth[1]);
+    const er = Math.max(2.5, EARTH_DRAW * this.scale);
+    // Decorative spin rate. A true sidereal day is about a quarter of a time
+    // unit, which at eight days a second is eight turns a second and strobes;
+    // this is slowed to something a person can see turning. It is the only
+    // number in the project chosen by eye, and it drives nothing.
+    this._sphere(ep[0], ep[1], er, spinLight, t * 0.75, {
+      ocean: '#153962', land: 'rgba(78, 134, 94, 1)',
+      cloud: 'rgba(228, 240, 252, 0.24)',
+      rim: 'rgba(96, 158, 224, 0.22)',
+    });
+
+    const mp = P(b.moon[0], b.moon[1]);
+    const mr = Math.max(1.8, MOON_DRAW * this.scale);
+    // The Moon is tidally locked, so in the rotating frame its surface does not
+    // turn at all: the same face really is always toward the Earth. In the
+    // inertial frame it turns once per orbit, which is the same statement.
+    this._sphere(mp[0], mp[1], mr, spinLight, frame === 'rotating' ? 0 : t, {
+      ocean: '#8f949c',
+      craters: { dark: 'rgba(96, 100, 108, 0.85)', light: 'rgba(178, 183, 191, 0.5)' },
+    });
+
+    // Labels sit beside the body, but not arbitrarily far: zoomed right in, the
+    // disc is wider than the window and a label at r + 7 is off the screen.
+    ctx.fillStyle = 'rgba(200, 214, 232, 0.72)';
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('Earth', ep[0] + Math.min(er + 7, 52), ep[1] + 4);
+    ctx.fillText('Moon', mp[0] + Math.min(mr + 7, 52), mp[1] + 4);
+
+    // --- equilibria: present, not shouting ---------------------------------
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    for (const p of movePoints(points, t, frame)) {
+      const s = P(p.px, p.py);
+      const un = p.unstable;
+      ctx.strokeStyle = un ? 'rgba(226, 148, 106, 0.55)' : 'rgba(126, 206, 164, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (un) {                          // a cross: a saddle, nothing rests here
+        ctx.moveTo(s[0] - 3.4, s[1] - 3.4); ctx.lineTo(s[0] + 3.4, s[1] + 3.4);
+        ctx.moveTo(s[0] + 3.4, s[1] - 3.4); ctx.lineTo(s[0] - 3.4, s[1] + 3.4);
+      } else {                           // a ring: things can stay
+        ctx.arc(s[0], s[1], 3.8, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+      ctx.fillStyle = un ? 'rgba(226, 160, 120, 0.62)' : 'rgba(140, 214, 176, 0.62)';
+      ctx.fillText(p.name, s[0] + 6, s[1] - 5);
+    }
+
+    // --- a planned burn, before it is committed -----------------------------
     if (plan && plan.xs && plan.xs.length > 1) {
-      ctx.strokeStyle = 'rgba(255, 214, 120, 0.55)';
-      ctx.setLineDash([4, 4]);
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = 'rgba(255, 206, 112, 0.62)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < plan.xs.length; i += 1) {
         let x = plan.xs[i], y = plan.ys[i];
-        if (frame === 'inertial') {
+        if (rot) {
           const tt = t + plan.ts[i], c = Math.cos(tt), s = Math.sin(tt);
           [x, y] = [x * c - y * s, x * s + y * c];
         }
@@ -175,54 +343,83 @@ export class Scene {
       ctx.setLineDash([]);
     }
 
-    // --- the spacecraft ----------------------------------------------------
+    // --- the spacecraft -----------------------------------------------------
     if (head) {
       let [x, y, vx, vy] = head;
       if (frame === 'inertial') [x, y, vx, vy] = toInertial(x, y, vx, vy, t);
       const p = P(x, y);
-      if (showVel && velocity !== false) {
+      const ang = Math.atan2(-vy, vx);
+
+      const halo = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], 17);
+      halo.addColorStop(0, 'rgba(180, 236, 255, 0.34)');
+      halo.addColorStop(1, 'rgba(180, 236, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(p[0], p[1], 17, 0, Math.PI * 2); ctx.fill();
+
+      if (showVel) {
         const k = 0.35;
         const q = P(x + vx * k, y + vy * k);
-        ctx.strokeStyle = 'rgba(126, 214, 255, 0.8)';
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(150, 222, 255, 0.75)';
+        ctx.lineWidth = 1.3;
         ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
-        const ang = Math.atan2(q[1] - p[1], q[0] - p[0]);
+        const a2 = Math.atan2(q[1] - p[1], q[0] - p[0]);
         ctx.beginPath();
         ctx.moveTo(q[0], q[1]);
-        ctx.lineTo(q[0] - 6 * Math.cos(ang - 0.4), q[1] - 6 * Math.sin(ang - 0.4));
-        ctx.lineTo(q[0] - 6 * Math.cos(ang + 0.4), q[1] - 6 * Math.sin(ang + 0.4));
+        ctx.lineTo(q[0] - 6 * Math.cos(a2 - 0.42), q[1] - 6 * Math.sin(a2 - 0.42));
+        ctx.lineTo(q[0] - 6 * Math.cos(a2 + 0.42), q[1] - 6 * Math.sin(a2 + 0.42));
         ctx.closePath();
-        ctx.fillStyle = 'rgba(126, 214, 255, 0.8)';
+        ctx.fillStyle = 'rgba(150, 222, 255, 0.75)';
         ctx.fill();
       }
-      if (burn) {
-        const q = P(x + burn[0] * 0.35, y + burn[1] * 0.35);
-        ctx.strokeStyle = 'rgba(255, 214, 120, 0.95)';
-        ctx.lineWidth = 2;
+      if (burn && burn.to) {
+        // drawn to where the pointer is, not to a scaled multiple of the
+        // velocity: direct manipulation, and legible at every zoom level
+        const q = P(burn.to[0], burn.to[1]);
+        ctx.strokeStyle = 'rgba(255, 206, 112, 0.95)';
+        ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
       }
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(p[0], p[1], 3.6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+
+      // a small craft pointing along its own velocity, rather than a dot
+      ctx.save();
+      ctx.translate(p[0], p[1]);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(6.2, 0); ctx.lineTo(-3.6, 3.4); ctx.lineTo(-1.8, 0); ctx.lineTo(-3.6, -3.4);
+      ctx.closePath();
+      ctx.fillStyle = '#f2fbff';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(120, 196, 236, 0.9)';
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(p[0], p[1], 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.stroke();
+      ctx.restore();
     }
 
-    // --- scale bar ---------------------------------------------------------
-    const barDu = 0.5;
-    const px = barDu * this.scale;
-    ctx.strokeStyle = 'rgba(190, 205, 225, 0.5)';
+    // --- scale bar, sized to whatever the camera is showing -----------------
+    this._scaleBar();
+    ctx.restore();
+  }
+
+  _scaleBar() {
+    const { ctx } = this;
+    // pick a round number of kilometres that lands near a fifth of the view
+    const wantDu = this.span * 0.22;
+    const wantKm = wantDu * DU_KM;
+    const pow = Math.pow(10, Math.floor(Math.log10(wantKm)));
+    const nice = [1, 2, 5, 10].map((k) => k * pow).reduce((a, c) => (Math.abs(c - wantKm) < Math.abs(a - wantKm) ? c : a));
+    const px = (nice / DU_KM) * this.scale;
+    const y = this.h - 22;
+    ctx.strokeStyle = 'rgba(170, 190, 214, 0.42)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(16, this.h - 20); ctx.lineTo(16 + px, this.h - 20);
-    ctx.moveTo(16, this.h - 24); ctx.lineTo(16, this.h - 16);
-    ctx.moveTo(16 + px, this.h - 24); ctx.lineTo(16 + px, this.h - 16);
+    ctx.moveTo(16, y); ctx.lineTo(16 + px, y);
+    ctx.moveTo(16, y - 4); ctx.lineTo(16, y + 4);
+    ctx.moveTo(16 + px, y - 4); ctx.lineTo(16 + px, y + 4);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(190, 205, 225, 0.7)';
-    ctx.font = '11px ui-monospace, Menlo, monospace';
-    ctx.fillText(`${(barDu * DU_KM / 1000).toFixed(0)}e3 km`, 16, this.h - 26);
-
-    ctx.restore();
+    ctx.fillStyle = 'rgba(170, 190, 214, 0.62)';
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const label = nice >= 1000 ? `${(nice / 1000).toFixed(nice >= 10000 ? 0 : 1)} 000 km` : `${nice.toFixed(0)} km`;
+    ctx.fillText(label, 16, y - 8);
   }
 }
 
